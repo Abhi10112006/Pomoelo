@@ -6,29 +6,11 @@ import androidx.compose.ui.text.googlefonts.Font
 import androidx.compose.ui.text.googlefonts.GoogleFont
 import com.example.R
 
-val provider = GoogleFont.Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage = "com.google.android.gms",
-    certificates = R.array.com_google_android_gms_fonts_certs
-)
+val AppFontFamily = FontFamily.SansSerif
 
-val PoppinsFont = GoogleFont("Poppins")
+val CursiveFontFamily = FontFamily.Cursive
 
-val AppFontFamily = FontFamily(
-    Font(googleFont = PoppinsFont, fontProvider = provider, weight = FontWeight.Normal),
-    Font(googleFont = PoppinsFont, fontProvider = provider, weight = FontWeight.Medium),
-    Font(googleFont = PoppinsFont, fontProvider = provider, weight = FontWeight.SemiBold),
-    Font(googleFont = PoppinsFont, fontProvider = provider, weight = FontWeight.Bold),
-    Font(googleFont = PoppinsFont, fontProvider = provider, weight = FontWeight.Black)
-)
+val MonospaceFontFamily = FontFamily.Monospace
 
-val CursiveFontFamily = FontFamily(
-    androidx.compose.ui.text.font.Font(R.font.comic_neue_regular, weight = FontWeight.Normal),
-    androidx.compose.ui.text.font.Font(R.font.comic_neue_bold, weight = FontWeight.Bold)
-)
-
-val MonospaceFontFamily = FontFamily(
-    androidx.compose.ui.text.font.Font(R.font.special_elite_regular, weight = FontWeight.Normal)
-)
 
 
