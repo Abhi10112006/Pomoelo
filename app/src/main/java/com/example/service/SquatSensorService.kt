@@ -41,7 +41,7 @@ class SquatSensorService(context: Context) : SensorEventListener {
     private var onShakeStatusChanged: ((Boolean) -> Unit)? = null
 
     init {
-        sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     }
 
