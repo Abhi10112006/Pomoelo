@@ -554,7 +554,7 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                     onSave = { h, m, lbl, days, targetReps ->
                         if (activeEditAlarm == null) {
                             val newAlarm = com.example.data.AlarmItem(
-                                hour = m, // wait: hour is the first param, minute is the second
+                                hour = h,
                                 minute = m,
                                 label = lbl,
                                 daysOfWeek = days,
@@ -562,8 +562,8 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                 squatTarget = targetReps
                             )
                             coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                val id = alarmDao.insertAlarm(newAlarm.copy(hour = h))
-                                com.example.service.AlarmScheduler.scheduleAlarm(context, newAlarm.copy(id = id.toInt(), hour = h))
+                                val id = alarmDao.insertAlarm(newAlarm)
+                                com.example.service.AlarmScheduler.scheduleAlarm(context, newAlarm.copy(id = id.toInt()))
                             }
                         } else {
                             val updated = activeEditAlarm!!.copy(
