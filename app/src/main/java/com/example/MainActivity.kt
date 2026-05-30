@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import com.example.ui.theme.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -322,6 +323,13 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                 com.example.ui.AlarmScreen(navController, bottomPadding)
             }
         }
+    }
+
+    if (com.example.service.AlarmState.isAlarmRinging) {
+        AlarmRingingLockScreen(
+            label = com.example.service.AlarmState.activeAlarmLabel,
+            targetCount = com.example.service.AlarmState.activeAlarmSquatTarget
+        )
     }
 }
 
@@ -1329,7 +1337,19 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                             focusedBorderColor = Color(0xFF5D4037),
                             unfocusedBorderColor = Color.LightGray,
                             focusedLabelColor = Color(0xFF5D4037)
-                        )
+                        ),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                        ),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                            onDone = {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                } catch (e: Exception) {}
+                                onSave(title.ifEmpty { "Do nothing" }, selectedCategory.first, selectedCategory.second.value.toLong())
+                            }
+                        ),
+                        singleLine = true
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("Category", fontSize = 14.scaledSp, color = Color.Gray)
@@ -2191,6 +2211,220 @@ fun SeriousFullscreenOverlay(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun AlarmRingingLockScreen(
+    label: String,
+    targetCount: Int
+) {
+    val context = LocalContext.current
+    var currentCount by remember { mutableStateOf(0) }
+    var shakeWarning by remember { mutableStateOf(false) }
+    var sensorMessage by remember { mutableStateOf("Ready to register. Put the device in your pocket and begin!") }
+
+    // Intercept back button to prevent escaping the workout alarm
+    androidx.activity.compose.BackHandler(enabled = true) {
+        // Intercept back actions and do nothing
+    }
+
+    // Register Squat sensor service for real-time secure tracking
+    DisposableEffect(Unit) {
+        val sensorService = com.example.service.SquatSensorService(context)
+        sensorService.startTracking(
+            targetSquats = targetCount,
+            onComplete = {
+                com.example.service.SoundPlayer.stopContinuousAlarm()
+                com.example.service.AlarmState.isAlarmRinging = false
+            },
+            onUpdate = { count ->
+                currentCount = count
+                sensorMessage = "Awesome! Perfect squat registered."
+            },
+            onShakeWarning = { isShaking ->
+                shakeWarning = isShaking
+            }
+        )
+
+        onDispose {
+            sensorService.stopTracking()
+        }
+    }
+
+    // Fullscreen Lock Screen
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF2B201D)) // Deep solid premium athletic slate
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // Animated pulsating active indicator
+            val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+            val scale by infiniteTransition.animateFloat(
+                initialValue = 0.9f,
+                targetValue = 1.1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(800, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "alarmScale"
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(100.dp)
+                    .scale(scale)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFF8A80).copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Default.Notifications,
+                    contentDescription = "Workout Alarm active",
+                    tint = Color(0xFFFF8A80),
+                    modifier = Modifier.size(56.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Alarm main label
+            Text(
+                text = label,
+                fontSize = 28.scaledSp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                fontFamily = CursiveFontFamily
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "ACTIVE SQUAT CHALLENGE IN PROGRESS",
+                fontSize = 11.scaledSp,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFFFFCC80),
+                letterSpacing = 2.scaledSp,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Squat Progress Counter Ring
+            Card(
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF3E2723)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(2.dp, Color(0xFFFF8A80).copy(alpha = 0.3f), RoundedCornerShape(28.dp)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "SQUATS REQUIRED",
+                        fontSize = 12.scaledSp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.6f)
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "$currentCount",
+                            fontSize = 64.scaledSp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF66BB6A),
+                            fontFamily = MonospaceFontFamily
+                        )
+                        Text(
+                            text = " / $targetCount",
+                            fontSize = 32.scaledSp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontFamily = MonospaceFontFamily
+                        )
+                    }
+
+                    // Progress bar
+                    val progress = if (targetCount > 0) currentCount.toFloat() / targetCount.toFloat() else 0f
+                    LinearProgressIndicator(
+                        progress = progress,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        color = Color(0xFF66BB6A),
+                        trackColor = Color.White.copy(alpha = 0.1f)
+                    )
+
+                    Text(
+                        text = sensorMessage,
+                        fontSize = 12.scaledSp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Chaotic Shake Warning Indicator
+            AnimatedVisibility(
+                visible = shakeWarning,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFFFFCDD2))
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Default.Lock,
+                        contentDescription = "Lock State Alert",
+                        tint = Color(0xFFD32F2F),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        text = "⚠️ Chaotic Shaking Detected! Please stand still and perform smooth, vertical squats to count.",
+                        fontSize = 12.scaledSp,
+                        color = Color(0xFFB71C1C),
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 18.scaledSp
+                    )
+                }
+            }
+
+            // Normal instructions if not shaking
+            if (!shakeWarning) {
+                Text(
+                    text = "Phone locks and loops sound at maximum volume. There is no snooze! Stand up and perform your physical squat challenge to automatically unlock.",
+                    fontSize = 12.scaledSp,
+                    color = Color.White.copy(alpha = 0.5f),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 18.scaledSp
+                )
             }
         }
     }

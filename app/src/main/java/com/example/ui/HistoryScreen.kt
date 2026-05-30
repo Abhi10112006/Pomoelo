@@ -10,12 +10,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +32,10 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.components.scaledSp
 import androidx.navigation.NavController
 import com.example.data.TimerSession
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -63,7 +69,31 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
     val todayStart = getStartOfDay(System.currentTimeMillis())
     val dayInMillis = 24 * 60 * 60 * 1000L
 
-    val todaySessions = allSessions.filter { it.startTime >= todayStart }
+    // State managers for Undo / Temporary Deletion Cache
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    var temporarilyDeletedGroupKeys by remember { mutableStateOf(setOf<String>()) }
+    var recentlyDeletedSessions by remember { mutableStateOf<List<TimerSession>?>(null) }
+
+    // Tier 2 Deletion States
+    var showTier2Dialog by remember { mutableStateOf(false) }
+    var tier2Title by remember { mutableStateOf("") }
+    var tier2SessionsToDelete by remember { mutableStateOf<List<TimerSession>>(emptyList()) }
+
+    // Tier 3 Deletion States
+    var showTier3Dialog by remember { mutableStateOf(false) }
+    var tier3MonthStr by remember { mutableStateOf("") }
+    var tier3SessionsToDelete by remember { mutableStateOf<List<TimerSession>>(emptyList()) }
+    var tier3InputText by remember { mutableStateOf("") }
+
+    // Dynamically filter sessions based on visible items
+    val visibleSessions = allSessions.filter { session ->
+        val dateMillis = getStartOfDay(session.startTime)
+        val groupKey = "${session.taskName}|$dateMillis"
+        !temporarilyDeletedGroupKeys.contains(groupKey)
+    }
+
+    val todaySessions = visibleSessions.filter { it.startTime >= todayStart }
 
     val todayPomodoros = todaySessions.count { !it.isBreak }
     val todayFocusMinutes = todaySessions.filter { !it.isBreak }.sumOf { it.durationMinutes }
@@ -84,7 +114,20 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
     val displayBreak by animateIntAsState(targetValue = animatedBreakTime, animationSpec = tween(1000), label = "break")
 
     Scaffold(
-        containerColor = Color(0xFFFCEBEE)
+        containerColor = Color(0xFFFCEBEE),
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.padding(bottom = bottomPadding + 16.dp)
+            ) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = Color(0xFF3E2723), // Athletic Accent deep brown slate
+                    contentColor = Color.White,
+                    actionColor = Color(0xFFFFCC80) // Enhanced gold-peach with super high contrast (>7.4:1) against deep brown
+                )
+            }
+        }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -137,7 +180,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                 contentPadding = PaddingValues(bottom = bottomPadding + 88.dp)
             ) {
                 
-                val sessionsByDay = allSessions.sortedByDescending { it.startTime }.groupBy { getStartOfDay(it.startTime) }
+                val sessionsByDay = visibleSessions.sortedByDescending { it.startTime }.groupBy { getStartOfDay(it.startTime) }
 
                 val recentDays = mutableListOf<Long>() // 0..7
                 val pastMonthDays = mutableListOf<Long>() // 7..30 
@@ -165,6 +208,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                     // 1. Recent Days (0-7 days ago) - Fully expanded Daily Headers
                     recentDays.forEach { dateMillis ->
                         stickyHeader {
+                            val dateSessions = sessionsByDay[dateMillis]!!
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -183,7 +227,9 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                         try {
                                             view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                                         } catch (e: Exception) {}
-                                        viewModel.deleteSessionsInRange(dateMillis, dateMillis + dayInMillis)
+                                        showTier2Dialog = true
+                                        tier2Title = "Delete Today's Progress?"
+                                        tier2SessionsToDelete = dateSessions
                                     },
                                     modifier = Modifier.size(36.dp)
                                 ) {
@@ -201,7 +247,74 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                         val groupedByTask = dateSessions.groupBy { it.taskName }
                         
                         items(groupedByTask.entries.toList(), key = { it.key + dateMillis.toString() }) { (taskName, sessions) ->
-                            HistorySessionPill(taskName = taskName, sessions = sessions, viewModel = viewModel)
+                            val currentItemKey = "$taskName|$dateMillis"
+                            val dismissState = rememberSwipeToDismissBoxState(
+                                confirmValueChange = { value ->
+                                    if (value == SwipeToDismissBoxValue.EndToStart) {
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                                        } catch (e: Exception) {}
+                                        
+                                        val targetSessions = sessions
+                                        recentlyDeletedSessions = targetSessions
+                                        temporarilyDeletedGroupKeys = temporarilyDeletedGroupKeys + currentItemKey
+                                        
+                                        coroutineScope.launch {
+                                            val result = snackbarHostState.showSnackbar(
+                                                message = "Task deleted",
+                                                actionLabel = "UNDO",
+                                                duration = SnackbarDuration.Short
+                                            )
+                                            if (result == SnackbarResult.ActionPerformed) {
+                                                temporarilyDeletedGroupKeys = temporarilyDeletedGroupKeys - currentItemKey
+                                                recentlyDeletedSessions = null
+                                            } else {
+                                                if (temporarilyDeletedGroupKeys.contains(currentItemKey)) {
+                                                    viewModel.deleteSessions(targetSessions)
+                                                    temporarilyDeletedGroupKeys = temporarilyDeletedGroupKeys - currentItemKey
+                                                }
+                                            }
+                                        }
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                            )
+
+                            SwipeToDismissBox(
+                                state = dismissState,
+                                enableDismissFromStartToEnd = false,
+                                backgroundContent = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(24.dp))
+                                            .background(Color(0xFFFF8A80))
+                                            .padding(horizontal = 24.dp),
+                                        contentAlignment = Alignment.CenterEnd
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                },
+                                content = {
+                                    HistorySessionPill(
+                                        taskName = taskName,
+                                        sessions = sessions,
+                                        viewModel = viewModel,
+                                        onDeleteGroupClick = {
+                                            showTier2Dialog = true
+                                            tier2Title = "Delete Task Group?"
+                                            tier2SessionsToDelete = sessions
+                                        }
+                                    )
+                                }
+                            )
                         }
                     }
 
@@ -213,7 +326,22 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                         }
                         items(pastMonthDays, key = { it }) { dateMillis ->
                             val dateSessions = sessionsByDay[dateMillis]!!
-                            MicroSummaryPill(dateMillis, dateSessions, viewModel, dayInMillis)
+                            MicroSummaryPill(
+                                dateMillis = dateMillis,
+                                sessions = dateSessions,
+                                viewModel = viewModel,
+                                dayInMillis = dayInMillis,
+                                onDeleteDayClick = {
+                                    showTier2Dialog = true
+                                    tier2Title = "Delete Today's Progress?"
+                                    tier2SessionsToDelete = dateSessions
+                                },
+                                onDeleteGroupClick = { list ->
+                                    showTier2Dialog = true
+                                    tier2Title = "Delete Task Group?"
+                                    tier2SessionsToDelete = list
+                                }
+                            )
                         }
                     }
 
@@ -224,7 +352,17 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                             Text("Archives", fontSize = 16.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFFBCAAA4), modifier = Modifier.padding(vertical = 8.dp))
                         }
                         items(archiveMonths.entries.toList(), key = { it.key }) { (monthStr, sessions) ->
-                            MonthSummaryCard(monthStr, sessions, viewModel)
+                            MonthSummaryCard(
+                                monthStr = monthStr,
+                                sessions = sessions,
+                                viewModel = viewModel,
+                                onDeleteMonthClick = {
+                                    showTier3Dialog = true
+                                    tier3MonthStr = monthStr
+                                    tier3SessionsToDelete = sessions
+                                    tier3InputText = ""
+                                }
+                            )
                         }
                     }
                 }
@@ -233,12 +371,180 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                     Spacer(modifier = Modifier.height(100.dp))
                 }
             }
+
+            // --- Tier 2 Clean AlertDialog ---
+            if (showTier2Dialog) {
+                AlertDialog(
+                    onDismissRequest = { showTier2Dialog = false },
+                    title = {
+                        Text(
+                            text = tier2Title,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF5D4037),
+                            fontFamily = AppFontFamily
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = "You are about to clear an entire block of history. This will remove all associated study minutes from your daily summary. Do you want to proceed?",
+                            color = Color.DarkGray,
+                            fontSize = 14.scaledSp
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                } catch (e: Exception) {}
+                                viewModel.deleteSessions(tier2SessionsToDelete)
+                                showTier2Dialog = false
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8A80)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("[ Delete anyway ]", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showTier2Dialog = false }
+                        ) {
+                            Text("[ Cancel ]", color = Color(0xFF8D6E63))
+                        }
+                    },
+                    containerColor = Color.White,
+                    shape = RoundedCornerShape(24.dp)
+                )
+            }
+
+            // --- Tier 3 Serious Overlay Dialog ---
+            if (showTier3Dialog) {
+                androidx.compose.ui.window.Dialog(
+                    onDismissRequest = { 
+                        showTier3Dialog = false
+                        tier3InputText = ""
+                    },
+                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .imePadding()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Card(
+                            shape = RoundedCornerShape(24.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF2B1B1B)), // High-friction dark serious mode custom color
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(2.dp, Color(0xFFFF5252), RoundedCornerShape(24.dp)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .padding(24.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "⚠️ CRITICAL ACTION REQUIRED",
+                                    fontSize = 18.scaledSp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFF5252),
+                                    fontFamily = AppFontFamily
+                                )
+
+                                Text(
+                                    text = "You are about to permanently wipe out an entire MONTH of your hard-earned study empire. All telemetry logs, focus metrics, and streak data will be completely obliterated. Are you sure you want to erase?",
+                                    color = Color.White.copy(alpha = 0.9f),
+                                    fontSize = 13.scaledSp,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 20.scaledSp
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Text(
+                                    text = "Type 'ERASE' in uppercase to authorize deletion:",
+                                    color = Color.White.copy(alpha = 0.6f),
+                                    fontSize = 11.scaledSp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+
+                                OutlinedTextField(
+                                    value = tier3InputText,
+                                    onValueChange = { tier3InputText = it },
+                                    placeholder = { Text("Type ERASE here", color = Color.Gray) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        cursorColor = Color(0xFFFF5252),
+                                        focusedBorderColor = Color(0xFFFF5252),
+                                        unfocusedBorderColor = Color.White.copy(alpha = 0.3f)
+                                    ),
+                                    singleLine = true
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    TextButton(onClick = { 
+                                        showTier3Dialog = false 
+                                        tier3InputText = ""
+                                    }) {
+                                        Text("Cancel", color = Color.White.copy(alpha = 0.6f))
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Button(
+                                        onClick = {
+                                            if (tier3InputText == "ERASE") {
+                                                try {
+                                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                                } catch (e: Exception) {}
+                                                viewModel.deleteSessions(tier3SessionsToDelete)
+                                                showTier3Dialog = false
+                                                tier3InputText = ""
+                                            }
+                                        },
+                                        enabled = tier3InputText == "ERASE",
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFFFF5252),
+                                            disabledContainerColor = Color(0xFFFF5252).copy(alpha = 0.3f)
+                                        ),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text(
+                                            text = "[ PERMANENTLY DELETE ]",
+                                            color = if (tier3InputText == "ERASE") Color.White else Color.White.copy(alpha = 0.5f),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-fun MicroSummaryPill(dateMillis: Long, sessions: List<TimerSession>, viewModel: TimerViewModel, dayInMillis: Long) {
+fun MicroSummaryPill(
+    dateMillis: Long,
+    sessions: List<TimerSession>,
+    viewModel: TimerViewModel,
+    dayInMillis: Long,
+    onDeleteDayClick: () -> Unit,
+    onDeleteGroupClick: (List<TimerSession>) -> Unit
+) {
     val view = androidx.compose.ui.platform.LocalView.current
     var expanded by remember { mutableStateOf(false) }
     val dateStr = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(dateMillis))
@@ -278,7 +584,7 @@ fun MicroSummaryPill(dateMillis: Long, sessions: List<TimerSession>, viewModel: 
                         try {
                             view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                         } catch (e: Exception) {}
-                        viewModel.deleteSessionsInRange(dateMillis, dateMillis + dayInMillis)
+                        onDeleteDayClick()
                     },
                     modifier = Modifier.size(36.dp)
                 ) {
@@ -295,7 +601,12 @@ fun MicroSummaryPill(dateMillis: Long, sessions: List<TimerSession>, viewModel: 
                 Column(modifier = Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val groupedByTask = sessions.groupBy { it.taskName }
                     groupedByTask.forEach { (task, list) ->
-                        HistorySessionPill(task, list, viewModel)
+                        HistorySessionPill(
+                            taskName = task,
+                            sessions = list,
+                            viewModel = viewModel,
+                            onDeleteGroupClick = { onDeleteGroupClick(list) }
+                        )
                     }
                 }
             }
@@ -304,7 +615,12 @@ fun MicroSummaryPill(dateMillis: Long, sessions: List<TimerSession>, viewModel: 
 }
 
 @Composable
-fun MonthSummaryCard(monthStr: String, sessions: List<TimerSession>, viewModel: TimerViewModel) {
+fun MonthSummaryCard(
+    monthStr: String,
+    sessions: List<TimerSession>,
+    viewModel: TimerViewModel,
+    onDeleteMonthClick: () -> Unit
+) {
     val view = androidx.compose.ui.platform.LocalView.current
     var expanded by remember { mutableStateOf(false) }
     val focusSessions = sessions.filter { !it.isBreak }
@@ -344,11 +660,7 @@ fun MonthSummaryCard(monthStr: String, sessions: List<TimerSession>, viewModel: 
                         try {
                             view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                         } catch (e: Exception) {}
-                        if (sessions.isNotEmpty()) {
-                            val start = sessions.minOf { it.startTime }
-                            val end = sessions.maxOf { it.endTime } + 1000L
-                            viewModel.deleteSessionsInRange(start, end)
-                        }
+                        onDeleteMonthClick()
                     },
                     modifier = Modifier.size(36.dp)
                 ) {
@@ -387,7 +699,12 @@ fun MonthSummaryCard(monthStr: String, sessions: List<TimerSession>, viewModel: 
 }
 
 @Composable
-fun HistorySessionPill(taskName: String, sessions: List<TimerSession>, viewModel: TimerViewModel) {
+fun HistorySessionPill(
+    taskName: String,
+    sessions: List<TimerSession>,
+    viewModel: TimerViewModel,
+    onDeleteGroupClick: () -> Unit
+) {
     val view = androidx.compose.ui.platform.LocalView.current
     var expanded by remember { mutableStateOf(false) }
     val arrowRotation by animateFloatAsState(if (expanded) 180f else 0f, label = "arrow")
@@ -432,11 +749,7 @@ fun HistorySessionPill(taskName: String, sessions: List<TimerSession>, viewModel
                         try {
                             view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                         } catch (e: Exception) {}
-                        if (sessions.isNotEmpty()) {
-                            val start = sessions.minOf { it.startTime }
-                            val end = sessions.maxOf { it.endTime } + 1000L
-                            viewModel.deleteSessionsInRange(start, end)
-                        }
+                        onDeleteGroupClick()
                     },
                     modifier = Modifier.size(36.dp)
                 ) {

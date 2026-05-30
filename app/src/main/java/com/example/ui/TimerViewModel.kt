@@ -128,4 +128,12 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
             database.sessionDao().deleteSession(session)
         }
     }
+
+    fun deleteSessions(sessions: List<TimerSession>) {
+        viewModelScope.launch {
+            sessions.forEach {
+                database.sessionDao().deleteSession(it)
+            }
+        }
+    }
 }

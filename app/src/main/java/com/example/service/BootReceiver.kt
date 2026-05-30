@@ -12,6 +12,8 @@ class BootReceiver : BroadcastReceiver() {
             if (TimerManager.timerState.value != TimerManager.TimerState.RUNNING) {
                 InactivityScheduler.schedule(context.applicationContext)
             }
+            // Reschedule all active alarms
+            AlarmScheduler.rescheduleAll(context.applicationContext)
         }
     }
 }

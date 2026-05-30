@@ -59,6 +59,15 @@
         </receiver>
 
         <receiver
+            android:name=".service.AlarmReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.example.action.ALARM_TRIGGERED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".service.BootReceiver"
             android:enabled="true"
             android:exported="true">

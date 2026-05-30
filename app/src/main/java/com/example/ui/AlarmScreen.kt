@@ -50,6 +50,7 @@ import com.example.service.SquatSensorService
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -539,6 +540,233 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                 }
             }
 
+            // MULTIPLE SAVED ALARMS SECTION
+            val alarmDao = remember { com.example.data.DatabaseProvider.getDatabase(context).alarmDao() }
+            val coroutineScope = rememberCoroutineScope()
+            val alarms by alarmDao.getAllAlarms().collectAsState(initial = emptyList())
+            var showEditDialog by remember { mutableStateOf(false) }
+            var activeEditAlarm by remember { mutableStateOf<com.example.data.AlarmItem?>(null) }
+
+            if (showEditDialog) {
+                EditAlarmDialog(
+                    alarm = activeEditAlarm,
+                    onDismiss = { showEditDialog = false },
+                    onSave = { h, m, lbl, days, targetReps ->
+                        if (activeEditAlarm == null) {
+                            val newAlarm = com.example.data.AlarmItem(
+                                hour = m, // wait: hour is the first param, minute is the second
+                                minute = m,
+                                label = lbl,
+                                daysOfWeek = days,
+                                isEnabled = true,
+                                squatTarget = targetReps
+                            )
+                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                val id = alarmDao.insertAlarm(newAlarm.copy(hour = h))
+                                com.example.service.AlarmScheduler.scheduleAlarm(context, newAlarm.copy(id = id.toInt(), hour = h))
+                            }
+                        } else {
+                            val updated = activeEditAlarm!!.copy(
+                                hour = h,
+                                minute = m,
+                                label = lbl,
+                                daysOfWeek = days,
+                                squatTarget = targetReps
+                            )
+                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                alarmDao.updateAlarm(updated)
+                                com.example.service.AlarmScheduler.scheduleAlarm(context, updated)
+                            }
+                        }
+                        showEditDialog = false
+                    }
+                )
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0xFFE5D5D0).copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Daily Workout Alarms (Beta) ⏰",
+                                fontSize = 16.scaledSp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF5D4037)
+                            )
+                            Text(
+                                text = "Manage multiple smart fitness rings",
+                                fontSize = 11.scaledSp,
+                                color = Color.Gray
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                } catch (e: Exception) {}
+                                activeEditAlarm = null
+                                showEditDialog = true
+                            },
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color(0xFFFFF3E0))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = "Add Alarm",
+                                tint = Color(0xFFFFB74D)
+                            )
+                        }
+                    }
+
+                    if (alarms.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Filled.Notifications,
+                                    contentDescription = "Empty Alarms",
+                                    tint = Color.LightGray,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "No custom workout alarms configured yet. Tap '+' above.",
+                                    fontSize = 12.scaledSp,
+                                    color = Color.Gray,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            alarms.forEach { item ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(Color(0xFFFFFDFB))
+                                        .border(0.5.dp, Color(0xFFE5D5D0).copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                                        .clickable {
+                                            activeEditAlarm = item
+                                            showEditDialog = true
+                                        }
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        val pmAm = if (item.hour >= 12) "PM" else "AM"
+                                        val displayHr = when {
+                                            item.hour == 0 -> 12
+                                            item.hour > 12 -> item.hour - 12
+                                            else -> item.hour
+                                        }
+                                        val timeStr = String.format("%02d:%02d %s", displayHr, item.minute, pmAm)
+                                        
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = timeStr,
+                                                fontSize = 20.scaledSp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF5D4037)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(Color(0xFFE8F5E9))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "${item.squatTarget} squats",
+                                                    fontSize = 9.scaledSp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF2E7D32)
+                                                )
+                                            }
+                                        }
+                                        
+                                        Text(
+                                            text = "${item.label} • ${formatDaysOfWeekDisplay(item.daysOfWeek)}",
+                                            fontSize = 11.scaledSp,
+                                            color = Color.Gray
+                                        )
+                                    }
+
+                                    Switch(
+                                        checked = item.isEnabled,
+                                        onCheckedChange = { isChecked ->
+                                            try {
+                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                                            } catch (e: Exception) {}
+                                            val toggled = item.copy(isEnabled = isChecked)
+                                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                alarmDao.updateAlarm(toggled)
+                                                if (isChecked) {
+                                                    com.example.service.AlarmScheduler.scheduleAlarm(context, toggled)
+                                                } else {
+                                                    com.example.service.AlarmScheduler.cancelAlarm(context, toggled.id)
+                                                }
+                                            }
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.White,
+                                            checkedTrackColor = Color(0xFFFFB74D),
+                                            uncheckedThumbColor = Color.White,
+                                            uncheckedTrackColor = Color(0xFFE5D5D0)
+                                        )
+                                    )
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    IconButton(
+                                        onClick = {
+                                            try {
+                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                            } catch (e: Exception) {}
+                                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                com.example.service.AlarmScheduler.cancelAlarm(context, item.id)
+                                                alarmDao.deleteAlarm(item)
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Delete,
+                                            contentDescription = "Delete Alarm",
+                                            tint = Color(0xFFFF8A80),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // curation of typewriter teasers
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFE0B2).copy(alpha = 0.4f)),
@@ -931,6 +1159,244 @@ fun SensorTelemetryScope(
                 fontFamily = MonospaceFontFamily,
                 color = if (isTesting) Color(0xFFFFF59D) else Color.White.copy(alpha = 0.25f)
             )
+        }
+    }
+}
+
+fun formatDaysOfWeekDisplay(daysOfWeek: String): String {
+    if (daysOfWeek == "Daily" || daysOfWeek.isBlank()) return "Daily"
+    val daysList = daysOfWeek.split(",").mapNotNull { it.trim().toIntOrNull() }
+    if (daysList.size == 7) return "Daily"
+    val dayNames = listOf("", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+    return daysList.mapNotNull { if (it in 1..7) dayNames[it] else null }.joinToString(", ")
+}
+
+@Composable
+fun EditAlarmDialog(
+    alarm: com.example.data.AlarmItem?, // null means creating a new alarm
+    onDismiss: () -> Unit,
+    onSave: (hour: Int, minute: Int, label: String, daysOfWeek: String, squatTarget: Int) -> Unit
+) {
+    var hour by remember { mutableStateOf(alarm?.hour ?: 7) }
+    var minute by remember { mutableStateOf(alarm?.minute ?: 0) }
+    var label by remember { mutableStateOf(alarm?.label ?: "Morning Workout") }
+    var squatTarget by remember { mutableStateOf(alarm?.squatTarget ?: 10) }
+    
+    // Parse selected days
+    val initialDays = if (alarm == null || alarm.daysOfWeek == "Daily") {
+        (1..7).toSet()
+    } else {
+        alarm.daysOfWeek.split(",").mapNotNull { it.trim().toIntOrNull() }.toSet()
+    }
+    var selectedDays by remember { mutableStateOf(initialDays) }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .padding(16.dp)
+                .border(1.dp, Color(0xFFE5D5D0).copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = if (alarm == null) "Add Workout Alarm" else "Edit Workout Alarm",
+                    fontSize = 18.scaledSp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF5D4037)
+                )
+
+                // Time Pickers scroll bars/sliders styled nicely
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Hour (${String.format("%02d", hour)})", fontSize = 12.scaledSp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Slider(
+                            value = hour.toFloat(),
+                            onValueChange = { hour = it.toInt() },
+                            valueRange = 0f..23f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFF5D4037),
+                                activeTrackColor = Color(0xFFFFCC80)
+                            )
+                        )
+                    }
+                    
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Minute (${String.format("%02d", minute)})", fontSize = 12.scaledSp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Slider(
+                            value = minute.toFloat(),
+                            onValueChange = { minute = it.toInt() },
+                            valueRange = 0f..59f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFF5D4037),
+                                activeTrackColor = Color(0xFFFFCC80)
+                            )
+                        )
+                    }
+                }
+
+                // Selected Time formatted preview
+                val formatAmPm = if (hour >= 12) "PM" else "AM"
+                val formatHour = when {
+                    hour == 0 -> 12
+                    hour > 12 -> hour - 12
+                    else -> hour
+                }
+                Text(
+                    text = String.format("Selected Time: %d:%02d %s", formatHour, minute, formatAmPm),
+                    fontSize = 15.scaledSp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFE65100),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Label Text Field
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = { label = it },
+                    label = { Text("Alarm Label") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.Black,
+                        unfocusedTextColor = Color.Black,
+                        cursorColor = Color.Black,
+                        focusedBorderColor = Color(0xFF5D4037),
+                        unfocusedBorderColor = Color.LightGray,
+                        focusedLabelColor = Color(0xFF5D4037)
+                    ),
+                    singleLine = true
+                )
+
+                // Squad Challenge Count
+                Column {
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Squat Reps Challenge", fontSize = 12.scaledSp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text("$squatTarget Reps", fontSize = 13.scaledSp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = squatTarget.toFloat(),
+                        onValueChange = { squatTarget = it.toInt() },
+                        valueRange = 3f..30f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color(0xFF4CAF50),
+                            activeTrackColor = Color(0xFFA5D6A7)
+                        )
+                    )
+                }
+
+                // Day selectors
+                Text("Repeat Days", fontSize = 12.scaledSp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    val dayPairs = listOf(
+                        Pair("S", java.util.Calendar.SUNDAY),
+                        Pair("M", java.util.Calendar.MONDAY),
+                        Pair("T", java.util.Calendar.TUESDAY),
+                        Pair("W", java.util.Calendar.WEDNESDAY),
+                        Pair("T", java.util.Calendar.THURSDAY),
+                        Pair("F", java.util.Calendar.FRIDAY),
+                        Pair("S", java.util.Calendar.SATURDAY)
+                    )
+                    
+                    dayPairs.forEach { (name, calVal) ->
+                        val isSelected = selectedDays.contains(calVal)
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(if (isSelected) Color(0xFF5D4037) else Color(0xFFF5F5F5))
+                                .border(1.dp, if (isSelected) Color.Transparent else Color.LightGray, CircleShape)
+                                .clickable {
+                                    selectedDays = if (isSelected) {
+                                        selectedDays - calVal
+                                    } else {
+                                        selectedDays + calVal
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = name,
+                                fontSize = 11.scaledSp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) Color.White else Color.Gray
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    TextButton(
+                        onClick = { selectedDays = (1..7).toSet() },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Daily", fontSize = 11.scaledSp, color = Color(0xFFB83000))
+                    }
+                    TextButton(
+                        onClick = { selectedDays = setOf(2, 3, 4, 5, 6) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Weekdays", fontSize = 11.scaledSp, color = Color(0xFFB83000))
+                    }
+                    TextButton(
+                        onClick = { selectedDays = setOf(1, 7) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Weekends", fontSize = 11.scaledSp, color = Color(0xFFB83000))
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", color = Color.Gray)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val daysStr = if (selectedDays.size == 7) {
+                                "Daily"
+                            } else if (selectedDays.isEmpty()) {
+                                "Daily"
+                            } else {
+                                selectedDays.sorted().joinToString(",")
+                            }
+                            onSave(hour, minute, label, daysStr, squatTarget)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5D4037)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 }

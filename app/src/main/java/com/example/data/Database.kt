@@ -70,10 +70,40 @@ interface SessionDao {
     suspend fun deleteAllSessions()
 }
 
-@Database(entities = [TaskItem::class, TimerSession::class], version = 2, exportSchema = false)
+@Entity(tableName = "alarms")
+data class AlarmItem(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val hour: Int,
+    val minute: Int,
+    val label: String,
+    val isEnabled: Boolean = true,
+    val daysOfWeek: String = "Daily", // e.g. "Daily" or "2,3,4,5,6" (Monday-Friday) 
+    val squatTarget: Int = 10
+)
+
+@Dao
+interface AlarmDao {
+    @Query("SELECT * FROM alarms ORDER BY hour ASC, minute ASC")
+    fun getAllAlarms(): Flow<List<AlarmItem>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAlarm(alarm: AlarmItem): Long
+
+    @Update
+    suspend fun updateAlarm(alarm: AlarmItem)
+
+    @Delete
+    suspend fun deleteAlarm(alarm: AlarmItem)
+
+    @Query("SELECT * FROM alarms WHERE id = :id")
+    suspend fun getAlarmById(id: Int): AlarmItem?
+}
+
+@Database(entities = [TaskItem::class, TimerSession::class, AlarmItem::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun sessionDao(): SessionDao
+    abstract fun alarmDao(): AlarmDao
 }
 
 object DatabaseProvider {
