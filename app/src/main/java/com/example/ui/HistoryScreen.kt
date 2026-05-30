@@ -306,12 +306,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                     HistorySessionPill(
                                         taskName = taskName,
                                         sessions = sessions,
-                                        viewModel = viewModel,
-                                        onDeleteGroupClick = {
-                                            showTier2Dialog = true
-                                            tier2Title = "Delete Task Group?"
-                                            tier2SessionsToDelete = sessions
-                                        }
+                                        viewModel = viewModel
                                     )
                                 }
                             )
@@ -702,8 +697,7 @@ fun MonthSummaryCard(
 fun HistorySessionPill(
     taskName: String,
     sessions: List<TimerSession>,
-    viewModel: TimerViewModel,
-    onDeleteGroupClick: () -> Unit
+    viewModel: TimerViewModel
 ) {
     val view = androidx.compose.ui.platform.LocalView.current
     var expanded by remember { mutableStateOf(false) }
@@ -743,25 +737,7 @@ fun HistorySessionPill(
                     modifier = Modifier.weight(1f),
                     color = Color(0xFF5D4037)
                 )
-                
-                IconButton(
-                    onClick = {
-                        try {
-                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                        } catch (e: Exception) {}
-                        onDeleteGroupClick()
-                    },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete Task Sessions",
-                        tint = Color.Gray,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(4.dp))
-                
+
                 Icon(
                     imageVector = Icons.Default.KeyboardArrowDown,
                     contentDescription = "Expand",
