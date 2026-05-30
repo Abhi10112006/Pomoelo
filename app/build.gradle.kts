@@ -130,7 +130,10 @@ tasks.register("downloadFonts") {
     val fonts = mapOf(
         "comic_neue_regular.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/comicneue/ComicNeue-Regular.ttf",
         "comic_neue_bold.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/comicneue/ComicNeue-Bold.ttf",
-        "special_elite_regular.ttf" to "https://raw.githubusercontent.com/google/fonts/main/apache/specialelite/SpecialElite-Regular.ttf"
+        "special_elite_regular.ttf" to "https://raw.githubusercontent.com/google/fonts/main/apache/specialelite/SpecialElite-Regular.ttf",
+        "poppins_regular.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Regular.ttf",
+        "poppins_medium.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Medium.ttf",
+        "poppins_bold.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Bold.ttf"
     )
     doLast {
         if (!fontDir.allExists()) {

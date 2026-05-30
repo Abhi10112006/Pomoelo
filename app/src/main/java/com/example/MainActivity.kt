@@ -5,6 +5,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.Settings
 import android.Manifest
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -1410,12 +1412,13 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
 fun AnimatedScaleBox(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.85f else 1f,
+        targetValue = if (isPressed && enabled) 0.85f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
         label = "scale"
     )
@@ -1424,7 +1427,9 @@ fun AnimatedScaleBox(
     Box(
         modifier = modifier
             .scale(scale)
+            .alpha(if (enabled) 1f else 0.5f)
             .clickable(
+                enabled = enabled,
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = {
@@ -1497,6 +1502,7 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
 
         val isBreakMode by TimerManager.isBreakMode.collectAsState()
         AnimatedScaleBox(
+            enabled = !isRunning,
             onClick = {
                 val isServiceActive = state != TimerManager.TimerState.STOPPED
                 if (isServiceActive) {
@@ -1654,11 +1660,13 @@ fun TimerDisplay(
                 val stateBg = if (isBreakMode) Color(0xFFE1F5FE) else Color(0xFFFFCDD2)
                 val stateTextCol = if (isBreakMode) Color(0xFF0288D1) else Color(0xFFD32F2F)
                 val stateText = if (isBreakMode) "BREAK TIME" else "WORK TIME"
+                val isTimerRunning = state == TimerManager.TimerState.RUNNING
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(stateBg)
-                        .clickable {
+                        .alpha(if (isTimerRunning) 0.5f else 1f)
+                        .clickable(enabled = !isTimerRunning) {
                             try {
                                 view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                             } catch (e: Exception) {}
@@ -2225,6 +2233,7 @@ fun AlarmRingingLockScreen(
     var currentCount by remember { mutableStateOf(0) }
     var shakeWarning by remember { mutableStateOf(false) }
     var sensorMessage by remember { mutableStateOf("Ready to register. Put the device in your pocket and begin!") }
+    var isFinished by remember { mutableStateOf(false) }
 
     // Intercept back button to prevent escaping the workout alarm
     androidx.activity.compose.BackHandler(enabled = true) {
@@ -2238,7 +2247,7 @@ fun AlarmRingingLockScreen(
             targetSquats = targetCount,
             onComplete = {
                 com.example.service.SoundPlayer.stopContinuousAlarm()
-                com.example.service.AlarmState.isAlarmRinging = false
+                isFinished = true
             },
             onUpdate = { count ->
                 currentCount = count
@@ -2254,11 +2263,11 @@ fun AlarmRingingLockScreen(
         }
     }
 
-    // Fullscreen Lock Screen
+    // Fullscreen Dynamic Dawn Sunrise / Dark Premium Lock Screen
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF2B201D)) // Deep solid premium athletic slate
+            .background(Color(0xFF0D0E11)) // Midnight premium ash
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -2267,164 +2276,276 @@ fun AlarmRingingLockScreen(
             verticalArrangement = Arrangement.Center,
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Animated pulsating active indicator
-            val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-            val scale by infiniteTransition.animateFloat(
-                initialValue = 0.9f,
-                targetValue = 1.1f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(800, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "alarmScale"
-            )
+            if (isFinished) {
+                // Celebration screen - transitioning to study state
+                Box(
+                    modifier = Modifier
+                        .size(96.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF00E676).copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = "Success",
+                        tint = Color(0xFF00E676),
+                        modifier = Modifier.size(56.dp)
+                    )
+                }
 
-            Box(
-                modifier = Modifier
-                    .size(100.dp)
-                    .scale(scale)
-                    .clip(CircleShape)
-                    .background(Color(0xFFFF8A80).copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = androidx.compose.material.icons.Icons.Default.Notifications,
-                    contentDescription = "Workout Alarm active",
-                    tint = Color(0xFFFF8A80),
-                    modifier = Modifier.size(56.dp)
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(
+                    text = "Sleep Defeated! 🧠🔥",
+                    fontSize = 26.scaledSp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    fontFamily = AppFontFamily
                 )
-            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-            // Alarm main label
-            Text(
-                text = label,
-                fontSize = 28.scaledSp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                textAlign = TextAlign.Center,
-                fontFamily = CursiveFontFamily
-            )
+                Text(
+                    text = "Your neuromuscular system is fully activated. Oxygenated blood flow has rushed to your brain, washing sleep inertia away instantly.\n\nYou are chemically primed for hyper-focus studying!",
+                    fontSize = 13.scaledSp,
+                    color = Color.LightGray,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.scaledSp,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(40.dp))
 
-            Text(
-                text = "ACTIVE SQUAT CHALLENGE IN PROGRESS",
-                fontSize = 11.scaledSp,
-                fontWeight = FontWeight.Black,
-                color = Color(0xFFFFCC80),
-                letterSpacing = 2.scaledSp,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Squat Progress Counter Ring
-            Card(
-                shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF3E2723)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(2.dp, Color(0xFFFF8A80).copy(alpha = 0.3f), RoundedCornerShape(28.dp)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                Button(
+                    onClick = {
+                        try {
+                            val view = context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                            view?.vibrate(100)
+                        } catch (e: Exception) {}
+                        com.example.service.AlarmState.isAlarmRinging = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676)),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .height(56.dp)
                 ) {
                     Text(
-                        text = "SQUATS REQUIRED",
-                        fontSize = 12.scaledSp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = 0.6f)
+                        text = "LAUNCH FOCUS SESSION 🚀",
+                        fontSize = 14.scaledSp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF0D0E11),
+                        letterSpacing = 1.scaledSp
+                    )
+                }
+            } else {
+                // Active Alarm Screaming & Squat tracking
+                val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                val scale by infiniteTransition.animateFloat(
+                    initialValue = 0.95f,
+                    targetValue = 1.05f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1000, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "alarmScale"
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF00E676)) // Blink green indicator showing sensory active
+                    )
+                    Text(
+                        text = "KINETIC G-SENSOR SYNCHRONIZED",
+                        fontSize = 10.scaledSp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF00E676),
+                        letterSpacing = 1.5.scaledSp,
+                        fontFamily = MonospaceFontFamily
+                    )
+                }
+
+                Text(
+                    text = label,
+                    fontSize = 24.scaledSp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    fontFamily = AppFontFamily
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "SOMATIC WAKE-UP AUDIT",
+                    fontSize = 11.scaledSp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFFFFB300),
+                    letterSpacing = 2.scaledSp,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // Beautiful Circular Wakeup Activity Ring
+                Box(
+                    modifier = Modifier
+                        .size(190.dp)
+                        .scale(scale),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val progress = if (targetCount > 0) currentCount.toFloat() / targetCount.toFloat() else 0f
+                    val animatedProgress by animateFloatAsState(
+                        targetValue = progress,
+                        animationSpec = spring(stiffness = Spring.StiffnessLow),
+                        label = "progress"
+                    )
+                    
+                    // Shadow Ring (Background)
+                    CircularProgressIndicator(
+                        progress = { 1f },
+                        modifier = Modifier.fillMaxSize(),
+                        color = Color.White.copy(alpha = 0.05f),
+                        strokeWidth = 14.dp,
+                        strokeCap = StrokeCap.Round
                     )
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
+                    // Energized Ring (Foreground)
+                    CircularProgressIndicator(
+                        progress = { animatedProgress },
+                        modifier = Modifier.fillMaxSize(),
+                        color = Color(0xFF00E676),
+                        strokeWidth = 14.dp,
+                        strokeCap = StrokeCap.Round
+                    )
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
                         Text(
                             text = "$currentCount",
-                            fontSize = 64.scaledSp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF66BB6A),
+                            fontSize = 60.scaledSp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
                             fontFamily = MonospaceFontFamily
                         )
                         Text(
-                            text = " / $targetCount",
-                            fontSize = 32.scaledSp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.7f),
-                            fontFamily = MonospaceFontFamily
+                            text = "/ $targetCount SQUATS",
+                            fontSize = 11.scaledSp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.scaledSp
                         )
                     }
-
-                    // Progress bar
-                    val progress = if (targetCount > 0) currentCount.toFloat() / targetCount.toFloat() else 0f
-                    LinearProgressIndicator(
-                        progress = progress,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                        color = Color(0xFF66BB6A),
-                        trackColor = Color.White.copy(alpha = 0.1f)
-                    )
-
-                    Text(
-                        text = sensorMessage,
-                        fontSize = 12.scaledSp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
-                        textAlign = TextAlign.Center
-                    )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(28.dp))
 
-            // Chaotic Shake Warning Indicator
-            AnimatedVisibility(
-                visible = shakeWarning,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Row(
+                // Real-Time Waveform Generator indicating the body works
+                val wavePhase = rememberInfiniteTransition(label = "wave")
+                val waveOffset by wavePhase.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 2f * 3.14159f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1200, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "waveOffset"
+                )
+
+                Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0xFFFFCDD2))
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .height(36.dp)
+                        .padding(horizontal = 32.dp)
                 ) {
-                    Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Default.Lock,
-                        contentDescription = "Lock State Alert",
-                        tint = Color(0xFFD32F2F),
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "⚠️ Chaotic Shaking Detected! Please stand still and perform smooth, vertical squats to count.",
-                        fontSize = 12.scaledSp,
-                        color = Color(0xFFB71C1C),
-                        fontWeight = FontWeight.Bold,
-                        lineHeight = 18.scaledSp
+                    val path = androidx.compose.ui.graphics.Path()
+                    val width = size.width
+                    val height = size.height
+                    val midY = height / 2f
+                    val amplitude = if (shakeWarning) 16f else 6f
+                    val frequency = 3.5f
+                    
+                    path.moveTo(0f, midY)
+                    for (x in 0..width.toInt() step 6) {
+                        val relativeX = x.toFloat() / width
+                        val sineVal = kotlin.math.sin(relativeX * frequency * 2f * 3.14159f + waveOffset)
+                        val y = midY + (sineVal * amplitude)
+                        path.lineTo(x.toFloat(), y)
+                    }
+                    
+                    drawPath(
+                        path = path,
+                        color = if (shakeWarning) Color(0xFFFF5252).copy(alpha = 0.8f) else Color(0xFF00E676).copy(alpha = 0.5f),
+                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
                     )
                 }
-            }
 
-            // Normal instructions if not shaking
-            if (!shakeWarning) {
+                Spacer(modifier = Modifier.height(16.dp))
+
                 Text(
-                    text = "Phone locks and loops sound at maximum volume. There is no snooze! Stand up and perform your physical squat challenge to automatically unlock.",
+                    text = sensorMessage,
                     fontSize = 12.scaledSp,
-                    color = Color.White.copy(alpha = 0.5f),
+                    fontWeight = FontWeight.Medium,
+                    color = if (shakeWarning) Color(0xFFFF8A80) else Color.White.copy(alpha = 0.8f),
                     textAlign = TextAlign.Center,
-                    lineHeight = 18.scaledSp
+                    modifier = Modifier.padding(horizontal = 16.dp)
                 )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // Chaotic Shake Warning Indicator
+                AnimatedVisibility(
+                    visible = shakeWarning,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFFD32F2F).copy(alpha = 0.15f))
+                            .border(1.dp, Color(0xFFD32F2F).copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.Lock,
+                            contentDescription = "Lock State Alert",
+                            tint = Color(0xFFFF5252),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "Chaotic Shaking Detected! Stand still and perform smooth, deep squats to pass.",
+                            fontSize = 12.scaledSp,
+                            color = Color(0xFFFF8A80),
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 16.scaledSp
+                        )
+                    }
+                }
+
+                // Normal instructions if not shaking
+                if (!shakeWarning) {
+                    Text(
+                        text = "Phone loops sensory ringtones at full volume. No snooze, no exit! Pocket the device or hold it, then complete squats to unlock.",
+                        fontSize = 11.scaledSp,
+                        color = Color.White.copy(alpha = 0.35f),
+                        textAlign = TextAlign.Center,
+                        lineHeight = 16.scaledSp,
+                        modifier = Modifier.padding(horizontal = 24.dp)
+                    )
+                }
             }
         }
     }

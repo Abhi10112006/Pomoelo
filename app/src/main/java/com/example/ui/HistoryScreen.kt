@@ -156,23 +156,23 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$displayPomodoros", fontSize = 32.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFFFF8A80))
-                    Text("Sessions", fontSize = 14.scaledSp, color = Color.Gray)
+                    Text("$displayPomodoros", fontSize = 32.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFFFF8A80), fontFamily = MonospaceFontFamily)
+                    Text("Sessions", fontSize = 14.scaledSp, color = Color.Gray, fontFamily = AppFontFamily)
                 }
                 Box(modifier = Modifier.width(1.dp).height(50.dp).background(Color(0xFFE0E0E0)))
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${displayFocus / 60}h ${displayFocus % 60}m", fontSize = 24.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFF81D4FA))
-                    Text("Focus", fontSize = 14.scaledSp, color = Color.Gray)
+                    Text("${displayFocus / 60}h ${displayFocus % 60}m", fontSize = 24.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFF81D4FA), fontFamily = MonospaceFontFamily)
+                    Text("Focus", fontSize = 14.scaledSp, color = Color.Gray, fontFamily = AppFontFamily)
                 }
                 Box(modifier = Modifier.width(1.dp).height(50.dp).background(Color(0xFFE0E0E0)))
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${displayBreak / 60}h ${displayBreak % 60}m", fontSize = 24.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFFA5D6A7))
-                    Text("Rest", fontSize = 14.scaledSp, color = Color.Gray)
+                    Text("${displayBreak / 60}h ${displayBreak % 60}m", fontSize = 24.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFFA5D6A7), fontFamily = MonospaceFontFamily)
+                    Text("Rest", fontSize = 14.scaledSp, color = Color.Gray, fontFamily = AppFontFamily)
                 }
             }
             Spacer(modifier = Modifier.height(32.dp))
 
-            Text("Task History", fontSize = 20.scaledSp, fontWeight = FontWeight.SemiBold, color = Color(0xFF8D6E63))
+            Text("Task History", fontSize = 20.scaledSp, fontWeight = FontWeight.SemiBold, color = Color(0xFF8D6E63), fontFamily = CursiveFontFamily)
             Spacer(modifier = Modifier.height(16.dp))
 
             LazyColumn(
@@ -220,7 +220,8 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                 Text(
                                     getDayLabel(dateMillis, todayStart, dayInMillis),
                                     color = Color.Gray,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = MonospaceFontFamily
                                 )
                                 IconButton(
                                     onClick = {
@@ -247,72 +248,14 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                         val groupedByTask = dateSessions.groupBy { it.taskName }
                         
                         items(groupedByTask.entries.toList(), key = { it.key + dateMillis.toString() }) { (taskName, sessions) ->
-                            val currentItemKey = "$taskName|$dateMillis"
-                            val dismissState = rememberSwipeToDismissBoxState(
-                                confirmValueChange = { value ->
-                                    if (value == SwipeToDismissBoxValue.EndToStart) {
-                                        try {
-                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
-                                        } catch (e: Exception) {}
-                                        
-                                        val targetSessions = sessions
-                                        recentlyDeletedSessions = targetSessions
-                                        temporarilyDeletedGroupKeys = temporarilyDeletedGroupKeys + currentItemKey
-                                        
-                                        coroutineScope.launch {
-                                            val result = snackbarHostState.showSnackbar(
-                                                message = "Task deleted",
-                                                actionLabel = "UNDO",
-                                                duration = SnackbarDuration.Short
-                                            )
-                                            if (result == SnackbarResult.ActionPerformed) {
-                                                temporarilyDeletedGroupKeys = temporarilyDeletedGroupKeys - currentItemKey
-                                                recentlyDeletedSessions = null
-                                            } else {
-                                                if (temporarilyDeletedGroupKeys.contains(currentItemKey)) {
-                                                    viewModel.deleteSessions(targetSessions)
-                                                    temporarilyDeletedGroupKeys = temporarilyDeletedGroupKeys - currentItemKey
-                                                }
-                                            }
-                                        }
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                            )
-
-                            SwipeToDismissBox(
-                                state = dismissState,
-                                enableDismissFromStartToEnd = false,
-                                backgroundContent = {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(RoundedCornerShape(24.dp))
-                                            .background(Color(0xFFFF8A80))
-                                            .padding(horizontal = 24.dp),
-                                        contentAlignment = Alignment.CenterEnd
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Delete",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                },
-                                content = {
-                                    HistorySessionPill(
-                                        taskName = taskName,
-                                        sessions = sessions,
-                                        viewModel = viewModel,
-                                        onDeleteGroupClick = {
-                                            showTier2Dialog = true
-                                            tier2Title = "Delete Task Group?"
-                                            tier2SessionsToDelete = sessions
-                                        }
-                                    )
+                            HistorySessionPill(
+                                taskName = taskName,
+                                sessions = sessions,
+                                viewModel = viewModel,
+                                onDeleteGroupClick = {
+                                    showTier2Dialog = true
+                                    tier2Title = "Delete Task Group?"
+                                    tier2SessionsToDelete = sessions
                                 }
                             )
                         }
@@ -572,13 +515,24 @@ fun MicroSummaryPill(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = "$dateStr — Total: ${totalFocusMins / 60}h ${totalFocusMins % 60}m Focus | $sessionsCount Sessions",
-                    fontSize = 13.scaledSp,
-                    color = Color.DarkGray,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.weight(1f)
-                )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "$dateStr • ",
+                        fontFamily = MonospaceFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.scaledSp,
+                        color = Color.DarkGray
+                    )
+                    Text(
+                        text = "${totalFocusMins / 60}h ${totalFocusMins % 60}m Focus | $sessionsCount Sessions",
+                        fontFamily = AppFontFamily,
+                        fontSize = 12.scaledSp,
+                        color = Color.Gray
+                    )
+                }
                 IconButton(
                     onClick = {
                         try {
@@ -673,7 +627,7 @@ fun MonthSummaryCard(
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Total Focus: ${totalFocusMins / 60}h ${totalFocusMins % 60}m | Daily Avg: ${dailyAvg / 60}h ${dailyAvg % 60}m", fontSize = 13.scaledSp, color = Color(0xFF607D8B))
+            Text("Total Focus: ${totalFocusMins / 60}h ${totalFocusMins % 60}m | Daily Avg: ${dailyAvg / 60}h ${dailyAvg % 60}m", fontSize = 13.scaledSp, color = Color(0xFF607D8B), fontFamily = MonospaceFontFamily)
             
             AnimatedVisibility(visible = expanded) {
                 Column(modifier = Modifier.padding(top = 16.dp)) {
@@ -686,9 +640,9 @@ fun MonthSummaryCard(
                         val taskMins = list.sumOf { it.durationMinutes }
                         val taskColor = if (task.contains("Break")) Color(0xFF546E7A) else Color(0xFF455A64)
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(task, color = taskColor, fontSize = 13.scaledSp)
+                            Text(task, color = taskColor, fontSize = 13.scaledSp, fontFamily = AppFontFamily)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("${taskMins / 60}h ${taskMins % 60}m", color = taskColor, fontWeight = FontWeight.Bold, fontSize = 13.scaledSp)
+                                Text("${taskMins / 60}h ${taskMins % 60}m", color = taskColor, fontWeight = FontWeight.Bold, fontSize = 13.scaledSp, fontFamily = MonospaceFontFamily)
                             }
                         }
                     }
@@ -736,13 +690,23 @@ fun HistorySessionPill(
                         .background(tintColor)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "$taskName • ${totalMins}m",
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = AppFontFamily,
+                Row(
                     modifier = Modifier.weight(1f),
-                    color = Color(0xFF5D4037)
-                )
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "$taskName • ",
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = AppFontFamily,
+                        color = Color(0xFF5D4037)
+                    )
+                    Text(
+                        text = "${totalMins}m",
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = MonospaceFontFamily,
+                        color = tintColor
+                    )
+                }
                 
                 IconButton(
                     onClick = {
@@ -778,31 +742,60 @@ fun HistorySessionPill(
                         val start = timeFormat.format(Date(session.startTime))
                         val end = timeFormat.format(Date(session.endTime))
                         
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 28.dp, bottom = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = "$type ($start - $end)", color = Color.Gray, fontSize = 12.scaledSp, modifier = Modifier.weight(1f))
-                            IconButton(
-                                onClick = {
+                        val dismissState = rememberSwipeToDismissBoxState(
+                            confirmValueChange = { value ->
+                                if (value == SwipeToDismissBoxValue.EndToStart) {
                                     try {
-                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
                                     } catch (e: Exception) {}
                                     viewModel.deleteSession(session)
-                                },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = "Delete Single Session",
-                                    tint = Color.LightGray,
-                                    modifier = Modifier.size(14.dp)
-                                )
+                                    true
+                                } else {
+                                    false
+                                }
                             }
-                        }
+                        )
+
+                        SwipeToDismissBox(
+                            state = dismissState,
+                            enableDismissFromStartToEnd = false,
+                            backgroundContent = {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFFFF8A80))
+                                        .padding(horizontal = 16.dp),
+                                    contentAlignment = Alignment.CenterEnd
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Delete",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            },
+                            content = {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.White)
+                                        .padding(start = 28.dp, top = 8.dp, bottom = 8.dp, end = 16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "⚡ $type ($start - $end)", 
+                                        color = Color.Gray, 
+                                        fontSize = 12.scaledSp, 
+                                        fontFamily = MonospaceFontFamily,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            },
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
                     }
                 }
             }
