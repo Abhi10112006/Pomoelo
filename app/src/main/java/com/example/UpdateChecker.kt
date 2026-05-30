@@ -20,7 +20,7 @@ object UpdateChecker {
                 if (latestVersion != CURRENT_VERSION) {
                     return@withContext downloadUrl
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 // Return null if request fails or there's no update
             }
             null

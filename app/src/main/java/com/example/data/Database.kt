@@ -118,6 +118,14 @@ object DatabaseProvider {
         }
     }
 
+    private val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS `alarms` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `hour` INTEGER NOT NULL, `minute` INTEGER NOT NULL, `label` TEXT NOT NULL, `isEnabled` INTEGER NOT NULL, `daysOfWeek` TEXT NOT NULL, `squatTarget` INTEGER NOT NULL)"
+            )
+        }
+    }
+
     fun getDatabase(context: android.content.Context): AppDatabase {
         return INSTANCE ?: synchronized(this) {
             val instance = Room.databaseBuilder(
@@ -125,8 +133,9 @@ object DatabaseProvider {
                 AppDatabase::class.java,
                 "pomelo_db"
             )
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .fallbackToDestructiveMigration()
+            .fallbackToDestructiveMigrationOnDowngrade()
             .build()
             INSTANCE = instance
             instance

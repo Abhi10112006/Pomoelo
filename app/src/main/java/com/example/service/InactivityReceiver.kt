@@ -185,57 +185,69 @@ object InactivityScheduler {
     private const val INACTIVITY_DELAY_MS = 30 * 60 * 1000L
 
     fun schedule(context: Context) {
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(context, InactivityReceiver::class.java).apply {
-            action = InactivityReceiver.ACTION_INACTIVITY
-        }
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            202,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val triggerAt = System.currentTimeMillis() + INACTIVITY_DELAY_MS
-
-        // Cancel previous if any
-        alarmManager.cancel(pendingIntent)
-
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerAt,
-                    pendingIntent
-                )
-            } else {
-                alarmManager.setExact(
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val intent = Intent(context, InactivityReceiver::class.java).apply {
+                action = InactivityReceiver.ACTION_INACTIVITY
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                202,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val triggerAt = System.currentTimeMillis() + INACTIVITY_DELAY_MS
+
+            // Cancel previous if any
+            try {
+                alarmManager.cancel(pendingIntent)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerAt,
+                        pendingIntent
+                    )
+                } else {
+                    alarmManager.setExact(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerAt,
+                        pendingIntent
+                    )
+                }
+            } catch (e: SecurityException) {
+                // Fallback for missing exact alarm permission on Android 12+ / 14+
+                alarmManager.set(
                     AlarmManager.RTC_WAKEUP,
                     triggerAt,
                     pendingIntent
                 )
             }
-        } catch (e: SecurityException) {
-            // Fallback for missing exact alarm permission on Android 12+ / 14+
-            alarmManager.set(
-                AlarmManager.RTC_WAKEUP,
-                triggerAt,
-                pendingIntent
-            )
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
     fun cancel(context: Context) {
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(context, InactivityReceiver::class.java).apply {
-            action = InactivityReceiver.ACTION_INACTIVITY
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val intent = Intent(context, InactivityReceiver::class.java).apply {
+                action = InactivityReceiver.ACTION_INACTIVITY
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                202,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            alarmManager.cancel(pendingIntent)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            202,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        alarmManager.cancel(pendingIntent)
     }
 }
