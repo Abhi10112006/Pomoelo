@@ -1,3 +1,6 @@
+import java.io.File
+import java.net.URL
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
@@ -120,3 +123,43 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+
+tasks.register("downloadFonts") {
+    notCompatibleWithConfigurationCache("Requires dynamic network download of raw font binaries")
+    val fontDir = file("src/main/res/font")
+    val fonts = mapOf(
+        "comic_neue_regular.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/comicneue/ComicNeue-Regular.ttf",
+        "comic_neue_bold.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/comicneue/ComicNeue-Bold.ttf",
+        "special_elite_regular.ttf" to "https://raw.githubusercontent.com/google/fonts/main/apache/specialelite/SpecialElite-Regular.ttf"
+    )
+    doLast {
+        if (!fontDir.allExists()) {
+            fontDir.mkdirs()
+        }
+        fonts.forEach { (name, urlStr) ->
+            val destFile = File(fontDir, name)
+            if (!destFile.exists()) {
+                println("Downloading font: $name from $urlStr")
+                try {
+                    URL(urlStr).openStream().use { input ->
+                        destFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    println("Successfully downloaded: $name")
+                } catch (e: java.lang.Exception) {
+                    println("Failed to download font $name: ${e.message}")
+                }
+            }
+        }
+    }
+}
+
+fun File.allExists(): Boolean {
+    return this.exists()
+}
+
+tasks.named("preBuild") {
+    dependsOn("downloadFonts")
+}
+

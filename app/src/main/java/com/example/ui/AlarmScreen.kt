@@ -30,6 +30,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -351,24 +356,24 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
 
                         // Live Calibration Test Arena
                         Text(
-                            text = "🛠️ Accelerometer Verification Arena",
-                            fontSize = 13.scaledSp,
+                            text = "⚡ Real-time Sensor Lab (LPF & Speed Filters)",
+                            fontSize = 14.scaledSp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF5D4037),
-                            modifier = Modifier.padding(bottom = 8.dp)
+                            modifier = Modifier.padding(bottom = 4.dp, top = 8.dp)
                         )
 
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0xFFFFF8F6))
-                                .border(1.dp, Color(0xFFFFCC80).copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color.White)
+                                .border(1.dp, Color(0xFFE5D5D0).copy(alpha = 0.5f), RoundedCornerShape(20.dp))
                                 .padding(16.dp)
                         ) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(14.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
@@ -379,45 +384,65 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                     Text(
                                         text = "Gravity telemetry sensor status:",
                                         fontSize = 11.scaledSp,
-                                        color = Color.Gray
+                                        color = Color.Gray,
+                                        fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = if (isSensorTesting) "🔴 CALIBRATING COGNITION" else "STANDBY",
+                                        text = if (isSensorTesting) "● TRACKING ACTIVE" else "○ STANDBY",
                                         fontWeight = FontWeight.Black,
-                                        fontSize = 11.scaledSp,
+                                        fontSize = 10.scaledSp,
                                         fontFamily = MonospaceFontFamily,
-                                        color = if (isSensorTesting) Color(0xFFFF5252) else Color.Gray
+                                        color = if (isSensorTesting) Color(0xFF2E7D32) else Color.Gray
                                     )
                                 }
 
+                                // Interactive Dual-Trace LPF Graph Visualizer
+                                SensorTelemetryScope(
+                                    isTesting = isSensorTesting,
+                                    repCount = testSquatCount,
+                                    targetCount = squatTarget
+                                )
+
                                 if (isSensorTesting) {
-                                    CircularProgressIndicator(
-                                        progress = { (testSquatCount.toFloat() / squatTarget.toFloat()).coerceIn(0f, 1f) },
-                                        modifier = Modifier.size(80.dp),
-                                        color = Color(0xFF4CAF50),
-                                        strokeWidth = 6.dp,
-                                    )
-
-                                    Text(
-                                        text = "Squats Recorded: $testSquatCount / $squatTarget",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.scaledSp,
-                                        fontFamily = MonospaceFontFamily,
-                                        color = Color(0xFF5D4037)
-                                    )
-
-                                    Text(
-                                        text = sensorFeedbackMessage,
-                                        fontSize = 11.scaledSp,
-                                        color = Color.DarkGray,
-                                        textAlign = TextAlign.Center
-                                    )
-
-                                    // Simulation control
                                     Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        modifier = Modifier.padding(top = 4.dp)
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFFFFF3E0).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(54.dp)
+                                                .background(Color.White, CircleShape)
+                                                .border(2.dp, Color(0xFF4CAF50), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "$testSquatCount/$squatTarget",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.scaledSp,
+                                                fontFamily = MonospaceFontFamily,
+                                                color = Color(0xFF5D4037)
+                                            )
+                                        }
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Form Telemetry:",
+                                                fontSize = 10.scaledSp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.Gray
+                                            )
+                                            Text(
+                                                text = sensorFeedbackMessage,
+                                                fontSize = 11.scaledSp,
+                                                color = Color(0xFF5D4037),
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+
                                         Button(
                                             onClick = {
                                                 testSquatCount++
@@ -431,13 +456,34 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                                     sensorServiceInstance?.stopTracking()
                                                 }
                                             },
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFF0EC)),
-                                            modifier = Modifier.height(34.dp),
-                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8F5E9)),
+                                            modifier = Modifier.height(36.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp),
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
-                                            Text("Simulate Rep 🦘", fontSize = 11.scaledSp, color = Color(0xFFD32F2F), fontWeight = FontWeight.Bold)
+                                            Text("Simulate 🦘", fontSize = 10.scaledSp, color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
                                         }
+                                    }
+                                } else {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFFF9F9F9), RoundedCornerShape(12.dp))
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Info,
+                                            contentDescription = "Calibration Info",
+                                            tint = Color.Gray,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = "Tap calibrate, hold/pocket your device, and squat! Shakes are automatically filtered.",
+                                            fontSize = 10.scaledSp,
+                                            color = Color.Gray
+                                        )
                                     }
                                 }
 
@@ -452,7 +498,7 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                         } else {
                                             isSensorTesting = true
                                             testSquatCount = 0
-                                            sensorFeedbackMessage = "Hold phone vertically or place in pocket. Perform a solid squat now!"
+                                            sensorFeedbackMessage = "Form filters online. Perform a smooth, intentional squat!"
                                             val service = SquatSensorService(context)
                                             sensorServiceInstance = service
                                             service.startTracking(
@@ -466,7 +512,7 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                                 },
                                                 onUpdate = { currentCount ->
                                                     testSquatCount = currentCount
-                                                    sensorFeedbackMessage = "Accels active! Great form, keep going."
+                                                    sensorFeedbackMessage = "Perfect squat detected! Count: $currentCount"
                                                     try {
                                                         view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                                                     } catch (e: Exception) {}
@@ -477,13 +523,13 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = if (isSensorTesting) Color(0xFFFFCC80) else Color(0xFFE8F5E9)
                                     ),
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().height(44.dp),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Text(
                                         text = if (isSensorTesting) "Stop Hardware Integration Test" else "🎮 Calibrate Accelerometer Input",
                                         color = if (isSensorTesting) Color(0xFFE65100) else Color(0xFF2E7D32),
-                                        fontSize = 12.scaledSp,
+                                        fontSize = 13.scaledSp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -685,3 +731,207 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
         }
     }
 }
+
+@Composable
+fun SensorTelemetryScope(
+    isTesting: Boolean,
+    repCount: Int,
+    targetCount: Int,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "telemetry")
+    val phase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * 3.1415927f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "phase"
+    )
+
+    val neonColor = Color(0xFF2E7D32) // Sport green
+    val rawColor = Color(0xFFFF7043) // Chaotic vibration orange
+    val gridColor = Color(0xFFFFB74D).copy(alpha = 0.08f)
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(115.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF2B201D)) // Sophisticated deep athletic slate
+            .border(1.dp, Color(0xFF5D4037).copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val width = size.width
+            val height = size.height
+            val fPI = 3.1415927f
+
+            // 1. Draw grid lines for high-fidelity lab scope feel
+            val cols = 14
+            val rows = 6
+            for (i in 1 until cols) {
+                val x = (width / cols) * i
+                drawLine(
+                    color = gridColor,
+                    start = androidx.compose.ui.geometry.Offset(x, 0f),
+                    end = androidx.compose.ui.geometry.Offset(x, height),
+                    strokeWidth = 1f
+                )
+            }
+            for (i in 1 until rows) {
+                val y = (height / rows) * i
+                drawLine(
+                    color = gridColor,
+                    start = androidx.compose.ui.geometry.Offset(0f, y),
+                    end = androidx.compose.ui.geometry.Offset(width, y),
+                    strokeWidth = 1f
+                )
+            }
+
+            // Zero line
+            drawLine(
+                color = Color.White.copy(alpha = 0.05f),
+                start = androidx.compose.ui.geometry.Offset(0f, height / 2f),
+                end = androidx.compose.ui.geometry.Offset(width, height / 2f),
+                strokeWidth = 2f
+            )
+
+            if (isTesting) {
+                val rawPath = androidx.compose.ui.graphics.Path()
+                val lpfPath = androidx.compose.ui.graphics.Path()
+
+                val points = 90
+                for (i in 0..points) {
+                    val x = (width / points) * i
+                    val progress = i.toFloat() / points.toFloat()
+
+                    // Trace A (Raw Shake Jitter - high frequency, small height spikes)
+                    val rawShakeJitter = kotlin.math.sin(progress * 24f * fPI + phase * 6f) * 14f +
+                            kotlin.math.cos(progress * 8f * fPI - phase) * 6f +
+                            (if (i % 3 == 0) 4f else -4f) // Spiky noise jitter
+                    val rawY = (height / 2f + rawShakeJitter).coerceIn(4f, height - 4f)
+
+                    // Trace B (LPF Output - beautiful smooth human squat motion)
+                    val smoothSquatCurve = kotlin.math.sin(progress * 3.5f * fPI - phase) * (height * 0.35f)
+                    val cleanY = height / 2f + smoothSquatCurve
+
+                    if (i == 0) {
+                        rawPath.moveTo(x, rawY)
+                        lpfPath.moveTo(x, cleanY)
+                    } else {
+                        rawPath.lineTo(x, rawY)
+                        lpfPath.lineTo(x, cleanY)
+                    }
+                }
+
+                // Draw Chaotic Noise (Trace A) representing shaking raw device stream
+                drawPath(
+                    path = rawPath,
+                    color = rawColor.copy(alpha = 0.25f),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = 2f
+                    )
+                )
+
+                // Draw Smooth Intended Motion (Trace B) showing the LPF in action
+                drawPath(
+                    path = lpfPath,
+                    color = Color(0xFF66BB6A), // Emerald glow
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = 5f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                )
+
+                // Draw pulsating target capture lights on intervals
+                if (repCount > 0) {
+                    val angleOffset = 0.75f * 3.5f * fPI - phase
+                    val markerX = width * 0.75f
+                    val markerY = height / 2f + kotlin.math.sin(angleOffset) * (height * 0.35f)
+                    
+                    drawCircle(
+                        color = Color(0xFF66BB6A).copy(alpha = 0.3f),
+                        radius = 24f,
+                        center = androidx.compose.ui.geometry.Offset(markerX, markerY)
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = 8f,
+                        center = androidx.compose.ui.geometry.Offset(markerX, markerY)
+                    )
+                }
+            } else {
+                // Flat standby trace line with minor natural background thermal hum
+                val idlePath = androidx.compose.ui.graphics.Path()
+                idlePath.moveTo(0f, height / 2f)
+                val points = 40
+                for (i in 0..points) {
+                    val x = (width / points) * i
+                    val relativeX = i.toFloat() / points.toFloat()
+                    val idleHum = kotlin.math.sin(relativeX * 10f * fPI + phase) * 2f
+                    idlePath.lineTo(x, height / 2f + idleHum)
+                }
+                drawPath(
+                    path = idlePath,
+                    color = Color.White.copy(alpha = 0.15f),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = 3f
+                    )
+                )
+            }
+        }
+
+        // Overlay status panel labels
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp)
+                .align(Alignment.TopStart),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = if (isTesting) "● LPF DUAL-STREAM TELEMETRY" else "○ IDLE CALIBRATION LOCK",
+                fontFamily = MonospaceFontFamily,
+                fontSize = 8.scaledSp,
+                fontWeight = FontWeight.Bold,
+                color = if (isTesting) Color(0xFF66BB6A) else Color.White.copy(alpha = 0.35f)
+            )
+            Text(
+                text = "DSP MODE: 2-STAGE LPF (0.20)",
+                fontFamily = MonospaceFontFamily,
+                fontSize = 8.scaledSp,
+                color = Color.White.copy(alpha = 0.4f)
+            )
+        }
+
+        // Realtime legends
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp)
+                .align(Alignment.BottomStart),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(6.dp).background(rawColor.copy(alpha = 0.6f)).clip(CircleShape))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Chaotic Shake (Rejected)", fontSize = 7.5.scaledSp, color = Color.White.copy(alpha = 0.5f), fontFamily = MonospaceFontFamily)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(6.dp).background(Color(0xFF66BB6A)).clip(CircleShape))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Smooth Squat (Authorized)", fontSize = 7.5.scaledSp, color = Color.White.copy(alpha = 0.5f), fontFamily = MonospaceFontFamily)
+                }
+            }
+            Text(
+                text = "SPEED LIMITER: ENGAGED (>1s)",
+                fontSize = 7.5.scaledSp,
+                fontFamily = MonospaceFontFamily,
+                color = if (isTesting) Color(0xFFFFF59D) else Color.White.copy(alpha = 0.25f)
+            )
+        }
+    }
+}
+

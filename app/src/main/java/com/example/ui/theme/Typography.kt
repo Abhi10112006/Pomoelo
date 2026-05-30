@@ -13,8 +13,6 @@ val provider = GoogleFont.Provider(
 )
 
 val PoppinsFont = GoogleFont("Poppins")
-val ComicNeueFont = GoogleFont("Comic Neue")
-val TypewriterFont = GoogleFont("Special Elite")
 
 val AppFontFamily = FontFamily(
     Font(googleFont = PoppinsFont, fontProvider = provider, weight = FontWeight.Normal),
@@ -23,10 +21,14 @@ val AppFontFamily = FontFamily(
     Font(googleFont = PoppinsFont, fontProvider = provider, weight = FontWeight.Bold),
     Font(googleFont = PoppinsFont, fontProvider = provider, weight = FontWeight.Black)
 )
+
 val CursiveFontFamily = FontFamily(
-    Font(googleFont = ComicNeueFont, fontProvider = provider, weight = FontWeight.Normal),
-    Font(googleFont = ComicNeueFont, fontProvider = provider, weight = FontWeight.Bold)
+    androidx.compose.ui.text.font.Font(R.font.comic_neue_regular, weight = FontWeight.Normal),
+    androidx.compose.ui.text.font.Font(R.font.comic_neue_bold, weight = FontWeight.Bold)
 )
+
 val MonospaceFontFamily = FontFamily(
-    Font(googleFont = TypewriterFont, fontProvider = provider, weight = FontWeight.Normal)
+    androidx.compose.ui.text.font.Font(R.font.special_elite_regular, weight = FontWeight.Normal)
 )
+
+

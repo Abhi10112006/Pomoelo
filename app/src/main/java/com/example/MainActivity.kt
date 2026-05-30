@@ -406,6 +406,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .statusBarsPadding()
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -1522,7 +1523,7 @@ fun SlidingTimer(timeRemaining: Int, fontSize: androidx.compose.ui.unit.TextUnit
                     text = ":",
                     fontSize = fontSize,
                     fontWeight = FontWeight.Black,
-                    fontFamily = AppFontFamily,
+                    fontFamily = MonospaceFontFamily,
                     color = Color(0xFF5D4037),
                     modifier = Modifier.padding(bottom = 6.dp)
                 )
@@ -1551,7 +1552,7 @@ fun SlidingTimer(timeRemaining: Int, fontSize: androidx.compose.ui.unit.TextUnit
                         text = targetDigit.toString(),
                         fontSize = fontSize,
                         fontWeight = FontWeight.Black,
-                        fontFamily = AppFontFamily,
+                        fontFamily = MonospaceFontFamily,
                         color = Color(0xFF5D4037)
                     )
                 }
@@ -1625,11 +1626,9 @@ fun TimerDisplay(
             
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 val isLongFormat = (timeRemaining / 60) > 99
-                val timerFontSize = if (isLongFormat) {
-                    if (dynamicCircleSize < 200.dp) 32.scaledSp else if (dynamicCircleSize < 240.dp) 40.scaledSp else 48.scaledSp
-                } else {
-                    if (dynamicCircleSize < 200.dp) 44.scaledSp else if (dynamicCircleSize < 240.dp) 52.scaledSp else 64.scaledSp
-                }
+                val scaleFactor = if (isLongFormat) 0.16f else 0.22f
+                val baseFontSize = dynamicCircleSize.value * scaleFactor
+                val timerFontSize = baseFontSize.coerceAtMost(if (isLongFormat) 38f else 54f).sp
                 SlidingTimer(timeRemaining = timeRemaining, fontSize = timerFontSize)
                 Spacer(modifier = Modifier.height(if (dynamicCircleSize < 200.dp) 2.dp else 4.dp))
                 val stateBg = if (isBreakMode) Color(0xFFE1F5FE) else Color(0xFFFFCDD2)
