@@ -57,9 +57,9 @@ class SquatCalibrationViewModel(application: Application) : AndroidViewModel(app
     private fun finishCalibration() {
         sensorService.stopTracking()
         
-        // Apply 45% tolerance multiplier
-        val finalValley = absoluteMinValley * 0.45f
-        val finalPeak = absoluteMaxPeak * 0.45f
+        // Apply 30% tolerance multiplier
+        val finalValley = absoluteMinValley * 0.3f
+        val finalPeak = absoluteMaxPeak * 0.3f
         
         // To be safe, ensure it doesn't get too close to 0 due to noise
         val safeValley = if (finalValley > -0.2f) -0.2f else finalValley
