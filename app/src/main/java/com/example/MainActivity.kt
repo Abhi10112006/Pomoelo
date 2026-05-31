@@ -443,14 +443,14 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                             text = "PomoPal",
                             fontSize = 24.scaledSp,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = CursiveFontFamily,
+                            fontFamily = AppFontFamily,
                             color = Color(0xFF5D4037),
                             modifier = Modifier.padding(bottom = 0.dp)
                         )
                         Text(
                             text = "by Abhi",
                             fontSize = 12.scaledSp,
-                            fontFamily = CursiveFontFamily,
+                            fontFamily = AppFontFamily,
                             color = Color(0xFF5D4037).copy(alpha = 0.6f),
                             modifier = Modifier.padding(top = 0.dp)
                         )
@@ -517,10 +517,10 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                             item {
                                 Text(
                                     text = "Your Tasks",
-                                    fontSize = 24.scaledSp,
-                                    fontFamily = CursiveFontFamily,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF8D6E63),
+                                    fontSize = 20.scaledSp,
+                                    fontFamily = AppFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF5D4037),
                                     modifier = Modifier.padding(bottom = 16.dp)
                                 )
                             }
@@ -2255,6 +2255,11 @@ fun AlarmRingingLockScreen(
             },
             onShakeWarning = { isShaking ->
                 shakeWarning = isShaking
+                if (isShaking) {
+                    sensorMessage = "Locked: Please stop shaking the phone!"
+                } else {
+                    sensorMessage = "Standing stable. Keep performing smooth physical squats."
+                }
             }
         )
 

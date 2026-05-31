@@ -37,7 +37,7 @@ val SpecialEliteFontFamily: FontFamily = try {
 }
 
 // Map the main references to these robust premium typography selections
-val AppFontFamily: FontFamily = ComicNeueFontFamily
+val AppFontFamily: FontFamily = PoppinsFontFamily
 val CursiveFontFamily: FontFamily = ComicNeueFontFamily
 val MonospaceFontFamily: FontFamily = SpecialEliteFontFamily
 
