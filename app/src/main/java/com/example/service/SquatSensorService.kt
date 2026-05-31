@@ -180,8 +180,11 @@ class SquatSensorService(context: Context) : SensorEventListener {
             // Dot product to project linear acceleration on normal gravity vector
             val trueVerticalAccel = (linX * normGx) + (linY * normGy) + (linZ * normGz)
 
-            // Low-Pass Filter (alpha ~ 0.1f)
-            filteredVerticalAccel = (LPF_ALPHA * trueVerticalAccel) + ((1.0f - LPF_ALPHA) * filteredVerticalAccel)
+            // Deadzone filtering to prevent micro-shakes
+            val effectiveAccel = if (kotlin.math.abs(trueVerticalAccel) < 0.15f) 0f else trueVerticalAccel
+
+            // Low-Pass Filter (alpha ~ 0.05f)
+            filteredVerticalAccel = (0.05f * effectiveAccel) + (0.95f * filteredVerticalAccel)
 
             // 2. Leaky Velocity Integration
             val dt = if (lastTimestamp == 0L) {

@@ -28,6 +28,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.Canvas
@@ -892,6 +894,9 @@ fun DigitalTimeStepper(
     format: String = "%02d",
     modifier: Modifier = Modifier
 ) {
+    val view = androidx.compose.ui.platform.LocalView.current
+    var accumulatedScroll by remember { mutableStateOf(0f) }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
@@ -912,6 +917,25 @@ fun DigitalTimeStepper(
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFFFAF6F0))
                 .border(1.dp, Color(0xFFE5D5D0), RoundedCornerShape(16.dp))
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = { accumulatedScroll = 0f }
+                    ) { change, dragAmount ->
+                        change.consume()
+                        accumulatedScroll += dragAmount
+                        if (accumulatedScroll > 30f) {
+                            accumulatedScroll = 0f
+                            val newVal = if (value - 1 < range.start) range.endInclusive else value - 1
+                            onValueChange(newVal)
+                            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK) } catch (e: Exception) {}
+                        } else if (accumulatedScroll < -30f) {
+                            accumulatedScroll = 0f
+                            val newVal = if (value + 1 > range.endInclusive) range.start else value + 1
+                            onValueChange(newVal)
+                            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK) } catch (e: Exception) {}
+                        }
+                    }
+                }
                 .padding(vertical = 4.dp, horizontal = 12.dp)
         ) {
             IconButton(

@@ -2348,6 +2348,14 @@ fun AlarmRingingLockScreen(
                         com.example.service.AlarmReceiver.dismissNotification(context)
 
                         val activity = context as? android.app.Activity
+                        try {
+                            val launchIntent = android.content.Intent(context, MainActivity::class.java).apply {
+                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                            }
+                            context.startActivity(launchIntent)
+                        } catch (e: Exception) {
+                            android.util.Log.e("SquatDebug", "Failed to launch main activity", e)
+                        }
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
                             activity?.setShowWhenLocked(false)
                             activity?.setTurnScreenOn(false)
@@ -2482,6 +2490,16 @@ fun AlarmRingingLockScreen(
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "For accurate tracking, hold your phone firmly with any hand without shaking.",
+                    fontSize = 12.scaledSp,
+                    color = Color.White.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 32.dp)
+                )
 
                 Spacer(modifier = Modifier.height(28.dp))
 
