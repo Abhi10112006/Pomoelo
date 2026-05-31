@@ -13,31 +13,38 @@ class SquatSensorService(context: Context) : SensorEventListener {
     private var sensorManager: SensorManager? = null
     private var accelSensor: Sensor? = null
     
-    // Squat detection state
+    // Squat detection counter state
     private var squatCount = 0
     private var requiredSquats = 0
     
-    // Low-pass filter for 3D vector magnitude
-    private var filteredValue = 9.81f
-    private val alpha = 0.15f 
+    // Dynamic Gravity vector calculation (Slow LPF)
+    private var gravityX = 0f
+    private var gravityY = 9.81f
+    private var gravityZ = 0f
+    private val gravityAlpha = 0.08f 
 
-    // Chaotic high-frequency vibration/shake safety shield
+    // Smooth linear vertical acceleration along gravity vector (Highly restrictive LPF)
+    private var filteredVerticalAccel = 0f
+    private val alphaVertical = 0.07f // Restricted to perfectly isolate massive slow squat waves and suppress micro-vibrations
+
+    // Sliding window of raw magnitude values to detect high-frequency chaotic rattling/shaking
     private val rawMagnitudeHistory = ArrayList<Float>()
     private val HISTORY_SIZE = 25
     private var isShakingChaotically = false
     private var lastShakeTime = 0L
 
-    // State machine delay to ensure authentic deliberate vertical movement
-    private var isDescending = false
-    private var descentStartTime = 0L
-    private var inSquatDown = false
-    private var isAscending = false
-    private var ascentStartTime = 0L
+    // Distinct Peak-Valley dynamic threshold states
+    private var valleyDetected = false
+    private var valleyTime = 0L
+    private var minVerticalValue = 0f
+
+    // Standard gravity-normalized thresholds for human mechanics (in m/s^2)
+    private val VALLEY_THRESHOLD = -1.8f
+    private val PEAK_THRESHOLD = 1.8f  
+
     private var lastCompletedSquatTime = 0L
 
-    private val DOWN_THRESHOLD = 8.2f // m/s^2 (descending gravity release)
-    private val UP_THRESHOLD = 11.4f  // m/s^2 (ascending heavy thrust/deceleration)
-
+    // Live update listeners
     private var onSquatsCompleted: (() -> Unit)? = null
     private var onSquatDetected: ((Int) -> Unit)? = null
     private var onShakeStatusChanged: ((Boolean) -> Unit)? = null
@@ -59,16 +66,22 @@ class SquatSensorService(context: Context) : SensorEventListener {
         }
         requiredSquats = targetSquats
         squatCount = 0
-        filteredValue = 9.81f
+        
+        // Reset dynamic gravity estimates to avoid holding stale orientations
+        gravityX = 0f
+        gravityY = 9.81f
+        gravityZ = 0f
+        filteredVerticalAccel = 0f
+        
         rawMagnitudeHistory.clear()
         isShakingChaotically = false
         lastShakeTime = 0L
-        isDescending = false
-        descentStartTime = 0L
-        inSquatDown = false
-        isAscending = false
-        ascentStartTime = 0L
+        
+        valleyDetected = false
+        valleyTime = 0L
+        minVerticalValue = 0f
         lastCompletedSquatTime = 0L
+        
         onSquatsCompleted = onComplete
         onSquatDetected = onUpdate
         onShakeStatusChanged = onShakeWarning
@@ -92,24 +105,53 @@ class SquatSensorService(context: Context) : SensorEventListener {
         val x = event.values[0]
         val y = event.values[1]
         val z = event.values[2]
-        
-        // 1. Calculate 3D acceleration magnitude (orientation-independent)
-        val rawMagnitude = sqrt(x * x + y * y + z * z)
 
-        // 2. Accumulate raw magnitude history to detect high-frequency shaking
-        rawMagnitudeHistory.add(rawMagnitude)
+        // 1. Estimate current coordinate system's gravity components dynamically.
+        // This makes the sensor perfectly pocket/directional agnostic.
+        if (gravityX == 0f && gravityY == 9.81f && gravityZ == 0f) {
+            gravityX = x
+            gravityY = y
+            gravityZ = z
+        } else {
+            gravityX = gravityAlpha * x + (1.0f - gravityAlpha) * gravityX
+            gravityY = gravityAlpha * y + (1.0f - gravityAlpha) * gravityY
+            gravityZ = gravityAlpha * z + (1.0f - gravityAlpha) * gravityZ
+        }
+
+        val gMagnitude = sqrt(gravityX * gravityX + gravityY * gravityY + gravityZ * gravityZ)
+        if (gMagnitude < 1.0f) return // Out of range baseline check
+
+        // 2. Compute normal vectors along dynamic vertical axis
+        val nx = gravityX / gMagnitude
+        val ny = gravityY / gMagnitude
+        val nz = gravityZ / gMagnitude
+
+        // 3. Project current raw 3D acceleration along the dynamic gravity vector
+        val rawAccelAlongGravity = x * nx + y * ny + z * nz
+
+        // 4. Subtract gravity magnitude to get the vertical component of linear acceleration
+        // In free space: ~0m/s^2 when stationary.
+        // Negative component = moving listlessly downwards, Positive component = accelerating upwards.
+        val rawLinearVerticalAccel = rawAccelAlongGravity - gMagnitude
+
+        // 5. Aggressive Low-Pass Filter (Rule 1: alpha Vertical = 0.07f)
+        // Eliminates jitter/shaking spikes while conserving slow body momentum waves.
+        filteredVerticalAccel = alphaVertical * rawLinearVerticalAccel + (1.0f - alphaVertical) * filteredVerticalAccel
+
+        // 6. Compute Raw Acceleration Magnitude for Jitter/Chaotic Shake Monitoring
+        val rawAccelMagnitude = sqrt(x * x + y * y + z * z)
+        rawMagnitudeHistory.add(rawAccelMagnitude)
         if (rawMagnitudeHistory.size > HISTORY_SIZE) {
             rawMagnitudeHistory.removeAt(0)
         }
 
-        // 3. Identify noise level via peak-to-peak amplitude over the sliding window
         val prevShakeState = isShakingChaotically
-        if (rawMagnitudeHistory.size >= 10) {
+        if (rawMagnitudeHistory.size >= 12) {
             val minHistory = rawMagnitudeHistory.minOrNull() ?: 9.81f
             val maxHistory = rawMagnitudeHistory.maxOrNull() ?: 9.81f
             val amplitude = maxHistory - minHistory
-            // Shaking rapidly spikes acceleration magnitude up and down (heavy variance)
-            isShakingChaotically = amplitude > 7.0f
+            // High magnitude variance clearly marks rapid erratic phone rattling (humanly impossible squats)
+            isShakingChaotically = amplitude > 7.5f
         } else {
             isShakingChaotically = false
         }
@@ -122,71 +164,59 @@ class SquatSensorService(context: Context) : SensorEventListener {
             onShakeStatusChanged?.invoke(isShakingChaotically)
         }
 
-        // 4. State validation (Fully lockout / reset progress if chaotic shaking is ongoing or recently occurred)
-        if (isShakingChaotically || currentTime - lastShakeTime < 1000L) {
-            // Hard reset of squat state machine to prevent false positives from settling data
-            isDescending = false
-            inSquatDown = false
-            isAscending = false
+        // Lockout Guard: Fully block progress and reset peak states if active high-frequency vibrations are detected
+        if (isShakingChaotically || (currentTime - lastShakeTime) < 1200L) {
+            valleyDetected = false
+            minVerticalValue = 0f
             return
         }
 
-        // 5. Low-Pass Filter: suppress small vibrations and extract slow, smooth intentional human motion
-        filteredValue = alpha * rawMagnitude + (1.0f - alpha) * filteredValue
-
-        // 6. Deliberate Human Squat State Machine
-        if (!inSquatDown) {
-            // Looking for a sustained, intentional descent (gravity release)
-            if (filteredValue < DOWN_THRESHOLD) {
-                if (!isDescending) {
-                    isDescending = true
-                    descentStartTime = currentTime
-                } else {
-                    // Check if descent is sustained for at least 250 milliseconds
-                    if (currentTime - descentStartTime >= 250L) {
-                        inSquatDown = true
-                        isDescending = false
-                    }
-                }
-            } else {
-                isDescending = false
+        // 7. Peak-Valley State Machine for intentional squat registration
+        if (!valleyDetected) {
+            // Find a massive downwards movement trigger (valley)
+            if (filteredVerticalAccel < VALLEY_THRESHOLD) {
+                valleyDetected = true
+                valleyTime = currentTime
+                minVerticalValue = filteredVerticalAccel
             }
         } else {
-            // In the descent phase, looking for a sustained, intentional push-up ascent
-            // Reset if they hold the down position or are inactive for more than 4.5 seconds (prevents drift)
-            if (currentTime - descentStartTime > 4500L) {
-                inSquatDown = false
-                isAscending = false
+            // Looking for the rebound upward acceleration spike (peak)
+            // Safety release: Reset descent if they hold the down position or drift for more than 3.5 seconds
+            if (currentTime - valleyTime > 3500L) {
+                valleyDetected = false
+                return
             }
-            
-            if (filteredValue > UP_THRESHOLD) {
-                if (!isAscending) {
-                    isAscending = true
-                    ascentStartTime = currentTime
-                } else {
-                    // Check if ascent is sustained for at least 250 milliseconds
-                    if (currentTime - ascentStartTime >= 250L) {
-                        val timeSinceLastSquat = currentTime - lastCompletedSquatTime
-                        // Require at least 1500ms between standard physical squats
-                        if (timeSinceLastSquat >= 1500L) {
-                            inSquatDown = false
-                            isAscending = false
-                            lastCompletedSquatTime = currentTime
-                            
-                            squatCount++
-                            onSquatDetected?.invoke(squatCount)
-                            
-                            if (squatCount >= requiredSquats) {
-                                stopTracking()
-                                onSquatsCompleted?.invoke()
-                            }
-                        } else {
-                            isAscending = false
-                        }
-                    }
+
+            if (filteredVerticalAccel < minVerticalValue) {
+                minVerticalValue = filteredVerticalAccel
+            }
+
+            if (filteredVerticalAccel > PEAK_THRESHOLD) {
+                val transitionTime = currentTime - valleyTime
+
+                // CRITICAL TIME LOCKOUT (Rule 4):
+                // If transition from downwards to upward peak happens faster than 300ms, it is a high-frequency shake.
+                if (transitionTime < 300L) {
+                    valleyDetected = false
+                    return
                 }
-            } else {
-                isAscending = false
+
+                // Strict deliberate human squat check: cooldown guard (1500m/s)
+                val timeSinceLastSquat = currentTime - lastCompletedSquatTime
+                if (timeSinceLastSquat >= 1500L) {
+                    valleyDetected = false
+                    lastCompletedSquatTime = currentTime
+                    
+                    squatCount++
+                    onSquatDetected?.invoke(squatCount)
+
+                    if (squatCount >= requiredSquats) {
+                        stopTracking()
+                        onSquatsCompleted?.invoke()
+                    }
+                } else {
+                    valleyDetected = false
+                }
             }
         }
     }

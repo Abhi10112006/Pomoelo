@@ -212,17 +212,17 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                 fontSize = 16.scaledSp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF3E2723),
-                                fontFamily = CursiveFontFamily
+                                fontFamily = AppFontFamily
                             )
                             Text(
                                 text = "Active physical alarms configured",
                                 fontSize = 11.scaledSp,
                                 color = Color.Gray,
-                                fontFamily = MonospaceFontFamily
+                                fontFamily = AppFontFamily
                             )
                         }
 
-                        IconButton(
+                        Button(
                             onClick = {
                                 try {
                                     view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -230,15 +230,32 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                 activeEditAlarm = null
                                 showEditDialog = true
                             },
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(Color(0xFF3E2723))
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF3E2723).copy(alpha = 0.06f),
+                                contentColor = Color(0xFF3E2723)
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF3E2723).copy(alpha = 0.15f)),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.height(34.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Add,
-                                contentDescription = "Add Alarm",
-                                tint = Color.White
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Add,
+                                    contentDescription = "Add Alarm",
+                                    tint = Color(0xFF3E2723),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "Add Alarm",
+                                    fontSize = 11.scaledSp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = AppFontFamily
+                                )
+                            }
                         }
                     }
 
@@ -294,30 +311,15 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                         }
                                         val timeStr = String.format("%02d:%02d %s", displayHr, item.minute, pmAm)
                                         
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = timeStr,
-                                                fontSize = 20.scaledSp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = Color(0xFF3E2723),
-                                                fontFamily = MonospaceFontFamily
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(Color(0xFFE8F5E9))
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Text(
-                                                    text = "${item.squatTarget} squats",
-                                                    fontSize = 9.scaledSp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF2E7D32),
-                                                    fontFamily = MonospaceFontFamily
-                                                )
-                                            }
-                                        }
+                                        Text(
+                                            text = timeStr,
+                                            fontSize = 20.scaledSp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF3E2723),
+                                            fontFamily = MonospaceFontFamily
+                                        )
+                                        
+                                        Spacer(modifier = Modifier.height(2.dp))
                                         
                                         Text(
                                             text = "${item.label} • ${formatDaysOfWeekDisplay(item.daysOfWeek)}",
@@ -327,49 +329,67 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                         )
                                     }
 
-                                    Switch(
-                                        checked = item.isEnabled,
-                                        onCheckedChange = { isChecked ->
-                                            try {
-                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
-                                            } catch (e: Exception) {}
-                                            val toggled = item.copy(isEnabled = isChecked)
-                                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                                alarmDao.updateAlarm(toggled)
-                                                if (isChecked) {
-                                                    com.example.service.AlarmScheduler.scheduleAlarm(context, toggled)
-                                                } else {
-                                                    com.example.service.AlarmScheduler.cancelAlarm(context, toggled.id)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color(0xFFE8F5E9))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = "${item.squatTarget} squats",
+                                                fontSize = 9.scaledSp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF2E7D32),
+                                                fontFamily = MonospaceFontFamily
+                                            )
+                                        }
+
+                                        Switch(
+                                            checked = item.isEnabled,
+                                            onCheckedChange = { isChecked ->
+                                                try {
+                                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                                                } catch (e: Exception) {}
+                                                val toggled = item.copy(isEnabled = isChecked)
+                                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                    alarmDao.updateAlarm(toggled)
+                                                    if (isChecked) {
+                                                        com.example.service.AlarmScheduler.scheduleAlarm(context, toggled)
+                                                    } else {
+                                                        com.example.service.AlarmScheduler.cancelAlarm(context, toggled.id)
+                                                    }
+                                                }
+                                            },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = Color(0xFF3E2723),
+                                                uncheckedThumbColor = Color.White,
+                                                uncheckedTrackColor = Color(0xFFD7CCC8)
+                                            )
+                                        )
+
+                                        IconButton(
+                                            onClick = {
+                                                try {
+                                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                                } catch (e: Exception) {}
+                                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                    com.example.service.AlarmScheduler.cancelAlarm(context, item.id)
+                                                    alarmDao.deleteAlarm(item)
                                                 }
                                             }
-                                        },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Color.White,
-                                            checkedTrackColor = Color(0xFF3E2723),
-                                            uncheckedThumbColor = Color.White,
-                                            uncheckedTrackColor = Color(0xFFD7CCC8)
-                                        )
-                                    )
-
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    IconButton(
-                                        onClick = {
-                                            try {
-                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                            } catch (e: Exception) {}
-                                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                                com.example.service.AlarmScheduler.cancelAlarm(context, item.id)
-                                                alarmDao.deleteAlarm(item)
-                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Delete,
+                                                contentDescription = "Delete Alarm",
+                                                tint = Color(0xFFD32F2F),
+                                                modifier = Modifier.size(20.dp)
+                                            )
                                         }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Delete,
-                                            contentDescription = "Delete Alarm",
-                                            tint = Color(0xFFD32F2F),
-                                            modifier = Modifier.size(20.dp)
-                                        )
                                     }
                                 }
                             }
@@ -401,20 +421,23 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalAlignment = Alignment.Top
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Info,
                             contentDescription = "Info icon",
                             tint = Color(0xFF8D6E63),
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier
+                                .size(16.dp)
+                                .padding(top = 2.dp)
                         )
                         Text(
                             text = "To guarantee physical snooze bypass works securely on your hardware, both dynamic alarms & push triggers must be authorized.",
                             fontSize = 11.scaledSp,
                             color = Color.Gray,
                             lineHeight = 16.scaledSp,
-                            fontFamily = AppFontFamily
+                            fontFamily = AppFontFamily,
+                            modifier = Modifier.padding(start = 12.dp)
                         )
                     }
 
@@ -563,11 +586,23 @@ fun EditAlarmDialog(
     onDismiss: () -> Unit,
     onSave: (hour: Int, minute: Int, label: String, daysOfWeek: String, squatTarget: Int) -> Unit
 ) {
-    var hour by remember { mutableStateOf(alarm?.hour ?: 7) }
+    val initialHour = alarm?.hour ?: 7
     var minute by remember { mutableStateOf(alarm?.minute ?: 0) }
     var label by remember { mutableStateOf(alarm?.label ?: "Morning Workout") }
     var squatTarget by remember { mutableStateOf(alarm?.squatTarget ?: 10) }
     
+    // Convert 24-hr format into AM/PM state
+    var isPm by remember { mutableStateOf(initialHour >= 12) }
+    var amPmSelectedHour by remember {
+        mutableStateOf(
+            when {
+                initialHour == 0 -> 12
+                initialHour > 12 -> initialHour - 12
+                else -> initialHour
+            }
+        )
+    }
+
     // Parse selected days
     val initialDays = if (alarm == null || alarm.daysOfWeek == "Daily") {
         (1..7).toSet()
@@ -602,50 +637,102 @@ fun EditAlarmDialog(
                     color = Color(0xFF5D4037)
                 )
 
-                // Time Pickers scroll bars/sliders styled nicely
+                // Vertical digital text picker columns with adjacent AM/PM segmented toggle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Bottom
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Hour (${String.format("%02d", hour)})", fontSize = 12.scaledSp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                        Slider(
-                            value = hour.toFloat(),
-                            onValueChange = { hour = it.toInt() },
-                            valueRange = 0f..23f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFF5D4037),
-                                activeTrackColor = Color(0xFFFFCC80)
-                            )
-                        )
-                    }
+                    // Hour picker column
+                    DigitalTimeStepper(
+                        value = amPmSelectedHour,
+                        range = 1..12,
+                        label = "Hour",
+                        onValueChange = { amPmSelectedHour = it },
+                        modifier = Modifier.weight(1.2f)
+                    )
                     
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Minute (${String.format("%02d", minute)})", fontSize = 12.scaledSp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                        Slider(
-                            value = minute.toFloat(),
-                            onValueChange = { minute = it.toInt() },
-                            valueRange = 0f..59f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFF5D4037),
-                                activeTrackColor = Color(0xFFFFCC80)
-                            )
+                    // Minute picker column
+                    DigitalTimeStepper(
+                        value = minute,
+                        range = 0..59,
+                        label = "Minute",
+                        onValueChange = { minute = it },
+                        modifier = Modifier.weight(1.2f)
+                    )
+                    
+                    // Segmented AM/PM toggle adjacent
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1.1f)
+                    ) {
+                        Text(
+                            text = "Period",
+                            fontSize = 11.scaledSp,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = AppFontFamily,
+                            modifier = Modifier.padding(bottom = 6.dp)
                         )
+                        
+                        Row(
+                            modifier = Modifier
+                                .height(54.dp)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFFFAF6F0))
+                                .border(1.dp, Color(0xFFE5D5D0), RoundedCornerShape(16.dp))
+                                .padding(3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val activePm = isPm
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (!activePm) Color(0xFF5D4037) else Color.Transparent)
+                                    .clickable { isPm = false },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "AM",
+                                    fontSize = 11.scaledSp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (!activePm) Color.White else Color(0xFF5D4037),
+                                    fontFamily = AppFontFamily
+                                )
+                            }
+                            
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (activePm) Color(0xFF5D4037) else Color.Transparent)
+                                    .clickable { isPm = true },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "PM",
+                                    fontSize = 11.scaledSp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (activePm) Color.White else Color(0xFF5D4037),
+                                    fontFamily = AppFontFamily
+                                )
+                            }
+                        }
                     }
                 }
 
-                // Selected Time formatted preview
-                val formatAmPm = if (hour >= 12) "PM" else "AM"
-                val formatHour = when {
-                    hour == 0 -> 12
-                    hour > 12 -> hour - 12
-                    else -> hour
-                }
+                // Selected Time formatted preview reflecting changes dynamically in real-time
+                val previewAmPm = if (isPm) "PM" else "AM"
                 Text(
-                    text = String.format("Selected Time: %d:%02d %s", formatHour, minute, formatAmPm),
+                    text = String.format("Selected Time: %d:%02d %s", amPmSelectedHour, minute, previewAmPm),
                     fontSize = 15.scaledSp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFE65100),
+                    fontFamily = MonospaceFontFamily,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -668,7 +755,7 @@ fun EditAlarmDialog(
                     singleLine = true
                 )
 
-                // Squad Challenge Count
+                // Sqad Challenge Count
                 Column {
                     Row(
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -767,6 +854,11 @@ fun EditAlarmDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
+                            val computedHour = if (isPm) {
+                                if (amPmSelectedHour == 12) 12 else amPmSelectedHour + 12
+                            } else {
+                                if (amPmSelectedHour == 12) 0 else amPmSelectedHour
+                            }
                             val daysStr = if (selectedDays.size == 7) {
                                 "Daily"
                             } else if (selectedDays.isEmpty()) {
@@ -774,7 +866,7 @@ fun EditAlarmDialog(
                             } else {
                                 selectedDays.sorted().joinToString(",")
                             }
-                            onSave(hour, minute, label, daysStr, squatTarget)
+                            onSave(computedHour, minute, label, daysStr, squatTarget)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5D4037)),
                         shape = RoundedCornerShape(12.dp)
@@ -782,6 +874,78 @@ fun EditAlarmDialog(
                         Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun DigitalTimeStepper(
+    value: Int,
+    range: ClosedRange<Int>,
+    label: String,
+    onValueChange: (Int) -> Unit,
+    format: String = "%02d",
+    modifier: Modifier = Modifier
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+    ) {
+        Text(
+            text = label,
+            fontSize = 11.scaledSp,
+            color = Color.Gray,
+            fontWeight = FontWeight.Bold,
+            fontFamily = AppFontFamily,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+        
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFFFAF6F0))
+                .border(1.dp, Color(0xFFE5D5D0), RoundedCornerShape(16.dp))
+                .padding(vertical = 4.dp, horizontal = 12.dp)
+        ) {
+            IconButton(
+                onClick = {
+                    val newVal = if (value + 1 > range.endInclusive) range.start else value + 1
+                    onValueChange(newVal)
+                },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowUp,
+                    contentDescription = "Increase",
+                    tint = Color(0xFF5D4037)
+                )
+            }
+            
+            Text(
+                text = String.format(format, value),
+                fontSize = 24.scaledSp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color(0xFF5D4037),
+                fontFamily = MonospaceFontFamily,
+                modifier = Modifier.padding(vertical = 4.dp),
+                textAlign = TextAlign.Center
+            )
+            
+            IconButton(
+                onClick = {
+                    val newVal = if (value - 1 < range.start) range.endInclusive else value - 1
+                    onValueChange(newVal)
+                },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowDown,
+                    contentDescription = "Decrease",
+                    tint = Color(0xFF5D4037)
+                )
             }
         }
     }
