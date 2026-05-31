@@ -2346,6 +2346,19 @@ fun AlarmRingingLockScreen(
                         } catch (e: Exception) {}
                         com.example.service.AlarmState.isAlarmRinging = false
                         com.example.service.AlarmReceiver.dismissNotification(context)
+
+                        val activity = context as? android.app.Activity
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+                            activity?.setShowWhenLocked(false)
+                            activity?.setTurnScreenOn(false)
+                        }
+                        activity?.window?.clearFlags(
+                            android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                            android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or 
+                            android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                            android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                        )
+                        activity?.finish()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676)),
                     shape = RoundedCornerShape(16.dp),

@@ -276,7 +276,7 @@ class SquatSensorService(context: Context) : SensorEventListener {
                     // Verify transition window: 500ms to 2500ms
                     if (elapsed in 500..2500) {
                         val timeSinceLast = currentTime - lastCompletedSquatTime
-                        if (timeSinceLast >= 1000L) {
+                        if (timeSinceLast >= 400L) {
                             currentState = SquatState.ASCENDING
                             lastCompletedSquatTime = currentTime
                             
@@ -289,7 +289,7 @@ class SquatSensorService(context: Context) : SensorEventListener {
                                 onSquatsCompleted?.invoke()
                             }
                         } else {
-                            Log.d("SquatDebug", "Squat ignored: cooldown of 1000ms active. ${timeSinceLast}ms elapsed")
+                            Log.d("SquatDebug", "Squat ignored: cooldown of 400ms active. ${timeSinceLast}ms elapsed")
                             currentState = SquatState.IDLE
                         }
                     } else {
