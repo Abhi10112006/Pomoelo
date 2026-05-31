@@ -269,8 +269,8 @@ class SquatSensorService(context: Context) : SensorEventListener {
                     val elapsed = currentTime - descentStartTime
                     Log.d("SquatDebug", "State evaluation: DESCENDING -> ASCENDING check. elapsed: ${elapsed}ms, velocity: ${verticalVelocity.format()}")
 
-                    // Verify transition window: 500ms to 2500ms
-                    if (elapsed in 500..2500) {
+                    // Verify transition window: 100ms to 4000ms
+                    if (elapsed in 100..4000) {
                         val timeSinceLast = currentTime - lastCompletedSquatTime
                         if (timeSinceLast >= 200L) {
                             currentState = SquatState.ASCENDING

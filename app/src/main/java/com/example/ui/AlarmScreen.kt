@@ -149,7 +149,8 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                     activeEditAlarm = null
                     showEditDialog = true
                 },
-                containerColor = Color(0xFF5D4037)
+                containerColor = Color(0xFF5D4037),
+                modifier = Modifier.padding(bottom = 88.dp, end = 16.dp)
             ) {
                 Icon(imageVector = Icons.Default.Add, contentDescription = "Add Alarm", tint = Color.White)
             }

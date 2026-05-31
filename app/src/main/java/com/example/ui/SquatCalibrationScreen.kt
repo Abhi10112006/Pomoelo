@@ -27,6 +27,8 @@ fun SquatCalibrationScreen(
 ) {
     val timeLeft by viewModel.timeLeft.collectAsState()
     val isComplete by viewModel.isCalibrationComplete.collectAsState()
+    val powerScore by viewModel.powerScore.collectAsState()
+    val view = androidx.compose.ui.platform.LocalView.current
 
     DisposableEffect(Unit) {
         viewModel.startCalibration()
@@ -103,34 +105,78 @@ fun SquatCalibrationScreen(
                     imageVector = Icons.Default.CheckCircle,
                     contentDescription = "Success",
                     tint = Color(0xFF00E676),
-                    modifier = Modifier.size(96.dp)
+                    modifier = Modifier.size(72.dp)
                 )
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = "Calibration Complete!",
-                    fontSize = 24.sp,
+                    fontSize = 28.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color(0xFF5D4037)
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp)
+                    ) {
+                        Text(
+                            text = "SQUAT POWER SCORE",
+                            fontSize = 12.sp,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = String.format("%.2f", powerScore),
+                            fontSize = 64.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFFE65100)
+                        )
+                        Text(
+                            text = "Motion Energy",
+                            fontSize = 14.sp,
+                            color = Color(0xFF5D4037),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(32.dp))
                 Text(
-                    text = "Sensors mapped to your motion signature.",
+                    text = "Awesome! We've captured your unique motion signature. To wake up tomorrow, make sure you drop down and stand back up with this same energy to silence the alarm.",
                     fontSize = 16.sp,
                     color = Color.Gray,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    lineHeight = 24.sp
                 )
                 
                 Spacer(modifier = Modifier.height(48.dp))
                 
                 Button(
-                    onClick = onNavigateBack,
+                    onClick = {
+                        try {
+                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        } catch (e: Exception) {}
+                        onNavigateBack()
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5D4037)),
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
                 ) {
-                    Text("Return to Menu", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("Finish Setup", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

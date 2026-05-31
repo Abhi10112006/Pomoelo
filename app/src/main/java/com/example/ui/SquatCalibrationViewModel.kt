@@ -20,6 +20,9 @@ class SquatCalibrationViewModel(application: Application) : AndroidViewModel(app
     private val _isCalibrationComplete = MutableStateFlow(false)
     val isCalibrationComplete: StateFlow<Boolean> = _isCalibrationComplete.asStateFlow()
 
+    private val _powerScore = MutableStateFlow(0f)
+    val powerScore: StateFlow<Float> = _powerScore.asStateFlow()
+
     private var absoluteMaxPeak = 0f
     private var absoluteMinValley = 0f
 
@@ -57,9 +60,9 @@ class SquatCalibrationViewModel(application: Application) : AndroidViewModel(app
     private fun finishCalibration() {
         sensorService.stopTracking()
         
-        // Apply 30% tolerance multiplier
-        val finalValley = absoluteMinValley * 0.3f
-        val finalPeak = absoluteMaxPeak * 0.3f
+        // Apply 20% tolerance multiplier
+        val finalValley = absoluteMinValley * 0.2f
+        val finalPeak = absoluteMaxPeak * 0.2f
         
         // To be safe, ensure it doesn't get too close to 0 due to noise
         val safeValley = if (finalValley > -0.2f) -0.2f else finalValley
@@ -69,6 +72,7 @@ class SquatCalibrationViewModel(application: Application) : AndroidViewModel(app
         SettingsManager.setSquatValleyThreshold(safeValley)
         SettingsManager.setSquatPeakThreshold(safePeak)
         
+        _powerScore.value = absoluteMaxPeak - absoluteMinValley
         _isCalibrationComplete.value = true
     }
     
