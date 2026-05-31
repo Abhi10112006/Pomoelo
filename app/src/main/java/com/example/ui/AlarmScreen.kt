@@ -885,6 +885,7 @@ fun EditAlarmDialog(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun DigitalTimeStepper(
     value: Int,
@@ -894,8 +895,46 @@ fun DigitalTimeStepper(
     format: String = "%02d",
     modifier: Modifier = Modifier
 ) {
-    val view = androidx.compose.ui.platform.LocalView.current
-    var accumulatedScroll by remember { mutableStateOf(0f) }
+    val items = (range.start..range.endInclusive).toList()
+    val itemsCount = items.size
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val coroutineScope = rememberCoroutineScope()
+    
+    val itemHeight = 36.dp
+    
+    val initialIndex = remember {
+        val middleBase = (Int.MAX_VALUE / 2 / itemsCount) * itemsCount
+        val offset = items.indexOf(value)
+        middleBase + offset - 1
+    }
+    
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
+    val flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(lazyListState = listState)
+    
+    val centerIndex by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            if (layoutInfo.visibleItemsInfo.isEmpty()) {
+                listState.firstVisibleItemIndex + 1
+            } else {
+                val center = layoutInfo.viewportEndOffset / 2
+                val centerItem = layoutInfo.visibleItemsInfo.minByOrNull {
+                    kotlin.math.abs((it.offset + it.size / 2) - center)
+                }
+                centerItem?.index ?: (listState.firstVisibleItemIndex + 1)
+            }
+        }
+    }
+
+    LaunchedEffect(centerIndex) {
+        val itemVal = items[centerIndex % itemsCount]
+        if (itemVal != value) {
+            onValueChange(itemVal)
+            try { 
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove) 
+            } catch (e: Exception) {}
+        }
+    }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -912,36 +951,17 @@ fun DigitalTimeStepper(
         
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFFFAF6F0))
                 .border(1.dp, Color(0xFFE5D5D0), RoundedCornerShape(16.dp))
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragEnd = { accumulatedScroll = 0f }
-                    ) { change, dragAmount ->
-                        change.consume()
-                        accumulatedScroll += dragAmount
-                        if (accumulatedScroll > 30f) {
-                            accumulatedScroll = 0f
-                            val newVal = if (value - 1 < range.start) range.endInclusive else value - 1
-                            onValueChange(newVal)
-                            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK) } catch (e: Exception) {}
-                        } else if (accumulatedScroll < -30f) {
-                            accumulatedScroll = 0f
-                            val newVal = if (value + 1 > range.endInclusive) range.start else value + 1
-                            onValueChange(newVal)
-                            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK) } catch (e: Exception) {}
-                        }
-                    }
-                }
                 .padding(vertical = 4.dp, horizontal = 12.dp)
         ) {
             IconButton(
                 onClick = {
-                    val newVal = if (value + 1 > range.endInclusive) range.start else value + 1
-                    onValueChange(newVal)
+                    coroutineScope.launch {
+                        listState.animateScrollToItem(centerIndex)
+                    }
                 },
                 modifier = Modifier.size(36.dp)
             ) {
@@ -952,20 +972,47 @@ fun DigitalTimeStepper(
                 )
             }
             
-            Text(
-                text = String.format(format, value),
-                fontSize = 24.scaledSp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color(0xFF5D4037),
-                fontFamily = MonospaceFontFamily,
-                modifier = Modifier.padding(vertical = 4.dp),
-                textAlign = TextAlign.Center
-            )
+            Box(
+                modifier = Modifier.height(108.dp).width(64.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    state = listState,
+                    flingBehavior = flingBehavior,
+                    modifier = Modifier.height(108.dp)
+                ) {
+                    items(Int.MAX_VALUE) { index ->
+                        val itemVal = items[index % itemsCount]
+                        val isCenter = index == centerIndex
+                        val alpha = if (isCenter) 1f else 0.3f
+                        val textSize = if (isCenter) 24 else 18
+                        val fontWeight = if (isCenter) FontWeight.ExtraBold else FontWeight.Medium
+                        
+                        Box(
+                            modifier = Modifier
+                                .height(itemHeight)
+                                .fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = String.format(format, itemVal),
+                                fontSize = textSize.scaledSp,
+                                fontWeight = fontWeight,
+                                color = Color(0xFF5D4037).copy(alpha = alpha),
+                                fontFamily = MonospaceFontFamily,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
             
             IconButton(
                 onClick = {
-                    val newVal = if (value - 1 < range.start) range.endInclusive else value - 1
-                    onValueChange(newVal)
+                    coroutineScope.launch {
+                        val target = if (centerIndex - 2 < 0) 0 else centerIndex - 2
+                        listState.animateScrollToItem(target)
+                    }
                 },
                 modifier = Modifier.size(36.dp)
             ) {
