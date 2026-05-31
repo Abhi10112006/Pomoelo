@@ -5,53 +5,53 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// Centralized Material 3 Typography override incorporating offline PoppinsFontFamily
+// Centralized Material 3 Typography override incorporating offline fonts
 val Typography = Typography(
     displayLarge = TextStyle(
-        fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontFamily = MonospaceFontFamily,
+        fontWeight = FontWeight.Normal,
         fontSize = 57.sp,
         lineHeight = 64.sp,
         letterSpacing = (-0.25).sp
     ),
     displayMedium = TextStyle(
-        fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontFamily = MonospaceFontFamily,
+        fontWeight = FontWeight.Normal,
         fontSize = 45.sp,
         lineHeight = 52.sp,
         letterSpacing = 0.sp
     ),
     displaySmall = TextStyle(
-        fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Medium,
+        fontFamily = MonospaceFontFamily,
+        fontWeight = FontWeight.Normal,
         fontSize = 36.sp,
         lineHeight = 44.sp,
         letterSpacing = 0.sp
     ),
     headlineLarge = TextStyle(
-        fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontFamily = MonospaceFontFamily,
+        fontWeight = FontWeight.Normal,
         fontSize = 32.sp,
         lineHeight = 40.sp,
         letterSpacing = 0.sp
     ),
     headlineMedium = TextStyle(
-        fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Medium,
+        fontFamily = MonospaceFontFamily,
+        fontWeight = FontWeight.Normal,
         fontSize = 28.sp,
         lineHeight = 36.sp,
         letterSpacing = 0.sp
     ),
     headlineSmall = TextStyle(
-        fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Medium,
+        fontFamily = MonospaceFontFamily,
+        fontWeight = FontWeight.Normal,
         fontSize = 24.sp,
         lineHeight = 32.sp,
         letterSpacing = 0.sp
     ),
     titleLarge = TextStyle(
-        fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontFamily = MonospaceFontFamily,
+        fontWeight = FontWeight.Normal,
         fontSize = 22.sp,
         lineHeight = 28.sp,
         letterSpacing = 0.sp
