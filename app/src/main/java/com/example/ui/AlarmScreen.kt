@@ -105,6 +105,12 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
         }
     }
 
+    val alarmDao = remember { com.example.data.DatabaseProvider.getDatabase(context).alarmDao() }
+    val coroutineScope = rememberCoroutineScope()
+    val alarms by alarmDao.getAllAlarms().collectAsState(initial = emptyList())
+    var showEditDialog by remember { mutableStateOf(false) }
+    var activeEditAlarm by remember { mutableStateOf<com.example.data.AlarmItem?>(null) }
+
     Scaffold(
         containerColor = Color(0xFFFAF6F0), // Ultra-premium crisp soft cream background
         topBar = {
@@ -132,6 +138,21 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                     containerColor = Color.Transparent
                 )
             )
+        },
+        floatingActionButtonPosition = FabPosition.End,
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = {
+                    try {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    } catch (e: Exception) {}
+                    activeEditAlarm = null
+                    showEditDialog = true
+                },
+                containerColor = Color(0xFF5D4037)
+            ) {
+                Icon(imageVector = Icons.Default.Add, contentDescription = "Add Alarm", tint = Color.White)
+            }
         }
     ) { paddingValues ->
         Column(
@@ -146,12 +167,6 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
             Spacer(modifier = Modifier.height(4.dp))
 
             // MULTIPLE SAVED ALARMS SECTION
-            val alarmDao = remember { com.example.data.DatabaseProvider.getDatabase(context).alarmDao() }
-            val coroutineScope = rememberCoroutineScope()
-            val alarms by alarmDao.getAllAlarms().collectAsState(initial = emptyList())
-            var showEditDialog by remember { mutableStateOf(false) }
-            var activeEditAlarm by remember { mutableStateOf<com.example.data.AlarmItem?>(null) }
-
             if (showEditDialog) {
                 EditAlarmDialog(
                     alarm = activeEditAlarm,
@@ -221,42 +236,6 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                 fontFamily = AppFontFamily
                             )
                         }
-
-                        Button(
-                            onClick = {
-                                try {
-                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                } catch (e: Exception) {}
-                                activeEditAlarm = null
-                                showEditDialog = true
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF3E2723).copy(alpha = 0.06f),
-                                contentColor = Color(0xFF3E2723)
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF3E2723).copy(alpha = 0.15f)),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.height(34.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Add,
-                                    contentDescription = "Add Alarm",
-                                    tint = Color(0xFF3E2723),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = "Add Alarm",
-                                    fontSize = 11.scaledSp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = AppFontFamily
-                                )
-                            }
-                        }
                     }
 
                     if (alarms.isEmpty()) {
@@ -289,7 +268,7 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             alarms.forEach { item ->
-                                Row(
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(16.dp))
@@ -299,10 +278,12 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                             activeEditAlarm = item
                                             showEditDialog = true
                                         }
-                                        .padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .padding(14.dp)
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         val pmAm = if (item.hour >= 12) "PM" else "AM"
                                         val displayHr = when {
                                             item.hour == 0 -> 12
@@ -316,81 +297,82 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                             fontSize = 20.scaledSp,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = Color(0xFF3E2723),
-                                            fontFamily = MonospaceFontFamily
+                                            fontFamily = MonospaceFontFamily,
+                                            modifier = Modifier.weight(1f)
                                         )
                                         
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        
-                                        Text(
-                                            text = "${item.label} • ${formatDaysOfWeekDisplay(item.daysOfWeek)}",
-                                            fontSize = 11.scaledSp,
-                                            color = Color.Gray,
-                                            fontFamily = AppFontFamily
-                                        )
-                                    }
-
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(Color(0xFFE8F5E9))
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            Text(
-                                                text = "${item.squatTarget} squats",
-                                                fontSize = 9.scaledSp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF2E7D32),
-                                                fontFamily = MonospaceFontFamily
-                                            )
-                                        }
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(Color(0xFFE8F5E9))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "${item.squatTarget} squats",
+                                                    fontSize = 9.scaledSp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF2E7D32),
+                                                    fontFamily = MonospaceFontFamily
+                                                )
+                                            }
 
-                                        Switch(
-                                            checked = item.isEnabled,
-                                            onCheckedChange = { isChecked ->
-                                                try {
-                                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
-                                                } catch (e: Exception) {}
-                                                val toggled = item.copy(isEnabled = isChecked)
-                                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                                    alarmDao.updateAlarm(toggled)
-                                                    if (isChecked) {
-                                                        com.example.service.AlarmScheduler.scheduleAlarm(context, toggled)
-                                                    } else {
-                                                        com.example.service.AlarmScheduler.cancelAlarm(context, toggled.id)
+                                            Switch(
+                                                checked = item.isEnabled,
+                                                onCheckedChange = { isChecked ->
+                                                    try {
+                                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                                                    } catch (e: Exception) {}
+                                                    val toggled = item.copy(isEnabled = isChecked)
+                                                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                        alarmDao.updateAlarm(toggled)
+                                                        if (isChecked) {
+                                                            com.example.service.AlarmScheduler.scheduleAlarm(context, toggled)
+                                                        } else {
+                                                            com.example.service.AlarmScheduler.cancelAlarm(context, toggled.id)
+                                                        }
+                                                    }
+                                                },
+                                                colors = SwitchDefaults.colors(
+                                                    checkedThumbColor = Color.White,
+                                                    checkedTrackColor = Color(0xFF3E2723),
+                                                    uncheckedThumbColor = Color.White,
+                                                    uncheckedTrackColor = Color(0xFFD7CCC8)
+                                                )
+                                            )
+
+                                            IconButton(
+                                                onClick = {
+                                                    try {
+                                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                                    } catch (e: Exception) {}
+                                                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                        com.example.service.AlarmScheduler.cancelAlarm(context, item.id)
+                                                        alarmDao.deleteAlarm(item)
                                                     }
                                                 }
-                                            },
-                                            colors = SwitchDefaults.colors(
-                                                checkedThumbColor = Color.White,
-                                                checkedTrackColor = Color(0xFF3E2723),
-                                                uncheckedThumbColor = Color.White,
-                                                uncheckedTrackColor = Color(0xFFD7CCC8)
-                                            )
-                                        )
-
-                                        IconButton(
-                                            onClick = {
-                                                try {
-                                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                                } catch (e: Exception) {}
-                                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                                    com.example.service.AlarmScheduler.cancelAlarm(context, item.id)
-                                                    alarmDao.deleteAlarm(item)
-                                                }
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Delete,
+                                                    contentDescription = "Delete Alarm",
+                                                    tint = Color(0xFFD32F2F),
+                                                    modifier = Modifier.size(20.dp)
+                                                )
                                             }
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Delete,
-                                                contentDescription = "Delete Alarm",
-                                                tint = Color(0xFFD32F2F),
-                                                modifier = Modifier.size(20.dp)
-                                            )
                                         }
                                     }
+                                    
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    
+                                    Text(
+                                        text = "${item.label} • ${formatDaysOfWeekDisplay(item.daysOfWeek)}",
+                                        fontSize = 11.scaledSp,
+                                        color = Color.Gray,
+                                        fontFamily = AppFontFamily
+                                    )
                                 }
                             }
                         }
@@ -651,6 +633,8 @@ fun EditAlarmDialog(
                     color = Color(0xFF5D4037)
                 )
 
+                Spacer(modifier = Modifier.height(8.dp))
+
                 // Vertical digital text picker columns with adjacent AM/PM segmented toggle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -745,7 +729,7 @@ fun EditAlarmDialog(
                     text = String.format("Selected Time: %d:%02d %s", amPmSelectedHour, minute, previewAmPm),
                     fontSize = 15.scaledSp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFE65100),
+                    color = Color(0xFF5D4037),
                     fontFamily = MonospaceFontFamily,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
@@ -784,8 +768,10 @@ fun EditAlarmDialog(
                         valueRange = 3f..30f,
                         colors = SliderDefaults.colors(
                             thumbColor = Color(0xFF4CAF50),
-                            activeTrackColor = Color(0xFFA5D6A7)
-                        )
+                            activeTrackColor = Color(0xFF4CAF50),
+                            inactiveTrackColor = Color(0xFFEAE6E1)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
 
@@ -841,19 +827,22 @@ fun EditAlarmDialog(
                         onClick = { selectedDays = (1..7).toSet() },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("Daily", fontSize = 11.scaledSp, color = Color(0xFFB83000))
+                        val isSelected = selectedDays == (1..7).toSet()
+                        Text("Daily", fontSize = 11.scaledSp, color = Color(0xFF5D4037).copy(alpha = if (isSelected) 1f else 0.7f), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
                     }
                     TextButton(
                         onClick = { selectedDays = setOf(2, 3, 4, 5, 6) },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("Weekdays", fontSize = 11.scaledSp, color = Color(0xFFB83000))
+                        val isSelected = selectedDays == setOf(2, 3, 4, 5, 6)
+                        Text("Weekdays", fontSize = 11.scaledSp, color = Color(0xFF5D4037).copy(alpha = if (isSelected) 1f else 0.7f), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
                     }
                     TextButton(
                         onClick = { selectedDays = setOf(1, 7) },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("Weekends", fontSize = 11.scaledSp, color = Color(0xFFB83000))
+                        val isSelected = selectedDays == setOf(1, 7)
+                        Text("Weekends", fontSize = 11.scaledSp, color = Color(0xFF5D4037).copy(alpha = if (isSelected) 1f else 0.7f), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
                     }
                 }
 

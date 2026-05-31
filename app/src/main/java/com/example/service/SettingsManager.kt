@@ -44,10 +44,10 @@ object SettingsManager {
         TimerManager.setBreakTimeMins(getBreakTimeMins())
     }
 
-    fun getSquatValleyThreshold(): Float = getPrefs().getFloat(KEY_SQUAT_VALLEY_THRESHOLD, -0.3f)
+    fun getSquatValleyThreshold(): Float? = if (getPrefs().contains(KEY_SQUAT_VALLEY_THRESHOLD)) getPrefs().getFloat(KEY_SQUAT_VALLEY_THRESHOLD, -0.4f) else null
     fun setSquatValleyThreshold(value: Float) = getPrefs().edit().putFloat(KEY_SQUAT_VALLEY_THRESHOLD, value).apply()
 
-    fun getSquatPeakThreshold(): Float = getPrefs().getFloat(KEY_SQUAT_PEAK_THRESHOLD, 0.3f)
+    fun getSquatPeakThreshold(): Float? = if (getPrefs().contains(KEY_SQUAT_PEAK_THRESHOLD)) getPrefs().getFloat(KEY_SQUAT_PEAK_THRESHOLD, 0.4f) else null
     fun setSquatPeakThreshold(value: Float) = getPrefs().edit().putFloat(KEY_SQUAT_PEAK_THRESHOLD, value).apply()
 
     fun getSquatTarget(): Int = getPrefs().getInt(KEY_SQUAT_TARGET, 0)

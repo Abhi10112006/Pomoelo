@@ -54,10 +54,6 @@ class SquatSensorService(context: Context) : SensorEventListener {
     private var currentRepMinVelocity = 0f
     private var currentRepMaxVelocity = 0f
 
-    // Tunable thresholds
-    private var valleyThreshold = -0.3f
-    private var peakThreshold = 0.3f
-
     // Live update listeners
     private var onSquatsCompleted: (() -> Unit)? = null
     private var onSquatDetected: ((Int) -> Unit)? = null
@@ -89,9 +85,6 @@ class SquatSensorService(context: Context) : SensorEventListener {
         }
         requiredSquats = targetSquats
         squatCount = 0
-        
-        valleyThreshold = SettingsManager.getSquatValleyThreshold()
-        peakThreshold = SettingsManager.getSquatPeakThreshold()
         
         // Reset dynamic states
         gravityX = 0f
@@ -204,12 +197,15 @@ class SquatSensorService(context: Context) : SensorEventListener {
             // Integrate with leaky decay of 0.95f
             verticalVelocity = (verticalVelocity + (filteredVerticalAccel * cappedDt)) * 0.95f
 
+            val currentValleyThreshold = SettingsManager.getSquatValleyThreshold() ?: -0.4f
+            val currentPeakThreshold = SettingsManager.getSquatPeakThreshold() ?: 0.4f
+
             // Verbose logging of the telemetry
             Log.d(
                 "SquatDebug",
+                "Current Velocity: ${verticalVelocity.format()} | Required Valley Threshold: ${currentValleyThreshold.format()} (Personalized)\n" +
                 "TrueVert: ${trueVerticalAccel.format()}, " +
                 "FilteredVert: ${filteredVerticalAccel.format()}, " +
-                "Velocity: ${verticalVelocity.format()}, " +
                 "State: $currentState, " +
                 "Elapsed: ${if (descentStartTime > 0) "${currentTime - descentStartTime}ms" else "N/A"}"
             )
@@ -258,7 +254,7 @@ class SquatSensorService(context: Context) : SensorEventListener {
 
             // 4. Velocity-Based State Machine
             // State 1 (Descending Phase): verticalVelocity drops below valleyThreshold
-            if (verticalVelocity < valleyThreshold) {
+            if (verticalVelocity < currentValleyThreshold) {
                 if (currentState != SquatState.DESCENDING) {
                     currentState = SquatState.DESCENDING
                     descentStartTime = currentTime
@@ -268,7 +264,7 @@ class SquatSensorService(context: Context) : SensorEventListener {
                 }
             } 
             // State 2 (Ascending Phase): verticalVelocity rises above peakThreshold
-            else if (verticalVelocity > peakThreshold) {
+            else if (verticalVelocity > currentPeakThreshold) {
                 if (currentState == SquatState.DESCENDING) {
                     val elapsed = currentTime - descentStartTime
                     Log.d("SquatDebug", "State evaluation: DESCENDING -> ASCENDING check. elapsed: ${elapsed}ms, velocity: ${verticalVelocity.format()}")
@@ -301,7 +297,7 @@ class SquatSensorService(context: Context) : SensorEventListener {
                 }
             } else {
                 // Return to IDLE when velocity calms down or descent timer is exceeded
-                if (currentState == SquatState.ASCENDING && verticalVelocity < peakThreshold / 2) {
+                if (currentState == SquatState.ASCENDING && verticalVelocity < currentPeakThreshold / 2) {
                     currentState = SquatState.IDLE
                     Log.d("SquatDebug", "State change: ASCENDING -> IDLE, velocity normalized: ${verticalVelocity.format()}")
                 }
