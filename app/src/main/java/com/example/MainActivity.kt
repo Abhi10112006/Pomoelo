@@ -336,6 +336,9 @@ fun PomoPalApp(viewModel: TimerViewModel) {
             composable("alarm") {
                 com.example.ui.AlarmScreen(navController, bottomPadding)
             }
+            composable("calibration") {
+                com.example.ui.SquatCalibrationScreen(onNavigateBack = { navController.popBackStack() })
+            }
         }
     }
 

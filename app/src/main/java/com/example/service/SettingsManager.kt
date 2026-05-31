@@ -16,6 +16,9 @@ object SettingsManager {
     private const val KEY_CUSTOM_COMPLETION = "custom_completion_uri"
     private const val KEY_CUSTOM_BACKGROUND = "custom_background_uri"
 
+    private const val KEY_SQUAT_VALLEY_THRESHOLD = "user_squat_valley_threshold"
+    private const val KEY_SQUAT_PEAK_THRESHOLD = "user_squat_peak_threshold"
+
     @Volatile
     private var prefs: SharedPreferences? = null
 
@@ -40,6 +43,12 @@ object SettingsManager {
         TimerManager.setFocusTimeMins(getFocusTimeMins())
         TimerManager.setBreakTimeMins(getBreakTimeMins())
     }
+
+    fun getSquatValleyThreshold(): Float = getPrefs().getFloat(KEY_SQUAT_VALLEY_THRESHOLD, -0.3f)
+    fun setSquatValleyThreshold(value: Float) = getPrefs().edit().putFloat(KEY_SQUAT_VALLEY_THRESHOLD, value).apply()
+
+    fun getSquatPeakThreshold(): Float = getPrefs().getFloat(KEY_SQUAT_PEAK_THRESHOLD, 0.3f)
+    fun setSquatPeakThreshold(value: Float) = getPrefs().edit().putFloat(KEY_SQUAT_PEAK_THRESHOLD, value).apply()
 
     fun getSquatTarget(): Int = getPrefs().getInt(KEY_SQUAT_TARGET, 0)
     fun setSquatTarget(count: Int) = getPrefs().edit().putInt(KEY_SQUAT_TARGET, count).apply()

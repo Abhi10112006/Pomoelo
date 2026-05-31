@@ -563,6 +563,20 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                 Text("Grant Exact Alarm Integration", fontSize = 12.scaledSp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
                         }
+                        
+                        Button(
+                            onClick = {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                } catch (e: Exception) {}
+                                navController.navigate("calibration")
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5D4037)),
+                            modifier = Modifier.fillMaxWidth().height(42.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Calibrate Squat Sensor", fontSize = 12.scaledSp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
                     }
                 }
             }
