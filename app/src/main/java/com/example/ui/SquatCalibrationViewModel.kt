@@ -14,60 +14,52 @@ class SquatCalibrationViewModel(application: Application) : AndroidViewModel(app
 
     private val sensorService = SquatSensorService(application)
 
-    private val _calibratedSquats = MutableStateFlow(0)
-    val calibratedSquats: StateFlow<Int> = _calibratedSquats.asStateFlow()
+    private var _timeLeft = MutableStateFlow(10)
+    val timeLeft: StateFlow<Int> = _timeLeft.asStateFlow()
 
     private val _isCalibrationComplete = MutableStateFlow(false)
     val isCalibrationComplete: StateFlow<Boolean> = _isCalibrationComplete.asStateFlow()
 
-    // Store peaks and valleys
-    private val valleyList = mutableListOf<Float>()
-    private val peakList = mutableListOf<Float>()
+    private var absoluteMaxPeak = 0f
+    private var absoluteMinValley = 0f
 
     fun startCalibration() {
-        _calibratedSquats.value = 0
+        _timeLeft.value = 10
         _isCalibrationComplete.value = false
-        valleyList.clear()
-        peakList.clear()
+        absoluteMaxPeak = 0f
+        absoluteMinValley = 0f
 
-        // Temporarily set loose thresholds just for calibration to ensure we catch reps easily
-        val originalValley = SettingsManager.getSquatValleyThreshold()
-        val originalPeak = SettingsManager.getSquatPeakThreshold()
-        
-        SettingsManager.setSquatValleyThreshold(-0.2f)
-        SettingsManager.setSquatPeakThreshold(0.2f)
+        // Let the tracking run with wide thresholds, though we don't care about reps anymore
+        SettingsManager.setSquatValleyThreshold(-0.01f)
+        SettingsManager.setSquatPeakThreshold(0.01f)
+
+        // Give the user 10 seconds of raw tracking
+        viewModelScope.launch {
+            for (i in 10 downTo 1) {
+                kotlinx.coroutines.delay(1000)
+                _timeLeft.value = i - 1
+            }
+            finishCalibration()
+        }
 
         sensorService.startTracking(
-            targetSquats = 0, // 0 means don't auto-stop
+            targetSquats = 0, // Continuous
             onComplete = {},
-            onUpdate = { count ->
-                if (_calibratedSquats.value < 3) {
-                    _calibratedSquats.value = count
-                }
-            },
+            onUpdate = {},
             onShakeWarning = {},
             onMetrics = { minVel, maxVel ->
-                if (valleyList.size < 3) {
-                    valleyList.add(minVel)
-                    peakList.add(maxVel)
-                    
-                    if (valleyList.size == 3) {
-                        finishCalibration(originalValley, originalPeak)
-                    }
-                }
+                if (minVel < absoluteMinValley) absoluteMinValley = minVel
+                if (maxVel > absoluteMaxPeak) absoluteMaxPeak = maxVel
             }
         )
     }
 
-    private fun finishCalibration(originalValley: Float, originalPeak: Float) {
+    private fun finishCalibration() {
         sensorService.stopTracking()
         
-        val avgValley = valleyList.average().toFloat()
-        val avgPeak = peakList.average().toFloat()
-        
         // Apply 70% tolerance multiplier
-        val finalValley = avgValley * 0.7f
-        val finalPeak = avgPeak * 0.7f
+        val finalValley = absoluteMinValley * 0.7f
+        val finalPeak = absoluteMaxPeak * 0.7f
         
         // To be safe, ensure it doesn't get too close to 0 due to noise
         val safeValley = if (finalValley > -0.2f) -0.2f else finalValley
@@ -77,7 +69,6 @@ class SquatCalibrationViewModel(application: Application) : AndroidViewModel(app
         SettingsManager.setSquatValleyThreshold(safeValley)
         SettingsManager.setSquatPeakThreshold(safePeak)
         
-        _calibratedSquats.value = 3
         _isCalibrationComplete.value = true
     }
     

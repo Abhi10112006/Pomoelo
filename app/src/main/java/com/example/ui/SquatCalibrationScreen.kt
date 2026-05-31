@@ -25,7 +25,7 @@ fun SquatCalibrationScreen(
     onNavigateBack: () -> Unit,
     viewModel: SquatCalibrationViewModel = viewModel()
 ) {
-    val calibratedSquats by viewModel.calibratedSquats.collectAsState()
+    val timeLeft by viewModel.timeLeft.collectAsState()
     val isComplete by viewModel.isCalibrationComplete.collectAsState()
 
     DisposableEffect(Unit) {
@@ -64,7 +64,7 @@ fun SquatCalibrationScreen(
                 Spacer(modifier = Modifier.height(24.dp))
                 
                 Text(
-                    text = "Let's calibrate your hardware. Hold your phone and perform 3 deep squats.",
+                    text = "Let's calibrate your hardware. Hold your phone and squat continuously for 10 seconds.",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Medium,
                     color = Color(0xFF5D4037),
@@ -74,29 +74,27 @@ fun SquatCalibrationScreen(
                 
                 Spacer(modifier = Modifier.height(48.dp))
                 
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth(0.8f)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp)
-                    ) {
+                Box(contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        progress = { timeLeft / 10f },
+                        modifier = Modifier.size(160.dp),
+                        color = Color(0xFFE65100),
+                        strokeWidth = 12.dp,
+                        trackColor = Color(0xFFE5D5D0)
+                    )
+                    
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "Squats",
-                            fontSize = 14.sp,
-                            color = Color.Gray,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "$calibratedSquats / 3",
-                            fontSize = 48.sp,
+                            text = "$timeLeft",
+                            fontSize = 64.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color(0xFFE65100)
+                        )
+                        Text(
+                            text = "sec",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray
                         )
                     }
                 }

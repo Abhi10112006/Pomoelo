@@ -20,6 +20,8 @@ class SquatSensorService(context: Context) : SensorEventListener {
     private var sensorManager: SensorManager? = null
     private var gravitySensor: Sensor? = null
     private var linearAccelSensor: Sensor? = null
+    private var accelSensor: Sensor? = null
+    private var usingFallbackAccel = false
     
     // Squat detection counter state
     private var squatCount = 0
@@ -67,6 +69,11 @@ class SquatSensorService(context: Context) : SensorEventListener {
         sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         gravitySensor = sensorManager?.getDefaultSensor(Sensor.TYPE_GRAVITY)
         linearAccelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+        
+        if (linearAccelSensor == null) {
+            accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            usingFallbackAccel = true
+        }
     }
 
     fun startTracking(
@@ -111,11 +118,17 @@ class SquatSensorService(context: Context) : SensorEventListener {
         onSquatMetrics = onMetrics
 
 
-        gravitySensor?.let {
-            sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
-        }
-        linearAccelSensor?.let {
-            sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        if (!usingFallbackAccel) {
+            gravitySensor?.let {
+                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            }
+            linearAccelSensor?.let {
+                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            }
+        } else {
+            accelSensor?.let {
+                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            }
         }
     }
 
@@ -139,13 +152,30 @@ class SquatSensorService(context: Context) : SensorEventListener {
             return
         }
 
+        if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+            // Apply low pass filter to raw accelerometer to isolate gravity
+            val alpha = 0.8f
+            gravityX = alpha * gravityX + (1 - alpha) * event.values[0]
+            gravityY = alpha * gravityY + (1 - alpha) * event.values[1]
+            gravityZ = alpha * gravityZ + (1 - alpha) * event.values[2]
+            gravityReceived = true
+
+            // Subtract gravity to estimate linear acceleration
+            val linX = event.values[0] - gravityX
+            val linY = event.values[1] - gravityY
+            val linZ = event.values[2] - gravityZ
+
+            processLinearAcceleration(linX, linY, linZ, event.timestamp, currentTime)
+            return
+        }
+
         if (event.sensor.type == Sensor.TYPE_LINEAR_ACCELERATION) {
             if (!gravityReceived) return
+            processLinearAcceleration(event.values[0], event.values[1], event.values[2], event.timestamp, currentTime)
+        }
+    }
 
-            val linX = event.values[0]
-            val linY = event.values[1]
-            val linZ = event.values[2]
-
+    private fun processLinearAcceleration(linX: Float, linY: Float, linZ: Float, timestamp: Long, currentTime: Long) {
             // 1. Sensor Fusion & Orientation Independence
             val gMagnitude = sqrt(gravityX * gravityX + gravityY * gravityY + gravityZ * gravityZ)
             if (gMagnitude < 1.0f) return
@@ -164,9 +194,9 @@ class SquatSensorService(context: Context) : SensorEventListener {
             val dt = if (lastTimestamp == 0L) {
                 0f
             } else {
-                (event.timestamp - lastTimestamp) / 1_000_000_000f
+                (timestamp - lastTimestamp) / 1_000_000_000f
             }
-            lastTimestamp = event.timestamp
+            lastTimestamp = timestamp
 
             // Handle frame/event hiccups gracefully
             val cappedDt = if (dt > 0.1f) 0.1f else dt
@@ -220,9 +250,10 @@ class SquatSensorService(context: Context) : SensorEventListener {
             }
 
             // Track extremes during movement
-            if (currentState != SquatState.IDLE) {
+            if (currentState != SquatState.IDLE || requiredSquats == 0) { // always track extremes in calibration mode
                 if (verticalVelocity < currentRepMinVelocity) currentRepMinVelocity = verticalVelocity
                 if (verticalVelocity > currentRepMaxVelocity) currentRepMaxVelocity = verticalVelocity
+                onSquatMetrics?.invoke(verticalVelocity, verticalVelocity)
             }
 
             // 4. Velocity-Based State Machine
@@ -231,8 +262,8 @@ class SquatSensorService(context: Context) : SensorEventListener {
                 if (currentState != SquatState.DESCENDING) {
                     currentState = SquatState.DESCENDING
                     descentStartTime = currentTime
-                    currentRepMinVelocity = verticalVelocity
-                    currentRepMaxVelocity = verticalVelocity
+                    currentRepMinVelocity = 0f // Reset relative to rep
+                    currentRepMaxVelocity = 0f
                     Log.d("SquatDebug", "State change: IDLE -> DESCENDING, velocity: ${verticalVelocity.format()}")
                 }
             } 
@@ -251,7 +282,6 @@ class SquatSensorService(context: Context) : SensorEventListener {
                             
                             squatCount++
                             onSquatDetected?.invoke(squatCount)
-                            onSquatMetrics?.invoke(currentRepMinVelocity, currentRepMaxVelocity)
                             Log.d("SquatDebug", "SQUAT VALIDATED! repCount: $squatCount, completionTime: ${elapsed}ms")
 
                             if (requiredSquats > 0 && squatCount >= requiredSquats) {
@@ -281,7 +311,6 @@ class SquatSensorService(context: Context) : SensorEventListener {
                     Log.d("SquatDebug", "State change: DESCENDING -> IDLE due to timeout expiration")
                 }
             }
-        }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
