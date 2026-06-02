@@ -960,7 +960,10 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
             
             Spacer(modifier = Modifier.height(24.dp))
             Card(
-                modifier = Modifier.fillMaxWidth().clickable { showBlockedApps = true },
+                modifier = Modifier.fillMaxWidth().clickable { 
+                    try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                    showBlockedApps = true 
+                },
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFCC80).copy(alpha = 0.6f))
@@ -1297,11 +1300,11 @@ fun PremiumJumpingTextPreview(text: String) {
 fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     androidx.compose.ui.window.Dialog(
-        onDismissRequest = {}, // Empty lambda to disable platform click outside dismiss
+        onDismissRequest = onCancel, // Allow platform click outside and back press dismiss
         properties = androidx.compose.ui.window.DialogProperties(
             usePlatformDefaultWidth = false,
             dismissOnClickOutside = false,
-            dismissOnBackPress = true // Support system back button for convenience, or false if strictly button only
+            dismissOnBackPress = true // Support system back button for convenience
         )
     ) {
         var animateIn by remember { mutableStateOf(false) }
@@ -1919,6 +1922,7 @@ fun SeriousFullscreenOverlay(
 ) {
     val context = LocalContext.current
     val activity = context as? android.app.Activity
+    val view = androidx.compose.ui.platform.LocalView.current
     
     // Prevent exiting using system back gestures/keys
     androidx.activity.compose.BackHandler(enabled = true) {
@@ -2250,7 +2254,10 @@ fun SeriousFullscreenOverlay(
                         }
                         
                         Button(
-                            onClick = onDismiss,
+                            onClick = {
+                                try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                                onDismiss()
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32).copy(alpha = 0.2f)),
                             border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF81C784).copy(alpha = animatedAlpha)),
                             shape = RoundedCornerShape(24.dp),

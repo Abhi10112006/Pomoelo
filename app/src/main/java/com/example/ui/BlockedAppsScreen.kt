@@ -71,10 +71,16 @@ fun AppIcon(packageName: String) {
 @Composable
 fun BlockedAppsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
     val scope = rememberCoroutineScope()
     var appList by remember { mutableStateOf<List<AppItem>>(emptyList()) }
     var blockedSet by remember { mutableStateOf(SettingsManager.getBlockedApps()) }
     var isLoading by remember { mutableStateOf(true) }
+
+    androidx.activity.compose.BackHandler {
+        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+        onBack()
+    }
 
     // Check accessibility permission
     var hasAccessibilityPermission by remember { mutableStateOf(isAccessibilityServiceEnabled(context)) }
@@ -111,7 +117,10 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
             TopAppBar(
                 title = { Text("Distraction Manager", fontWeight = FontWeight.Bold, color = Color(0xFF5D4037)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                        onBack()
+                    }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color(0xFF5D4037))
                     }
                 },
@@ -122,6 +131,25 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
             
+            var searchQuery by remember { mutableStateOf("") }
+            
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search apps...", color = Color.Gray) },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFFFF8A80),
+                    unfocusedBorderColor = Color(0xFFFFCC80),
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White
+                )
+            )
+
             if (!hasAccessibilityPermission) {
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -139,6 +167,7 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = {
+                                try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
                                 context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color.White)
@@ -163,11 +192,16 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                     CircularProgressIndicator(color = Color(0xFFFF8A80))
                 }
             } else {
+                val filteredAppList = remember(appList, searchQuery) {
+                    if (searchQuery.isEmpty()) appList 
+                    else appList.filter { it.label.contains(searchQuery, ignoreCase = true) }
+                }
+
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
-                    items(appList, key = { it.packageName }) { app ->
+                    items(filteredAppList, key = { it.packageName }) { app ->
                         val isSelected = app.isBlocked
                         val containerColor by animateColorAsState(
                             targetValue = if (isSelected) Color(0xFFFF8A80).copy(alpha = 0.12f) else Color.Transparent,
@@ -187,6 +221,7 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(containerColor)
                                 .clickable {
+                                    try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
                                     val currentSet = blockedSet.toMutableSet()
                                     if (currentSet.contains(app.packageName)) {
                                         currentSet.remove(app.packageName)

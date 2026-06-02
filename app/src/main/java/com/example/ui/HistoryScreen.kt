@@ -351,7 +351,10 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                     },
                     dismissButton = {
                         TextButton(
-                            onClick = { showTier2Dialog = false }
+                            onClick = {
+                                try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                                showTier2Dialog = false
+                            }
                         ) {
                             Text("[ Cancel ]", color = Color(0xFF8D6E63))
                         }
@@ -439,6 +442,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     TextButton(onClick = { 
+                                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
                                         showTier3Dialog = false 
                                         tier3InputText = ""
                                     }) {

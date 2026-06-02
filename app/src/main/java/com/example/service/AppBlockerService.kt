@@ -10,7 +10,8 @@ class AppBlockerService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
             val packageName = event.packageName?.toString() ?: return
 
             // Check if timer is running and if it's focus mode
@@ -22,7 +23,7 @@ class AppBlockerService : AccessibilityService() {
                 if (blockedApps.contains(packageName) && packageName != applicationContext.packageName) {
                     // Block the app by launching our MainActivity overlay
                     val launchIntent = Intent(this, MainActivity::class.java).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
                         putExtra("BLOCKED_APP", packageName)
                     }
                     startActivity(launchIntent)
@@ -37,7 +38,7 @@ class AppBlockerService : AccessibilityService() {
 
     override fun onServiceConnected() {
         val info = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
         }
