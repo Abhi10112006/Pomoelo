@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">PomoPal</string>
+    <string name="accessibility_service_description">PomoPal App Blocker intercepts and blocks distracting apps while your focus timer is active.</string>
 </resources>

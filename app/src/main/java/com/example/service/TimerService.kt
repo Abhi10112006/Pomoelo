@@ -63,138 +63,8 @@ class TimerService : Service() {
             TimerManager.setCurrentQuote(value)
         }
 
-    private val studyQuotes = listOf(
-        "Your future is getting fucked while you scroll like a dumbass.",
-        "Competitors are grinding, tu yahan reels pe lund chus raha hai.",
-        "Padhna toh padega, saale. Yeh dopamine ka chuttad mat ban.",
-        "Every notification you open is another seat you’re kissing goodbye.",
-        "Time waste kar raha hai? Result mein gaand phategi teri.",
-        "Toppers are solving papers, you’re busy liking bullshit posts.",
-        "Kal se padhunga attitude will fuck your entire life.",
-        "Yeh phone tera baap nahi hai, iska gulam mat ban.",
-        "You’re not resting, you’re just a weak addicted piece of shit.",
-        "Exam hall mein yeh regret tere muh pe thappad marega.",
-        "Har reel ek question banegi jo tujhe fail karegi.",
-        "Aukaat nahi hai toh sapne dekhna band kar, chutiye.",
-        "Your rank is dying every minute you waste on this garbage.",
-        "Distractions ne teri life ki gaand maar li hai.",
-        "Stop lying, motherfucker. You’re not studying at all.",
-        "Yeh “thoda aur” wala scene tujhe road pe laayega.",
-        "Future self already hates your guts for this bullshit.",
-        "Clock nahi rukega, teri gaand pakad ke le jayega.",
-        "Competitors ne 4 hours padh liye, tu abhi bhi chat pe hai. ",
-        "Yeh addiction tera selection ka gandha murderer hai.",
-        "You chose cheap dopamine over your fucking dream.",
-        "Result aayega toh sirf rona aur “kash” hi bachega.",
-        "Phone ne tujhe bewakoof bana diya hai, samajh le.",
-        "Average log scroll karte hain. Winners unko maar dete hain.",
-        "Tera time barbaad ho raha hai aur tu has raha hai.",
-        "Jab paper khali rahega, yaad aayega yeh moment.",
-        "Stop betraying yourself, you spineless fuck.",
-        "Notifications tere life ka control le chuke hain.",
-        "Yeh break 2 ghante ka ho gaya, ab ro mat.",
-        "Sapne bade hain, lekin discipline zero. Pathetic.",
-        "Har ghanta waste = ek attempt ki gaand.",
-        "Tu nahi so raha, tu apni future ko maar raha hai.",
-        "Reels dekh ke kya milega? Sirf regret aur zero rank.",
-        "Your competitors don’t give a fuck about your excuses.",
-        "Phone rakh nahi pa raha? Toh haar maan le saale.",
-        "Yeh “chill” mode tujhe lifetime loser bana dega.",
-        "Distraction free nahi hua toh selection bhi nahi hoga.",
-        "Time is fucking running, and you’re standing still.",
-        "Exam ke din yeh guilt tujhe andar se kha jayega.",
-        "Stop wasting your parents’ money on this bullshit habit.",
-        "Put the fucking phone down and lock in right now.",
-        "Grind kar, warna zindagi bhar gaand marwa.",
-        "Timer on. Distractions ko fuck off bol.",
-        "Lock the fuck in or get destroyed in the exam.",
-        "Padhle madarchod, baad mein rona mat.",
-        "Competitors jaise padh, warna unke peeche hi reh.",
-        "No more bullshit. Books khol aur shuru ho ja.",
-        "Phone side kar, brain on kar, abhi.",
-        "Fuck the notifications. Study like your life depends on it.",
-        "Aukaat dikha saale. Beast mode ON.",
-        "Every second you delay is another seat gone, motherfucker.",
-        "Stop thinking. Start fucking grinding.",
-        "Yeh session complete kar, baaki duniya baad mein.",
-        "Tu topper banega ya chu**iya banega? Decide now.",
-        "Lock in so hard your distractions start crying.",
-        "Gaand mein dum hai toh timer laga aur padh.",
-        "No more “bas ek video”. Pure focus, abhi.",
-        "Competitors nahi soye, tu kyun apni gaand bacha raha hai?",
-        "Padh le bhenchod, warna sapne chod de.",
-        "Crush this session like you want to crush the competition.",
-        "Distraction free. Zero bakchodi. Full savage mode.",
-        "Abhi shuru kar, warna lifetime regret shuru hoga.",
-        "Timer laga. World ko mute kar. Lock in.",
-        "Be the ruthless student your future self will respect.",
-        "Gaali khani hai ya selection jeetna hai? Choose fast.",
-        "Stop scrolling, start destroying questions.",
-        "Hard work kar, baaki sab bakchodi hai saale.",
-        "Lock in so brutally that even apps get scared.",
-        "Yeh moment tera hai. Waste mat kar, chutiye.",
-        "Phone band kar. Brain ON. Let’s fucking destroy it.",
-        "Competitors ko peeche chhod, ab tera time hai.",
-        "No mercy for distractions. Study like a machine.",
-        "Timer shuru. Mind locked. Future secured, motherfucker.",
-        "Padh le warna zindagi bhar “kash” bolta rahega.",
-        "Become fucking unstoppable. Start this session now.",
-        "Distractions ko delete kar. Discipline ko fuck in.",
-        "Abhi ka pain kal ka top rank banega.",
-        "No half-assed shit. Full savage focus.",
-        "Tu jeetega, lekin abhi action lena padega bhenchod.",
-        "Lock in. Grind hard. Fuck the competition."
-    )
-
-    private val breakQuotes = listOf(
-        "Rest is not laziness; it is a vital part of growth. Breathe.",
-        "Recharge your energy. Your mind deserves a peaceful pause.",
-        "Disconnect for a few moments to reconnect even stronger.",
-        "Relax, release tension, and let your mind wander.",
-        "A mindful break clears the path for ultimate creativity.",
-        "Inhale peace, exhale stress. Good job on your session!",
-        "Rest when you're weary. Refresh and renew yourself.",
-        "Taking time to rest is a gesture of self-respect.",
-        "Give yourself permission to pause and appreciate progress.",
-        "A rested brain is an inspired brain. Enjoy this moment.",
-        "Quiet the mind and the soul will speak.",
-        "Stretch your body, drink some water, and clear your gaze.",
-        "Step back from the canvas of work to see the whole picture.",
-        "Pause. Breathe. Smile. You are doing exceptionally well.",
-        "Let your thoughts settle like petals on a quiet pond.",
-        "True productivity includes knowing when to heal and rest.",
-        "The rhythm of life requires both the stride and the pause.",
-        "A brief rest restores the spirit and sharpens the intellect.",
-        "Look out the window, find the sky, and remember your roots.",
-        "Close your eyes for ten deep breaths. Let go of the hurry.",
-        "Your mind is a sky; let the clouds of thoughts float away.",
-        "Peace is not the absence of work; it is the presence of rest within.",
-        "A glass of water, a deep stretch, a free mind.",
-        "Gentle pauses create space for brilliant epiphanies.",
-        "Allow your focus muscles to fully relax. You've earned it.",
-        "Breathe in fresh inspiration, and blow out lingering fatigue.",
-        "Pace yourself; the journey of knowledge is a beautiful marathon.",
-        "Rest is the sacred soil in which focus takes root.",
-        "Let your shoulders drop. Let your jaw soften. Just be.",
-        "Stepping away is sometimes the fastest way to leap forward.",
-        "Unload the mental stack. Empty your mind for a few minutes.",
-        "The pauses between notes are what make the music beautiful.",
-        "You have built momentum; now let it rest with grace.",
-        "Take a minute to wander without a map.",
-        "A break is the breath that supports your next great work.",
-        "Savor this pause—it is the bridge between effort and reward.",
-        "Nurture your clarity. Let your thoughts wander free.",
-        "A moment of stillness can realign a whole day of focus.",
-        "Give your focus a soft place to land before the next flight.",
-        "You are precious, and your peace is paramount. Rest well."
-    )
-
     private fun getRandomQuote(isBreakMode: Boolean): String {
-        return if (isBreakMode) {
-            breakQuotes.random()
-        } else {
-            studyQuotes.random()
-        }
+        return QuoteManager.getFreshQuote(this, isBreakMode, "timer_quote_index")
     }
 
     private fun getProgressBarString(percent: Int): String {
@@ -222,6 +92,33 @@ class TimerService : Service() {
         const val ALARM_NOTIFICATION_ID = 99
     }
 
+    private var lastNotifiedMinute = -1
+    private var trackingFinishTimeMillis = 0L
+    private var originalInterruptionFilter = -1
+
+    private fun setDndMode(enable: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                if (notificationManager.isNotificationPolicyAccessGranted) {
+                    if (enable) {
+                        if (originalInterruptionFilter == -1) {
+                            originalInterruptionFilter = notificationManager.currentInterruptionFilter
+                        }
+                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
+                    } else {
+                        if (originalInterruptionFilter != -1) {
+                            notificationManager.setInterruptionFilter(originalInterruptionFilter)
+                            originalInterruptionFilter = -1
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -233,7 +130,11 @@ class TimerService : Service() {
         }.launchIn(serviceScope)
 
         TimerManager.timeRemainingSeconds.onEach { time ->
-            updateNotification()
+            val currentMinute = time / 60
+            if (currentMinute != lastNotifiedMinute) {
+                lastNotifiedMinute = currentMinute
+                updateNotification()
+            }
         }.launchIn(serviceScope)
 
         TimerManager.isBreakMode.onEach { mode ->
@@ -261,6 +162,7 @@ class TimerService : Service() {
         timerJob?.cancel()
         SoundGenerator.stop()
         releaseWakeLock()
+        setDndMode(false)
         isBreak = !isBreak
         currentQuote = getRandomQuote(isBreak)
         TimerManager.setBreakMode(isBreak)
@@ -282,6 +184,7 @@ class TimerService : Service() {
             
         TimerManager.updateState(TimerManager.TimerState.RUNNING)
         TimerManager.setBreakMode(isBreak)
+        setDndMode(!isBreak)
         startForegroundService()
         acquireWakeLock()
         
@@ -295,6 +198,8 @@ class TimerService : Service() {
         if (initialRemaining == totalSeconds || sessionStartTime == 0L) {
             sessionStartTime = System.currentTimeMillis()
         }
+        
+        trackingFinishTimeMillis = System.currentTimeMillis() + initialRemaining * 1000L
         
         timerJob = serviceScope.launch {
             var lastQuoteSeconds = initialRemaining
@@ -326,6 +231,7 @@ class TimerService : Service() {
             timerJob?.cancel()
             SoundGenerator.stop()
             releaseWakeLock()
+            setDndMode(false)
             updateNotification()
             InactivityScheduler.schedule(this)
         }
@@ -335,6 +241,7 @@ class TimerService : Service() {
         timerJob?.cancel()
         SoundGenerator.stop()
         releaseWakeLock()
+        setDndMode(false)
         isBreak = false
         currentQuote = ""
         TimerManager.setBreakMode(isBreak)
@@ -348,6 +255,7 @@ class TimerService : Service() {
     private fun timerFinished() {
         SoundGenerator.stop()
         releaseWakeLock()
+        setDndMode(false)
         vibrate()
         playSound()
         
@@ -470,7 +378,7 @@ class TimerService : Service() {
 
         val headerText = if (isBreak) "☕ Break Time" else "🎯 Focus Session"
         val isRunning = TimerManager.timerState.value == TimerManager.TimerState.RUNNING
-        val displayTitle = "$headerText — $timeStr"
+        val displayTitle = if (isRunning) headerText else "$headerText (PAUSED - $timeStr)"
         
         val bigText = "Session: $stateName\n" +
                       "Progress: $progressVisual\n\n" +
@@ -482,17 +390,26 @@ class TimerService : Service() {
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setSmallIcon(R.drawable.ic_notification_timer)
             .setContentIntent(pendingIntent)
-            .setOngoing(true)
+            .setOngoing(isRunning)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setColor(if (isBreak) android.graphics.Color.parseColor("#81D4FA") else android.graphics.Color.parseColor("#FF8A80"))
             .setProgress(totalSeconds, elapsedSeconds, false)
-            .setUsesChronometer(false)
-            .setShowWhen(false)
 
-        if (TimerManager.timerState.value == TimerManager.TimerState.RUNNING) {
+        if (isRunning) {
+            builder.setUsesChronometer(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                builder.setChronometerCountDown(true)
+            }
+            builder.setWhen(trackingFinishTimeMillis)
+        } else {
+            builder.setUsesChronometer(false)
+            builder.setShowWhen(false)
+        }
+
+        if (isRunning) {
             val pauseIntent = Intent(this, TimerService::class.java).apply { action = ACTION_PAUSE }
             val pausePendingIntent = PendingIntent.getService(this, 1, pauseIntent, PendingIntent.FLAG_IMMUTABLE)
             builder.addAction(0, "⏸ PAUSE", pausePendingIntent)
@@ -514,7 +431,7 @@ class TimerService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Timer Channel",
-                NotificationManager.IMPORTANCE_HIGH
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }

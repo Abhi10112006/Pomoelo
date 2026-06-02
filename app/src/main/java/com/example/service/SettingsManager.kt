@@ -15,6 +15,7 @@ object SettingsManager {
 
     private const val KEY_CUSTOM_COMPLETION = "custom_completion_uri"
     private const val KEY_CUSTOM_BACKGROUND = "custom_background_uri"
+    private const val KEY_BLOCKED_APPS = "blocked_apps_set"
 
     private const val KEY_SQUAT_VALLEY_THRESHOLD = "user_squat_valley_threshold"
     private const val KEY_SQUAT_PEAK_THRESHOLD = "user_squat_peak_threshold"
@@ -82,5 +83,13 @@ object SettingsManager {
     fun setBreakTimeMins(mins: Int) {
         getPrefs().edit().putInt(KEY_BREAK_TIME, mins).apply()
         TimerManager.setBreakTimeMins(mins)
+    }
+
+    fun getBlockedApps(): Set<String> {
+        return getPrefs().getStringSet(KEY_BLOCKED_APPS, emptySet()) ?: emptySet()
+    }
+
+    fun setBlockedApps(apps: Set<String>) {
+        getPrefs().edit().putStringSet(KEY_BLOCKED_APPS, apps).apply()
     }
 }

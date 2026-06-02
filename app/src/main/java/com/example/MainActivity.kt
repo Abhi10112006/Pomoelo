@@ -83,6 +83,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleIntent(intent)
         
         // Show over lockscreen and keep screen on even if locked
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -133,6 +134,17 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (TimerManager.timerState.value != TimerManager.TimerState.RUNNING) {
             com.example.service.InactivityScheduler.schedule(applicationContext)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent != null && intent.hasExtra("BLOCKED_APP")) {
+            android.widget.Toast.makeText(this, "App Blocked by PomoPal! Get back to focus.", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 }
@@ -623,6 +635,13 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
 @Composable
 fun SettingsOverlay(onDismiss: () -> Unit) {
     val context = LocalContext.current
+    var showBlockedApps by remember { mutableStateOf(false) }
+
+    if (showBlockedApps) {
+        com.example.ui.BlockedAppsScreen(onBack = { showBlockedApps = false })
+        return
+    }
+
     val view = androidx.compose.ui.platform.LocalView.current
     var localFocus by remember { mutableStateOf(SettingsManager.getFocusTimeMins().toFloat()) }
     var localBreak by remember { mutableStateOf(SettingsManager.getBreakTimeMins().toFloat()) }
@@ -939,6 +958,26 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                 colors = SliderDefaults.colors(thumbColor = Color(0xFF81D4FA), activeTrackColor = Color(0xFFB3E5FC))
             )
             
+            Spacer(modifier = Modifier.height(24.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable { showBlockedApps = true },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFCC80).copy(alpha = 0.6f))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("App Blocker", fontWeight = FontWeight.Bold, color = Color(0xFF5D4037))
+                        Text("Select distracting apps to block during focus sessions.", fontSize = 12.scaledSp, color = Color.Gray)
+                    }
+                    Icon(Icons.Filled.Settings, contentDescription = "Manage", tint = Color(0xFF5D4037))
+                }
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
