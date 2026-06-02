@@ -6,7 +6,7 @@ import org.json.JSONObject
 import java.net.URL
 
 object UpdateChecker {
-    private const val CURRENT_VERSION = "1.0"
+    private const val CURRENT_VERSION = "2.0"
     private const val GITHUB_VERSION_URL = "https://raw.githubusercontent.com/Abhi10112006/Pomoelo/main/version.json"
 
     suspend fun checkForUpdates(): String? {

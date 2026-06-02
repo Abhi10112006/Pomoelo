@@ -1151,7 +1151,7 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
             
             // The user specified credits: PomoPal v1.0, Designed & Developed by Abhinav Yaduvanshi
             Text(
-                text = "PomoPal v1.0",
+                text = "PomoPal v2.0",
                 fontSize = 13.scaledSp,
                 color = Color(0xFF5D4037).copy(alpha = 0.8f),
                 fontWeight = FontWeight.Bold,

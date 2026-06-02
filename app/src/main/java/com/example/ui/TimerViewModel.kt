@@ -27,28 +27,6 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
         return cal.timeInMillis
     }
 
-    init {
-        viewModelScope.launch {
-            TimerManager.taskCompletedEvent.collect { taskId ->
-                database.taskDao().incrementPomodoroCount(taskId)
-            }
-        }
-
-        viewModelScope.launch {
-            TimerManager.sessionCompletedEvent.collect { data ->
-                database.sessionDao().insertSession(
-                    TimerSession(
-                        taskName = data.taskName,
-                        isBreak = data.isBreak,
-                        durationMinutes = data.durationMinutes,
-                        startTime = data.startTime,
-                        endTime = data.endTime
-                    )
-                )
-            }
-        }
-    }
-
     fun autoCleanupIfNeeded() {
         viewModelScope.launch {
             val startOfToday = getStartOfToday()

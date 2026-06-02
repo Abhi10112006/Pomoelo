@@ -66,27 +66,13 @@ class TimerService : Service() {
     private fun getRandomQuote(isBreakMode: Boolean): String {
         return QuoteManager.getFreshQuote(this, isBreakMode, "timer_quote_index")
     }
-
-    private fun getProgressBarString(percent: Int): String {
-        val barLength = 10
-        val filledCount = ((percent * barLength) / 100).coerceIn(0, barLength)
-        val sb = StringBuilder()
-        for (i in 0 until barLength) {
-            if (i < filledCount) {
-                sb.append("▰")
-            } else {
-                sb.append("▱")
-            }
-        }
-        return "$sb $percent%"
-    }
     
     companion object {
         const val ACTION_START = "ACTION_START"
         const val ACTION_PAUSE = "ACTION_PAUSE"
         const val ACTION_STOP = "ACTION_STOP"
         const val ACTION_TOGGLE_MODE = "ACTION_TOGGLE_MODE"
-        const val CHANNEL_ID = "pomelo_timer_channel"
+        const val CHANNEL_ID = "pomelo_timer_channel_v2"
         const val NOTIFICATION_ID = 1
         const val ALARM_CHANNEL_ID = "pomelo_alarm_channel"
         const val ALARM_NOTIFICATION_ID = 99
@@ -143,6 +129,28 @@ class TimerService : Service() {
 
         TimerManager.currentTaskName.onEach { name ->
             updateNotification()
+        }.launchIn(serviceScope)
+        
+        val db = com.example.data.DatabaseProvider.getDatabase(applicationContext)
+
+        TimerManager.taskCompletedEvent.onEach { taskId ->
+            withContext(Dispatchers.IO) {
+                db.taskDao().incrementPomodoroCount(taskId)
+            }
+        }.launchIn(serviceScope)
+
+        TimerManager.sessionCompletedEvent.onEach { data ->
+            withContext(Dispatchers.IO) {
+                db.sessionDao().insertSession(
+                    com.example.data.TimerSession(
+                        taskName = data.taskName,
+                        isBreak = data.isBreak,
+                        durationMinutes = data.durationMinutes,
+                        startTime = data.startTime,
+                        endTime = data.endTime
+                    )
+                )
+            }
         }.launchIn(serviceScope)
     }
 
@@ -366,7 +374,6 @@ class TimerService : Service() {
         val totalSeconds = totalMins * 60
         val remainingSeconds = TimerManager.timeRemainingSeconds.value
         val elapsedSeconds = (totalSeconds - remainingSeconds).coerceAtLeast(0)
-        val progressPercent = if (totalSeconds > 0) (elapsedSeconds * 100) / totalSeconds else 0
 
         if (currentQuote.isEmpty()) {
             currentQuote = getRandomQuote(isBreak)
@@ -374,26 +381,23 @@ class TimerService : Service() {
 
         val stateName = TimerManager.currentTaskName.value
         val timeStr = formatTime(remainingSeconds)
-        val progressVisual = getProgressBarString(progressPercent.coerceIn(0, 100))
+        val isRunning = TimerManager.timerState.value == TimerManager.TimerState.RUNNING
 
         val headerText = if (isBreak) "☕ Break Time" else "🎯 Focus Session"
-        val isRunning = TimerManager.timerState.value == TimerManager.TimerState.RUNNING
-        val displayTitle = if (isRunning) headerText else "$headerText (PAUSED - $timeStr)"
+        val displayTitle = if (isRunning) "$headerText Active" else "$headerText (PAUSED)"
         
-        val bigText = "Session: $stateName\n" +
-                      "Progress: $progressVisual\n\n" +
-                      "✨ \"$currentQuote\""
+        val contentText = if (isRunning) "✨ \"$currentQuote\"" else "⏳ $timeStr • ✨ \"$currentQuote\""
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(displayTitle)
-            .setContentText("$progressVisual • $stateName")
-            .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
+            .setContentText(contentText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Session: $stateName\n$contentText"))
             .setSmallIcon(R.drawable.ic_notification_timer)
             .setContentIntent(pendingIntent)
             .setOngoing(isRunning)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setColor(if (isBreak) android.graphics.Color.parseColor("#81D4FA") else android.graphics.Color.parseColor("#FF8A80"))
             .setProgress(totalSeconds, elapsedSeconds, false)
@@ -403,7 +407,7 @@ class TimerService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 builder.setChronometerCountDown(true)
             }
-            builder.setWhen(trackingFinishTimeMillis)
+            builder.setWhen(System.currentTimeMillis() + (remainingSeconds * 1000L))
         } else {
             builder.setUsesChronometer(false)
             builder.setShowWhen(false)
@@ -431,9 +435,10 @@ class TimerService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Timer Channel",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                setSound(null, null)
             }
             val alarmChannel = NotificationChannel(
                 ALARM_CHANNEL_ID,
