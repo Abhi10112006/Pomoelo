@@ -41,7 +41,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudUpload
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -840,152 +840,207 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
             }
         }
     ) { paddingValues ->
+        var selectedTabIndex by remember { mutableStateOf(0) }
+        val tabs = listOf("Timer & Sound", "App Blocker", "System", "Cloud Backup", "About")
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 24.dp)
-                .verticalScroll(rememberScrollState())
         ) {
-            var focusInput by remember(localFocus) { mutableStateOf(localFocus.toInt().toString()) }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("Focus Time (min):", color = Color(0xFF5D4037), fontWeight = FontWeight.Bold)
-                androidx.compose.foundation.text.BasicTextField(
-                    value = focusInput,
-                    onValueChange = { newVal ->
-                        val filtered = newVal.filter { it.isDigit() }
-                        focusInput = filtered
-                        filtered.toFloatOrNull()?.let { 
-                            localFocus = it.coerceIn(1f, 200f) 
+            androidx.compose.foundation.lazy.LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
+            ) {
+                items(tabs.size) { index ->
+                    val isSelected = selectedTabIndex == index
+                    Surface(
+                        color = if (isSelected) Color(0xFFFF8A80) else Color.White,
+                        shape = RoundedCornerShape(16.dp),
+                        border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD180).copy(alpha = 0.5f)),
+                        modifier = Modifier.clickable { 
+                            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                            selectedTabIndex = index 
                         }
-                    },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                    textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF5D4037), fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
-                    modifier = Modifier.width(60.dp).background(Color.Black.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
-                    singleLine = true
-                )
-            }
-            Slider(
-                value = localFocus.coerceIn(1f, 60f),
-                onValueChange = { 
-                    val oldVal = localFocus.toInt()
-                    val newVal = it.toInt()
-                    if (oldVal != newVal) {
-                        try {
-                            view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                        } catch (e: Exception) {}
+                    ) {
+                        Text(
+                            text = tabs[index],
+                            color = if (isSelected) Color.White else Color(0xFF5D4037),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.scaledSp
+                        )
                     }
-                    localFocus = it 
-                },
-                valueRange = 1f..60f,
-                colors = SliderDefaults.colors(thumbColor = Color(0xFFFF8A80), activeTrackColor = Color(0xFFFFCC80))
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                if (selectedTabIndex == 0) {
+                    var focusInput by remember(localFocus) { mutableStateOf(localFocus.toInt().toString()) }
             var breakInput by remember(localBreak) { mutableStateOf(localBreak.toInt().toString()) }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("Break Time (min):", color = Color(0xFF5D4037), fontWeight = FontWeight.Bold)
-                androidx.compose.foundation.text.BasicTextField(
-                    value = breakInput,
-                    onValueChange = { newVal ->
-                        val filtered = newVal.filter { it.isDigit() }
-                        breakInput = filtered
-                        filtered.toFloatOrNull()?.let { 
-                            localBreak = it.coerceIn(1f, 120f) 
-                        }
-                    },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                    textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF5D4037), fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
-                    modifier = Modifier.width(60.dp).background(Color.Black.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
-                    singleLine = true
-                )
-            }
-            Slider(
-                value = localBreak.coerceIn(1f, 30f),
-                onValueChange = { 
-                    val oldVal = localBreak.toInt()
-                    val newVal = it.toInt()
-                    if (oldVal != newVal) {
-                        try {
-                            view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                        } catch (e: Exception) {}
-                    }
-                    localBreak = it 
-                },
-                valueRange = 1f..30f,
-                colors = SliderDefaults.colors(thumbColor = Color(0xFF81D4FA), activeTrackColor = Color(0xFFB3E5FC))
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Volume", color = Color(0xFF5D4037), fontWeight = FontWeight.Bold)
-            Slider(
-                value = localVolume,
-                onValueChange = { 
-                    val oldVal = localVolume.toInt()
-                    val newVal = it.toInt()
-                    if (oldVal != newVal) {
-                        try {
-                            view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                        } catch (e: Exception) {}
-                    }
-                    localVolume = it
-                    audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, it.toInt(), 0)
-                },
-                valueRange = 0f..maxVolume,
-                steps = (maxVolume.toInt() - 1).takeIf { it > 0 } ?: 0,
-                colors = SliderDefaults.colors(thumbColor = Color(0xFFCE93D8), activeTrackColor = Color(0xFFE1BEE7))
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Text("Completion Sound", color = Color(0xFF5D4037), fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha=0.05f))) {
-                val compOptions = listOf("Beep", "Alarm", "Ring", "Custom")
-                compOptions.forEachIndexed { index, name ->
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (localCompletion == index) Color(0xFFFF8A80) else Color.Transparent)
-                            .clickable { 
-                                try {
-                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                } catch (e: Exception) {}
-                                if (index == 3) {
-                                    completionLauncher.launch(arrayOf("audio/*"))
-                                } else {
-                                    localCompletion = index
-                                    com.example.service.SoundPlayer.playCompletion(context, index)
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD180).copy(alpha = 0.4f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Timer & Sound", fontSize = 16.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFF5D4037))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Text("Focus Time (min):", color = Color(0xFF5D4037), fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = focusInput,
+                            onValueChange = { newVal ->
+                                val filtered = newVal.filter { it.isDigit() }
+                                focusInput = filtered
+                                filtered.toFloatOrNull()?.let { 
+                                    localFocus = it.coerceIn(1f, 200f) 
                                 }
+                            },
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF5D4037), fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
+                            modifier = Modifier.width(60.dp).background(Color.Black.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                            singleLine = true
+                        )
+                    }
+                    Slider(
+                        value = localFocus.coerceIn(1f, 60f),
+                        onValueChange = { 
+                            val oldVal = localFocus.toInt()
+                            val newVal = it.toInt()
+                            if (oldVal != newVal) {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                } catch (e: Exception) {}
                             }
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) { Text(name, color = if (localCompletion == index) Color.White else Color(0xFF5D4037), fontSize = 11.scaledSp, maxLines = 1) }
+                            localFocus = it 
+                        },
+                        valueRange = 1f..60f,
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFFFF8A80), activeTrackColor = Color(0xFFFFCC80))
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Text("Break Time (min):", color = Color(0xFF5D4037), fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = breakInput,
+                            onValueChange = { newVal ->
+                                val filtered = newVal.filter { it.isDigit() }
+                                breakInput = filtered
+                                filtered.toFloatOrNull()?.let { 
+                                    localBreak = it.coerceIn(1f, 120f) 
+                                }
+                            },
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF5D4037), fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
+                            modifier = Modifier.width(60.dp).background(Color.Black.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                            singleLine = true
+                        )
+                    }
+                    Slider(
+                        value = localBreak.coerceIn(1f, 30f),
+                        onValueChange = { 
+                            val oldVal = localBreak.toInt()
+                            val newVal = it.toInt()
+                            if (oldVal != newVal) {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                } catch (e: Exception) {}
+                            }
+                            localBreak = it 
+                        },
+                        valueRange = 1f..30f,
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFF81D4FA), activeTrackColor = Color(0xFFB3E5FC))
+                    )
+                    
+                    Divider(modifier = Modifier.padding(vertical = 16.dp), color = Color.Black.copy(alpha=0.05f))
+                    
+                    Text("Volume", color = Color(0xFF5D4037), fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
+                    Slider(
+                        value = localVolume,
+                        onValueChange = { 
+                            val oldVal = localVolume.toInt()
+                            val newVal = it.toInt()
+                            if (oldVal != newVal) {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                } catch (e: Exception) {}
+                            }
+                            localVolume = it
+                            audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, it.toInt(), 0)
+                        },
+                        valueRange = 0f..maxVolume,
+                        steps = (maxVolume.toInt() - 1).takeIf { it > 0 } ?: 0,
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFFCE93D8), activeTrackColor = Color(0xFFE1BEE7))
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text("Completion Sound", color = Color(0xFF5D4037), fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha=0.05f))) {
+                        val compOptions = listOf("Beep", "Alarm", "Ring", "Custom")
+                        compOptions.forEachIndexed { index, name ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (localCompletion == index) Color(0xFFFF8A80) else Color.Transparent)
+                                    .clickable { 
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                        } catch (e: Exception) {}
+                                        if (index == 3) {
+                                            completionLauncher.launch(arrayOf("audio/*"))
+                                        } else {
+                                            localCompletion = index
+                                            com.example.service.SoundPlayer.playCompletion(context, index)
+                                        }
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) { Text(name, color = if (localCompletion == index) Color.White else Color(0xFF5D4037), fontSize = 11.scaledSp, maxLines = 1) }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Completion Sound Duration: ${localCompletionDuration.toInt()} sec", color = Color(0xFF5D4037), fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
+                    Slider(
+                        value = localCompletionDuration,
+                        onValueChange = { 
+                            val oldVal = localCompletionDuration.toInt()
+                            val newVal = it.toInt()
+                            if (oldVal != newVal) {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                } catch (e: Exception) {}
+                            }
+                            localCompletionDuration = it 
+                        },
+                        valueRange = 2f..20f,
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFF81D4FA), activeTrackColor = Color(0xFFB3E5FC))
+                    )
                 }
             }
             
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Completion Sound Duration: ${localCompletionDuration.toInt()} sec", color = Color(0xFF5D4037), fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
-            Slider(
-                value = localCompletionDuration,
-                onValueChange = { 
-                    val oldVal = localCompletionDuration.toInt()
-                    val newVal = it.toInt()
-                    if (oldVal != newVal) {
-                        try {
-                            view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                        } catch (e: Exception) {}
-                    }
-                    localCompletionDuration = it 
-                },
-                valueRange = 2f..20f,
-                colors = SliderDefaults.colors(thumbColor = Color(0xFF81D4FA), activeTrackColor = Color(0xFFB3E5FC))
-            )
+            }
             
-            Spacer(modifier = Modifier.height(24.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable { 
-                    try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-                    showBlockedApps = true 
-                },
+            if (selectedTabIndex == 1) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable { 
+                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                        showBlockedApps = true 
+                    },
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFCC80).copy(alpha = 0.6f))
@@ -1002,10 +1057,11 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                     Icon(Icons.Filled.Settings, contentDescription = "Manage", tint = Color(0xFF5D4037))
                 }
             }
+            } // Close if (selectedTabIndex == 1)
 
-            Spacer(modifier = Modifier.height(24.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth(),
+            if (selectedTabIndex == 2) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.5f)),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFCC80).copy(alpha = 0.6f))
@@ -1168,10 +1224,11 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                     }
                 }
             }
+            } // Close if (selectedTabIndex == 2)
             
-            Spacer(modifier = Modifier.height(24.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth(),
+            if (selectedTabIndex == 3) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD180).copy(alpha = 0.3f))
@@ -1179,7 +1236,7 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Filled.CloudUpload,
+                            imageVector = Icons.Filled.Sync,
                             contentDescription = null,
                             tint = Color(0xFF4285F4),
                             modifier = Modifier.size(24.dp)
@@ -1265,27 +1322,30 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                     }
                 }
             }
+            } // Close if (selectedTabIndex == 3)
             
-            Spacer(modifier = Modifier.height(32.dp))
+            if (selectedTabIndex == 4) {
+                // The user specified credits: PomoPal v1.0, Designed & Developed by Abhinav Yaduvanshi
+                Text(
+                    text = "PomoPal v2.0",
+                    fontSize = 13.scaledSp,
+                    color = Color(0xFF5D4037).copy(alpha = 0.8f),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Designed & Developed by Abhinav Yaduvanshi",
+                    fontSize = 11.scaledSp,
+                    color = Color(0xFF5D4037).copy(alpha = 0.6f),
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+            }
             
-            // The user specified credits: PomoPal v1.0, Designed & Developed by Abhinav Yaduvanshi
-            Text(
-                text = "PomoPal v2.0",
-                fontSize = 13.scaledSp,
-                color = Color(0xFF5D4037).copy(alpha = 0.8f),
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "Designed & Developed by Abhinav Yaduvanshi",
-                fontSize = 11.scaledSp,
-                color = Color(0xFF5D4037).copy(alpha = 0.6f),
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            )
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(100.dp))
         }
     }
+}
 }
 
 @Composable

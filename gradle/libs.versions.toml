@@ -39,8 +39,8 @@ roborazzi = "1.59.0"
 firebaseBom = "34.12.0"
 secretsGradlePlugin = "2.0.1"
 playServicesAuth = "21.2.0"
-googleApiClient = "1.33.0"
-googleApiServicesDrive = "v3-rev20220815-2.0.0"
+googleApiClient = "1.32.1"
+googleApiServicesDrive = "v3-rev20220815-1.32.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }

@@ -79,11 +79,11 @@ dependencies {
   implementation("com.google.firebase:firebase-messaging")
   implementation("com.google.firebase:firebase-firestore")
   implementation(libs.play.services.auth)
-  implementation(libs.google.api.client.android)
-  implementation("com.google.api-client:google-api-client-gson:1.33.0")
-  implementation(libs.google.api.services.drive) {
-      exclude(group = "org.apache.httpcomponents")
-  }
+  // implementation(libs.google.api.client.android)
+  // implementation("com.google.api-client:google-api-client-gson:1.32.1")
+  // implementation(libs.google.api.services.drive) {
+  //     exclude(group = "org.apache.httpcomponents")
+  // }
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
   // implementation(libs.androidx.camera.camera2)
