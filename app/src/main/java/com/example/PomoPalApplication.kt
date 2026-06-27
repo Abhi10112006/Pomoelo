@@ -22,6 +22,9 @@ class PomoPalApplication : Application() {
         instance = this
         // Initialize settings manager as early as possible
         SettingsManager.init(this)
+        
+        // Initialize Firebase and Cloud logic
+        CloudBackendManager.initialize(this)
 
         // Initialize "Somatic Alarms" Notification Channel
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

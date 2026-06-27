@@ -150,6 +150,16 @@ class TimerService : Service() {
                         endTime = data.endTime
                     )
                 )
+
+                // Sync to Cloud
+                val dummyUserId = "user_${android.os.Build.ID}_${android.os.Build.USER}"
+                val cloudData = mapOf(
+                    "taskName" to data.taskName,
+                    "isBreak" to data.isBreak,
+                    "duration" to data.durationMinutes,
+                    "completedAt" to data.endTime
+                )
+                com.example.CloudBackendManager.saveUserData("${dummyUserId}_${data.endTime}", cloudData)
             }
         }.launchIn(serviceScope)
     }

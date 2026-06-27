@@ -7,6 +7,7 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
+  alias(libs.plugins.google.services)
 }
 
 android {
@@ -73,6 +74,16 @@ secrets {
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
+  implementation("com.google.firebase:firebase-analytics")
+  implementation("com.google.firebase:firebase-database")
+  implementation("com.google.firebase:firebase-messaging")
+  implementation("com.google.firebase:firebase-firestore")
+  implementation(libs.play.services.auth)
+  implementation(libs.google.api.client.android)
+  implementation("com.google.api-client:google-api-client-gson:1.33.0")
+  implementation(libs.google.api.services.drive) {
+      exclude(group = "org.apache.httpcomponents")
+  }
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
   // implementation(libs.androidx.camera.camera2)

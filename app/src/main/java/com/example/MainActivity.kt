@@ -40,6 +40,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudUpload
+import kotlinx.coroutines.launch
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -381,6 +383,9 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
 
     val showSettings by viewModel.isSettingsOpen.collectAsState()
     var showFullScreenSeriousness by remember { mutableStateOf(false) }
+    
+    val account = GoogleAuthManager.getLastSignedInAccount(context)
+    val userName = account?.givenName ?: "Abhi"
 
     LaunchedEffect(timerState, isBreakMode) {
         if (timerState == TimerManager.TimerState.STOPPED || isBreakMode) {
@@ -475,7 +480,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                             modifier = Modifier.padding(bottom = 0.dp)
                         )
                         Text(
-                            text = "by Abhi",
+                            text = "Hi, $userName",
                             fontSize = 12.scaledSp,
                             fontFamily = AppFontFamily,
                             color = Color(0xFF5D4037).copy(alpha = 0.6f),
@@ -714,6 +719,23 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
         }
     }
     
+    val scope = rememberCoroutineScope()
+    var googleAccount by remember { mutableStateOf(GoogleAuthManager.getLastSignedInAccount(context)) }
+    
+    val googleSignInLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                googleAccount = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+    var showBackupStatus by remember { mutableStateOf<String?>(null) }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = Color(0xFFFFF0EC),
@@ -1142,6 +1164,103 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                                 fontWeight = FontWeight.Medium,
                                 lineHeight = 16.scaledSp
                             )
+                        }
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD180).copy(alpha = 0.3f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.CloudUpload,
+                            contentDescription = null,
+                            tint = Color(0xFF4285F4),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Cloud Backup & Sync",
+                            fontSize = 16.scaledSp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF5D4037)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Backup your data securely to Google Drive and keep your profile personalized.",
+                        fontSize = 12.scaledSp,
+                        color = Color.DarkGray
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    if (googleAccount != null) {
+                        Text(
+                            text = "Signed in as: ${googleAccount?.email}",
+                            fontSize = 12.scaledSp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF4CAF50)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        showBackupStatus?.let { status ->
+                            Text(
+                                text = status,
+                                fontSize = 12.scaledSp,
+                                color = Color(0xFFE65100),
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
+                        
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    showBackupStatus = "Backing up..."
+                                    scope.launch {
+                                        // Backup to Google Drive
+                                        val data = "{\"focusMins\": \$localFocus, \"breakMins\": \$localBreak}"
+                                        val success = GoogleDriveManager.backupData(context, googleAccount!!, data)
+                                        showBackupStatus = if (success) "Backup Successful! ✅" else "Backup Failed ❌"
+                                    }
+                                },
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4285F4)),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Backup Now", color = Color.White)
+                            }
+                            
+                            Button(
+                                onClick = {
+                                    GoogleAuthManager.getSignInClient(context).signOut().addOnCompleteListener {
+                                        googleAccount = null
+                                        showBackupStatus = null
+                                    }
+                                },
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE0E0E0)),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Sign Out", color = Color.DarkGray)
+                            }
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                val signInIntent = GoogleAuthManager.getSignInClient(context).signInIntent
+                                googleSignInLauncher.launch(signInIntent)
+                            },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4285F4)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Sign in with Google", color = Color.White, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
