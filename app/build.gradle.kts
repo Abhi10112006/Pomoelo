@@ -79,12 +79,13 @@ dependencies {
   implementation("com.google.firebase:firebase-messaging")
   implementation("com.google.firebase:firebase-firestore")
   implementation(libs.play.services.auth)
+  implementation(libs.play.services.fitness)
   // implementation(libs.google.api.client.android)
   // implementation("com.google.api-client:google-api-client-gson:1.32.1")
   // implementation(libs.google.api.services.drive) {
   //     exclude(group = "org.apache.httpcomponents")
   // }
-  // implementation(libs.accompanist.permissions)
+  implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
   // implementation(libs.androidx.camera.camera2)
   // implementation(libs.androidx.camera.core)
@@ -113,7 +114,7 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
-  // implementation(libs.play.services.location)
+  implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
