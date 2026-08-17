@@ -1,10 +1,11 @@
-<?xml version="1.0" encoding="utf-8"?>
+with open("app/src/main/AndroidManifest.xml", "r") as f:
+    text = f.read()
+
+# restore to a clean known state
+manifest = """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -97,3 +98,7 @@
 
     </application>
 </manifest>
+"""
+
+with open("app/src/main/AndroidManifest.xml", "w") as f:
+    f.write(manifest)

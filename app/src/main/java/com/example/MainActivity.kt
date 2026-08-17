@@ -154,14 +154,15 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun PomoPalApp(viewModel: TimerViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: "home"
+    val startDest = if (com.example.service.SettingsManager.getUserName() == null) "signin" else "home"
     val isAddingTask by viewModel.isAddingTask.collectAsState()
     val timerState by viewModel.timerState.collectAsState()
     val isSettingsOpen by viewModel.isSettingsOpen.collectAsState()
     var updateUrl by remember { mutableStateOf<String?>(null) }
-    val context = LocalContext.current
     val view = androidx.compose.ui.platform.LocalView.current
 
     LaunchedEffect(Unit) {
@@ -372,10 +373,17 @@ fun PomoPalApp(viewModel: TimerViewModel) {
     ) { paddingValues ->
         NavHost(
             navController = navController,
-            startDestination = "home",
+            startDestination = startDest,
             modifier = Modifier.fillMaxSize()
         ) {
             val bottomPadding = paddingValues.calculateBottomPadding()
+            composable("signin") {
+                com.example.ui.SignInScreen(navController = navController, onSignInSuccess = {
+                    navController.navigate("home") {
+                        popUpTo("signin") { inclusive = true }
+                    }
+                })
+            }
             composable("home") {
                 HomeScreen(viewModel, navController, bottomPadding)
             }
@@ -405,8 +413,23 @@ fun PomoPalApp(viewModel: TimerViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.NavController, bottomPadding: androidx.compose.ui.unit.Dp = 0.dp) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(Unit) {
         viewModel.autoCleanupIfNeeded()
+    }
+    LaunchedEffect(Unit) {
+        val lastBackup = com.example.service.SettingsManager.getLastBackupTime()
+        val backupFreq = com.example.service.SettingsManager.getAutoBackupFreq()
+        val freqMs = when (backupFreq) { 1 -> 24L * 60 * 60 * 1000L; 2 -> 7L * 24 * 60 * 60 * 1000L; else -> 0L }
+        if (freqMs > 0 && System.currentTimeMillis() - lastBackup > freqMs) {
+            val account = com.example.GoogleAuthManager.getLastSignedInAccount(context)
+            if (account != null) {
+                kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    val success = com.example.GoogleDriveManager.backupData(context, account, "auto-backup")
+                    if (success) com.example.service.SettingsManager.setLastBackupTime(System.currentTimeMillis())
+                }
+            }
+        }
     }
     val timerState by viewModel.timerState.collectAsState()
     val isBreakMode by TimerManager.isBreakMode.collectAsState()
@@ -415,15 +438,19 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
     val currentTaskName by viewModel.currentTaskName.collectAsState()
     val allTasks by viewModel.allTasks.collectAsState()
     val isAddingTask by viewModel.isAddingTask.collectAsState()
-    val context = LocalContext.current
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val view = androidx.compose.ui.platform.LocalView.current
 
     val showSettings by viewModel.isSettingsOpen.collectAsState()
     var showFullScreenSeriousness by remember { mutableStateOf(false) }
     
-    val account = GoogleAuthManager.getLastSignedInAccount(context)
-    val userName = account?.givenName ?: "Abhi"
+    var account by remember { mutableStateOf(com.example.GoogleAuthManager.getLastSignedInAccount(context)) }
+    LaunchedEffect(showSettings) {
+        if (!showSettings) {
+            account = com.example.GoogleAuthManager.getLastSignedInAccount(context)
+        }
+    }
+    val userName = com.example.service.SettingsManager.getUserName() ?: account?.givenName ?: "Friend"
 
     LaunchedEffect(timerState, isBreakMode) {
         if (timerState == TimerManager.TimerState.STOPPED || isBreakMode) {
@@ -677,7 +704,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
 
 @Composable
 fun SettingsOverlay(onDismiss: () -> Unit) {
-    val context = LocalContext.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     var showBlockedApps by remember { mutableStateOf(false) }
 
     if (showBlockedApps) {
@@ -1302,7 +1329,44 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF4CAF50)
                         )
+                        val lastBackup = com.example.service.SettingsManager.getLastBackupTime()
+                        val lastBackupText = if (lastBackup > 0L) {
+                            val sdf = java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.getDefault())
+                            "Last backup: " + sdf.format(java.util.Date(lastBackup))
+                        } else {
+                            "Last backup: Never"
+                        }
+                        Text(
+                            text = lastBackupText,
+                            fontSize = 12.scaledSp,
+                            color = Color.Gray
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Auto Backup Frequency:",
+                            fontSize = 12.scaledSp,
+                            color = Color(0xFF5D4037)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        
+                        var autoBackupFreq by remember { mutableStateOf(com.example.service.SettingsManager.getAutoBackupFreq()) }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("Never", "Daily", "Weekly").forEachIndexed { index, label ->
+                                val isSelected = autoBackupFreq == index
+                                Surface(
+                                    modifier = Modifier.weight(1f).clickable { 
+                                        autoBackupFreq = index 
+                                        com.example.service.SettingsManager.setAutoBackupFreq(index)
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) Color(0xFF4285F4) else Color(0xFFF5F5F5),
+                                    contentColor = if (isSelected) Color.White else Color.DarkGray
+                                ) {
+                                    Text(label, modifier = Modifier.padding(vertical = 8.dp), textAlign = TextAlign.Center, fontSize = 12.scaledSp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
                         
                         showBackupStatus?.let { status ->
                             Text(
@@ -1320,7 +1384,10 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                                     scope.launch {
                                         // Backup to Google Drive
                                         val data = "{\"focusMins\": \$localFocus, \"breakMins\": \$localBreak}"
-                                        val success = GoogleDriveManager.backupData(context, googleAccount!!, data)
+                                        val success = com.example.GoogleDriveManager.backupData(context, googleAccount!!, data)
+                                        if (success) {
+                                            com.example.service.SettingsManager.setLastBackupTime(System.currentTimeMillis())
+                                        }
                                         showBackupStatus = if (success) "Backup Successful! ✅" else "Backup Failed ❌"
                                     }
                                 },
@@ -1333,7 +1400,7 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                             
                             Button(
                                 onClick = {
-                                    GoogleAuthManager.getSignInClient(context).signOut().addOnCompleteListener {
+                                    com.example.GoogleAuthManager.getSignInClient(context).signOut().addOnCompleteListener {
                                         googleAccount = null
                                         showBackupStatus = null
                                     }
@@ -1388,6 +1455,7 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
 
 @Composable
 fun TaskItemRow(task: com.example.data.TaskItem, onSelect: (com.example.data.TaskItem) -> Unit, onDelete: () -> Unit, modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val view = androidx.compose.ui.platform.LocalView.current
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -1449,6 +1517,7 @@ fun TaskItemRow(task: com.example.data.TaskItem, onSelect: (com.example.data.Tas
 
 @Composable
 fun PremiumJumpingTextPreview(text: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1515,6 +1584,7 @@ fun PremiumJumpingTextPreview(text: String) {
 
 @Composable
 fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onCancel, // Allow platform click outside and back press dismiss
@@ -1526,9 +1596,8 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
     ) {
         var animateIn by remember { mutableStateOf(false) }
         LaunchedEffect(Unit) {
-            animateIn = true
-        }
-
+        animateIn = true
+    }
         val scale by animateFloatAsState(
             targetValue = if (animateIn) 1f else 0.8f,
             animationSpec = spring(
@@ -1689,6 +1758,7 @@ fun AnimatedScaleBox(
     enabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -1721,6 +1791,7 @@ fun AnimatedScaleBox(
 
 @Composable
 fun AppControls(state: TimerManager.TimerState, context: android.content.Context) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
@@ -1812,6 +1883,7 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
 
 @Composable
 fun SlidingTimer(timeRemaining: Int, fontSize: androidx.compose.ui.unit.TextUnit = 64.scaledSp) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val timeString = "%02d:%02d".format(timeRemaining / 60, timeRemaining % 60)
     Row(
         horizontalArrangement = Arrangement.Center,
@@ -1871,6 +1943,7 @@ fun TimerDisplay(
     context: android.content.Context,
     circleSize: androidx.compose.ui.unit.Dp = 260.dp
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val view = androidx.compose.ui.platform.LocalView.current
     var animatedText by remember { mutableStateOf("") }
     
@@ -2013,6 +2086,7 @@ fun TimerDisplay(
 
 @Composable
 fun AnimatedQuoteCard(quote: String, isBreak: Boolean) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val quoteColor = if (isBreak) Color(0xFF2E7D32) else Color(0xFF8D6E63)
     val accentColor = if (isBreak) Color(0xFF81C784) else Color(0xFFFF8A80)
     
@@ -2137,7 +2211,7 @@ fun SeriousFullscreenOverlay(
     timeRemaining: Int,
     onDismiss: () -> Unit
 ) {
-    val context = LocalContext.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     val activity = context as? android.app.Activity
     val view = androidx.compose.ui.platform.LocalView.current
     
@@ -2507,7 +2581,7 @@ fun AlarmRingingLockScreen(
     label: String,
     targetCount: Int
 ) {
-    val context = LocalContext.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     var currentCount by remember { mutableStateOf(0) }
     var shakeWarning by remember { mutableStateOf(false) }
     var sensorMessage by remember { mutableStateOf("Ready to register. Put the device in your pocket and begin!") }
@@ -2598,11 +2672,7 @@ fun AlarmRingingLockScreen(
                     lineHeight = 20.scaledSp,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
-
-                Spacer(modifier = Modifier.height(40.dp))
-
-                Button(
-                    onClick = {
+                Button(onClick = {
                         try {
                             val view = context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
                             view?.vibrate(100)

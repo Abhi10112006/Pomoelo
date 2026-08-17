@@ -1,21 +1,23 @@
 package com.example.ui
 
 import android.Manifest
-import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
-import android.os.Looper
-import android.widget.Toast
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Bundle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsRun
-import androidx.compose.material.icons.filled.HealthAndSafety
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
@@ -25,83 +27,117 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.app.ActivityCompat
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.fitness.Fitness
-import com.google.android.gms.fitness.FitnessOptions
-import com.google.android.gms.fitness.data.DataType
-import com.google.android.gms.fitness.request.DataReadRequest
-import com.google.android.gms.location.*
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
-import java.util.concurrent.TimeUnit
-import java.util.Calendar
 
 @Composable
-fun WorkoutScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
+fun WorkoutScreen(bottomPadding: Dp) {
     val context = LocalContext.current
     var isTracking by remember { mutableStateOf(false) }
+    var secondsElapsed by remember { mutableStateOf(0) }
+    
+    // Tracking Variables
     var distanceMeters by remember { mutableStateOf(0f) }
-    var stepCount by remember { mutableStateOf(0) }
-    var hasPermissions by remember { mutableStateOf(
-        ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-    ) }
+    var sessionSteps by remember { mutableStateOf(0) }
+    var initialSteps by remember { mutableStateOf(-1) }
+    var squatsCount by remember { mutableStateOf(0) }
 
+    // Permissions
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        hasPermissions = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        // We will start tracking regardless, but we use whichever sensors are granted
+        isTracking = true
     }
 
-    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
-    var lastLocation by remember { mutableStateOf<Location?>(null) }
+    // Hardware Managers (Local only)
+    val locationManager = remember { context.getSystemService(Context.LOCATION_SERVICE) as LocationManager }
+    val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
 
-    val locationCallback = remember {
-        object : LocationCallback() {
-            override fun onLocationResult(locationResult: LocationResult) {
-                for (location in locationResult.locations) {
-                    if (isTracking) {
-                        lastLocation?.let {
-                            distanceMeters += it.distanceTo(location)
-                        }
-                        lastLocation = location
+    var lastLocation by remember { mutableStateOf<Location?>(null) }
+    
+    // GPS Callback for Distance
+    val locationListener = remember {
+        object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                if (isTracking) {
+                    lastLocation?.let {
+                        distanceMeters += it.distanceTo(location)
+                    }
+                    lastLocation = location
+                }
+            }
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
+        }
+    }
+
+    // Sensor Callback for Steps
+    val stepListener = remember {
+        object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                if (isTracking && event.sensor.type == Sensor.TYPE_STEP_COUNTER) {
+                    val currentSteps = event.values[0].toInt()
+                    if (initialSteps == -1) {
+                        initialSteps = currentSteps
+                    }
+                    sessionSteps = currentSteps - initialSteps
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+    }
+
+    // Sensor Callback for Auto Squats (Accelerometer)
+    var isSquattingDown by remember { mutableStateOf(false) }
+    val accelListener = remember {
+        object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                if (isTracking && event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+                    val y = event.values[1] // Y-axis acceleration
+                    // Simple heuristic: Phone held vertically, dips down then comes up
+                    if (y < 4.5f && !isSquattingDown) {
+                        isSquattingDown = true
+                    } else if (y > 9.5f && isSquattingDown) {
+                        isSquattingDown = false
+                        squatsCount++
                     }
                 }
             }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
     }
 
-    LaunchedEffect(isTracking, hasPermissions) {
-        if (isTracking && hasPermissions) {
-            val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
-                .setMinUpdateIntervalMillis(2000)
-                .build()
-            
-            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
+    LaunchedEffect(isTracking) {
+        if (isTracking) {
+            // Register Sensors
+            try {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000L, 2f, locationListener)
+                }
+            } catch (e: Exception) { e.printStackTrace() }
+
+            sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)?.also { stepSensor ->
+                sensorManager.registerListener(stepListener, stepSensor, SensorManager.SENSOR_DELAY_UI)
+            }
+            sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.also { accelSensor ->
+                sensorManager.registerListener(accelListener, accelSensor, SensorManager.SENSOR_DELAY_NORMAL)
+            }
+
+            while (true) {
+                delay(1000)
+                secondsElapsed++
             }
         } else {
-            fusedLocationClient.removeLocationUpdates(locationCallback)
+            // Unregister
+            try { locationManager.removeUpdates(locationListener) } catch (e: Exception) { }
+            sensorManager.unregisterListener(stepListener)
+            sensorManager.unregisterListener(accelListener)
             lastLocation = null
-        }
-    }
-
-    val fitnessOptions = FitnessOptions.builder()
-        .addDataType(DataType.TYPE_STEP_COUNT_DELTA, FitnessOptions.ACCESS_READ)
-        .addDataType(DataType.AGGREGATE_STEP_COUNT_DELTA, FitnessOptions.ACCESS_READ)
-        .build()
-
-    val googleSignInLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            Toast.makeText(context, "Connected to Google Fit", Toast.LENGTH_SHORT).show()
-            readStepCount(context, fitnessOptions) { steps ->
-                stepCount = steps
-            }
-        } else {
-            Toast.makeText(context, "Google Fit Connection Failed", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -114,21 +150,27 @@ fun WorkoutScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = Icons.Default.DirectionsRun,
+            imageVector = Icons.AutoMirrored.Filled.DirectionsRun,
             contentDescription = "Workout",
             modifier = Modifier.size(80.dp),
             tint = Color(0xFF4CAF50)
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "Workout Mode",
+            text = "Offline Workout",
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF333333)
         )
-        
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Using local GPS & hardware sensors",
+            fontSize = 14.sp,
+            color = Color.Gray
+        )
+                
         Spacer(modifier = Modifier.height(32.dp))
-        
+                
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
@@ -139,120 +181,119 @@ fun WorkoutScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Distance", fontSize = 16.sp, color = Color.Gray)
+                Text("Duration", fontSize = 16.sp, color = Color.Gray)
                 Text(
-                    text = String.format("%.2f km", distanceMeters / 1000f),
-                    fontSize = 36.sp,
+                    text = String.format("%02d:%02d", secondsElapsed / 60, secondsElapsed % 60),
+                    fontSize = 48.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF4CAF50)
                 )
                 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(24.dp))
                 
-                Text("Google Fit Steps Today", fontSize = 16.sp, color = Color.Gray)
-                Text(
-                    text = "$stepCount",
-                    fontSize = 36.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2196F3)
-                )
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(32.dp))
-        
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            Button(
-                onClick = {
-                    if (!hasPermissions) {
-                        permissionLauncher.launch(arrayOf(
-                            Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.ACCESS_COARSE_LOCATION
-                        ))
-                    } else {
-                        isTracking = !isTracking
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceAround
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Distance", fontSize = 14.sp, color = Color.Gray)
+                        Text(
+                            text = String.format("%.2f km", distanceMeters / 1000f),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2196F3)
+                        )
                     }
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isTracking) Color.Red else Color(0xFF4CAF50)
-                ),
-                modifier = Modifier.height(56.dp)
-            ) {
-                Icon(
-                    imageVector = if (isTracking) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = if (isTracking) "Stop" else "Start"
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(if (isTracking) "Stop Tracking" else "Start GPS Tracking")
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Steps", fontSize = 14.sp, color = Color.Gray)
+                        Text(
+                            text = "$sessionSteps",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFF9800)
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                // Squats section with a manual fallback button
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Squats", fontSize = 14.sp, color = Color.Gray)
+                        Text(
+                            text = "$squatsCount",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF9C27B0)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    IconButton(
+                        onClick = { squatsCount++ },
+                        modifier = Modifier.size(48.dp),
+                        colors = IconButtonDefaults.iconButtonColors(containerColor = Color(0xFFF3E5F5))
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add Squat", tint = Color(0xFF9C27B0))
+                    }
+                }
             }
         }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
+                
+        Spacer(modifier = Modifier.height(32.dp))
+                
         Button(
             onClick = {
-                val account = GoogleSignIn.getAccountForExtension(context, fitnessOptions)
-                if (!GoogleSignIn.hasPermissions(account, fitnessOptions)) {
+                if (!isTracking) {
+                    // Check permissions before starting
+                    val fineLoc = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
+                    val actRec = ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION)
                     
-                    // This is slightly complex since Fitness API uses its own intent
-                    GoogleSignIn.requestPermissions(
-                        context as Activity,
-                        1,
-                        account,
-                        fitnessOptions
-                    )
-                } else {
-                    readStepCount(context, fitnessOptions) { steps ->
-                        stepCount = steps
+                    if (fineLoc != PackageManager.PERMISSION_GRANTED || actRec != PackageManager.PERMISSION_GRANTED) {
+                        permissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                                Manifest.permission.ACTIVITY_RECOGNITION
+                            )
+                        )
+                    } else {
+                        isTracking = true
                     }
+                } else {
+                    isTracking = false
                 }
             },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isTracking) Color.Red else Color(0xFF4CAF50)
+            ),
             modifier = Modifier.height(56.dp)
         ) {
-            Icon(imageVector = Icons.Default.HealthAndSafety, contentDescription = "Fit")
+            Icon(
+                imageVector = if (isTracking) Icons.Default.Stop else Icons.Default.PlayArrow,
+                contentDescription = if (isTracking) "Stop" else "Start"
+            )
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Sync with Google Fit")
+            Text(if (isTracking) "Stop Workout" else "Start Workout")
+        }
+        
+        if (!isTracking && secondsElapsed > 0) {
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedButton(
+                onClick = { 
+                    secondsElapsed = 0 
+                    distanceMeters = 0f
+                    sessionSteps = 0
+                    initialSteps = -1
+                    squatsCount = 0
+                },
+                modifier = Modifier.height(56.dp)
+            ) {
+                Text("Reset", color = Color.DarkGray)
+            }
         }
     }
-}
-
-private fun readStepCount(context: Context, fitnessOptions: FitnessOptions, onResult: (Int) -> Unit) {
-    val account = GoogleSignIn.getAccountForExtension(context, fitnessOptions)
-    
-    val cal = Calendar.getInstance()
-    cal.time = java.util.Date()
-    val endTime = cal.timeInMillis
-    cal.set(Calendar.HOUR_OF_DAY, 0)
-    cal.set(Calendar.MINUTE, 0)
-    cal.set(Calendar.SECOND, 0)
-    val startTime = cal.timeInMillis
-
-    val readRequest = DataReadRequest.Builder()
-        .aggregate(DataType.TYPE_STEP_COUNT_DELTA, DataType.AGGREGATE_STEP_COUNT_DELTA)
-        .bucketByTime(1, TimeUnit.DAYS)
-        .setTimeRange(startTime, endTime, TimeUnit.MILLISECONDS)
-        .build()
-
-    Fitness.getHistoryClient(context, account)
-        .readData(readRequest)
-        .addOnSuccessListener { response ->
-            var totalSteps = 0
-            for (bucket in response.buckets) {
-                for (dataSet in bucket.dataSets) {
-                    for (dp in dataSet.dataPoints) {
-                        for (field in dp.dataType.fields) {
-                            totalSteps += dp.getValue(field).asInt()
-                        }
-                    }
-                }
-            }
-            onResult(totalSteps)
-        }
-        .addOnFailureListener {
-            onResult(0)
-        }
 }

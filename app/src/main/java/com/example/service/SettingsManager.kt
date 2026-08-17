@@ -17,6 +17,10 @@ object SettingsManager {
     private const val KEY_CUSTOM_BACKGROUND = "custom_background_uri"
     private const val KEY_BLOCKED_APPS = "blocked_apps_set"
 
+    private const val KEY_USER_NAME = "user_name"
+    private const val KEY_LAST_BACKUP_TIME = "last_backup_time"
+    private const val KEY_AUTO_BACKUP_FREQ = "auto_backup_freq"
+
     private const val KEY_SQUAT_VALLEY_THRESHOLD = "user_squat_valley_threshold"
     private const val KEY_SQUAT_PEAK_THRESHOLD = "user_squat_peak_threshold"
 
@@ -92,4 +96,10 @@ object SettingsManager {
     fun setBlockedApps(apps: Set<String>) {
         getPrefs().edit().putStringSet(KEY_BLOCKED_APPS, apps).apply()
     }
+    fun getUserName(): String? = getPrefs().getString(KEY_USER_NAME, null)
+    fun setUserName(name: String?) = getPrefs().edit().putString(KEY_USER_NAME, name).apply()
+    fun getLastBackupTime(): Long = getPrefs().getLong(KEY_LAST_BACKUP_TIME, 0L)
+    fun setLastBackupTime(timeMs: Long) = getPrefs().edit().putLong(KEY_LAST_BACKUP_TIME, timeMs).apply()
+    fun getAutoBackupFreq(): Int = getPrefs().getInt(KEY_AUTO_BACKUP_FREQ, 0)
+    fun setAutoBackupFreq(freq: Int) = getPrefs().edit().putInt(KEY_AUTO_BACKUP_FREQ, freq).apply()
 }
