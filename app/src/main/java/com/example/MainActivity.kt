@@ -155,8 +155,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        if (intent != null && intent.hasExtra("BLOCKED_APP")) {
-            android.widget.Toast.makeText(this, "App Blocked by PomoPal! Get back to focus.", android.widget.Toast.LENGTH_LONG).show()
+        if (intent != null && intent.getBooleanExtra("RETURNED_FROM_BLOCKER", false)) {
+            android.widget.Toast.makeText(this, "Focus session protected. Welcome back! 🌿", android.widget.Toast.LENGTH_SHORT).show()
+        } else if (intent != null && intent.hasExtra("BLOCKED_APP")) {
+            android.widget.Toast.makeText(this, "Focus session protected. Welcome back! 🌿", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -699,7 +701,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
             visible = showSettings,
             enter = slideInVertically(initialOffsetY = { it }, animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }, animationSpec = spring(stiffness = Spring.StiffnessMedium)) + fadeOut(),
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize().background(currentTheme.background)
         ) {
             SettingsOverlay(onDismiss = { viewModel.setSettingsOpen(false) })
         }
@@ -800,9 +802,10 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
     }
     
     val scope = rememberCoroutineScope()
+    val currentTheme = LocalAppTheme.current
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = Color.Transparent,
+        modifier = Modifier.fillMaxSize().background(currentTheme.background),
+        containerColor = currentTheme.background,
         topBar = {
             Row(
                 modifier = Modifier
@@ -817,7 +820,7 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                     fontFamily = CursiveFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 32.scaledSp,
-                    color = Color(0xFF5D4037)
+                    color = currentTheme.textPrimary
                 )
 
                 IconButton(
@@ -832,7 +835,7 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                     Icon(
                         imageVector = Icons.Filled.Close,
                         contentDescription = "Cancel & Close",
-                        tint = Color(0xFF5D4037)
+                        tint = currentTheme.textPrimary
                     )
                 }
             }
@@ -840,12 +843,11 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
         bottomBar = {
             // Elegant sticky bottom actions panel
             Surface(
-                color = Color.Transparent,
+                color = currentTheme.background,
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
             ) {
-                val currentTheme = LocalAppTheme.current
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1923,9 +1925,11 @@ fun TimerDisplay(
                 .shadow(10.dp, CircleShape, spotColor = currentTheme.shadowColor)
                 .clip(CircleShape)
                 .background(
-                    brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                        colors = listOf(currentTheme.surface.copy(alpha = 0.95f), currentTheme.surface.copy(alpha = 0.7f))
-                    )
+                    brush = remember(currentTheme) {
+                        androidx.compose.ui.graphics.Brush.linearGradient(
+                            colors = listOf(currentTheme.surface.copy(alpha = 0.95f), currentTheme.surface.copy(alpha = 0.7f))
+                        )
+                    }
                 )
                 .border(4.dp, currentTheme.cardBorder, CircleShape)
         ) {

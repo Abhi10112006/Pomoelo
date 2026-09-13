@@ -2,6 +2,8 @@ package com.example.ui.components
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.runtime.remember
 import androidx.compose.ui.draw.rotate
 
 import android.view.HapticFeedbackConstants
@@ -173,16 +175,20 @@ fun PomoButton(
     val theme = LocalAppTheme.current
     val actualShadow = if (containerColor == Color.White) Color.Black.copy(alpha = 0.15f) else shadowColor
 
-    val topHighlight = androidx.compose.ui.graphics.Brush.verticalGradient(
-        colors = listOf(Color.White.copy(alpha = 0.2f), Color.Transparent),
-        startY = 0f,
-        endY = 50f
-    )
-    val bottomShadow = androidx.compose.ui.graphics.Brush.verticalGradient(
-        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.1f)),
-        startY = 0f,
-        endY = Float.POSITIVE_INFINITY
-    )
+    val topHighlight = remember {
+        androidx.compose.ui.graphics.Brush.verticalGradient(
+            colors = listOf(Color.White.copy(alpha = 0.2f), Color.Transparent),
+            startY = 0f,
+            endY = 50f
+        )
+    }
+    val bottomShadow = remember {
+        androidx.compose.ui.graphics.Brush.verticalGradient(
+            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.1f)),
+            startY = 0f,
+            endY = Float.POSITIVE_INFINITY
+        )
+    }
     Box(
         modifier = modifier
             .pomoBouncyClick(
@@ -226,16 +232,20 @@ fun PomoIconButton(
 ) {
     val actualShadow = if (containerColor == Color.White) Color.Black.copy(alpha = 0.15f) else shadowColor
 
-    val topHighlight = androidx.compose.ui.graphics.Brush.verticalGradient(
-        colors = listOf(Color.White.copy(alpha = 0.3f), Color.Transparent),
-        startY = 0f,
-        endY = 50f
-    )
-    val bottomShadow = androidx.compose.ui.graphics.Brush.verticalGradient(
-        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.15f)),
-        startY = 0f,
-        endY = Float.POSITIVE_INFINITY
-    )
+    val topHighlight = remember {
+        androidx.compose.ui.graphics.Brush.verticalGradient(
+            colors = listOf(Color.White.copy(alpha = 0.3f), Color.Transparent),
+            startY = 0f,
+            endY = 50f
+        )
+    }
+    val bottomShadow = remember {
+        androidx.compose.ui.graphics.Brush.verticalGradient(
+            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.15f)),
+            startY = 0f,
+            endY = Float.POSITIVE_INFINITY
+        )
+    }
     Box(
         modifier = modifier
             .size(size)
@@ -261,40 +271,45 @@ fun PremiumBackgroundOverlays() {
     val currentTheme = LocalAppTheme.current
     Box(modifier = Modifier.fillMaxSize()) {
         // Leaf shadow abstract blobs on the left edge
-        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().drawWithCache {
             val shadowColor = currentTheme.textSecondary.copy(alpha = 0.08f)
             
-            // Draw a few large soft blobs on the middle-left
-            drawCircle(
-                brush = androidx.compose.ui.graphics.Brush.radialGradient(
-                    colors = listOf(shadowColor, Color.Transparent),
-                    center = androidx.compose.ui.geometry.Offset(-size.width * 0.2f, size.height * 0.3f),
-                    radius = size.width * 0.8f
-                ),
+            val brush1 = androidx.compose.ui.graphics.Brush.radialGradient(
+                colors = listOf(shadowColor, Color.Transparent),
                 center = androidx.compose.ui.geometry.Offset(-size.width * 0.2f, size.height * 0.3f),
                 radius = size.width * 0.8f
             )
             
-            drawCircle(
-                brush = androidx.compose.ui.graphics.Brush.radialGradient(
-                    colors = listOf(shadowColor, Color.Transparent),
-                    center = androidx.compose.ui.geometry.Offset(-size.width * 0.1f, size.height * 0.5f),
-                    radius = size.width * 0.6f
-                ),
+            val brush2 = androidx.compose.ui.graphics.Brush.radialGradient(
+                colors = listOf(shadowColor, Color.Transparent),
                 center = androidx.compose.ui.geometry.Offset(-size.width * 0.1f, size.height * 0.5f),
                 radius = size.width * 0.6f
             )
-
-            drawCircle(
-                brush = androidx.compose.ui.graphics.Brush.radialGradient(
-                    colors = listOf(shadowColor, Color.Transparent),
-                    center = androidx.compose.ui.geometry.Offset(-size.width * 0.3f, size.height * 0.7f),
-                    radius = size.width * 0.9f
-                ),
+            
+            val brush3 = androidx.compose.ui.graphics.Brush.radialGradient(
+                colors = listOf(shadowColor, Color.Transparent),
                 center = androidx.compose.ui.geometry.Offset(-size.width * 0.3f, size.height * 0.7f),
                 radius = size.width * 0.9f
             )
-        }
+            
+            onDrawBehind {
+                drawCircle(
+                    brush = brush1,
+                    center = androidx.compose.ui.geometry.Offset(-size.width * 0.2f, size.height * 0.3f),
+                    radius = size.width * 0.8f
+                )
+                drawCircle(
+                    brush = brush2,
+                    center = androidx.compose.ui.geometry.Offset(-size.width * 0.1f, size.height * 0.5f),
+                    radius = size.width * 0.6f
+                )
+                drawCircle(
+                    brush = brush3,
+                    center = androidx.compose.ui.geometry.Offset(-size.width * 0.3f, size.height * 0.7f),
+                    radius = size.width * 0.9f
+                )
+            }
+        })
         
         // Cursive text on the top right
         androidx.compose.foundation.layout.Column(

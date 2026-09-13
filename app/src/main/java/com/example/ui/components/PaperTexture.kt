@@ -1,46 +1,48 @@
 package com.example.ui.components
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.drawWithCache
 
 @Composable
 fun PaperTextureOverlay() {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val width = size.width
-        val height = size.height
-        
-        // Draw very subtle diagonal lines to simulate a textured paper surface
-        val step = 30f
-        val maxDim = maxOf(width, height) * 2f
-        val linePaintColor = Color.Black.copy(alpha = 0.02f)
-        
-        var i = 0f
-        while (i < maxDim) {
-            drawLine(
-                color = linePaintColor,
-                start = Offset(0f, i),
-                end = Offset(i, 0f),
-                strokeWidth = 2f,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 15f), 0f)
-            )
-            i += step
-        }
-        
-        var j = 0f
-        while (j < maxDim) {
-            drawLine(
-                color = linePaintColor,
-                start = Offset(j, height),
-                end = Offset(width, height - (width - j)),
-                strokeWidth = 2f,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 15f), 5f)
-            )
-            j += step
-        }
-    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .drawWithCache {
+                // Highly optimized repeated shader pattern instead of thousands of dashed lines
+                val textureBrush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.Black.copy(alpha = 0.015f), 
+                        Color.Transparent,
+                        Color.White.copy(alpha = 0.015f),
+                        Color.Transparent
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(8f, 8f),
+                    tileMode = TileMode.Repeated
+                )
+                
+                val crossBrush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.Black.copy(alpha = 0.01f), 
+                        Color.Transparent
+                    ),
+                    start = Offset(8f, 0f),
+                    end = Offset(0f, 8f),
+                    tileMode = TileMode.Repeated
+                )
+                
+                onDrawBehind {
+                    drawRect(brush = textureBrush)
+                    drawRect(brush = crossBrush)
+                }
+            }
+    )
 }
