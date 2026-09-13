@@ -176,6 +176,7 @@ fun PomoPalApp(viewModel: TimerViewModel) {
     var updateUrl by remember { mutableStateOf<String?>(null) }
     val view = androidx.compose.ui.platform.LocalView.current
 
+    val currentTheme = com.example.ui.theme.LocalAppTheme.current
     LaunchedEffect(Unit) {
         val url = UpdateChecker.checkForUpdates()
         if (url != null) {
@@ -186,8 +187,8 @@ fun PomoPalApp(viewModel: TimerViewModel) {
     if (updateUrl != null) {
         AlertDialog(
             onDismissRequest = { updateUrl = null },
-            title = { Text("Update Available", color = Color(0xFF5D4037), fontWeight = FontWeight.Bold) },
-            text = { Text("A new version of PomoPal is available! Please download it to enjoy the latest features and bug fixes.", color = Color(0xFF5D4037)) },
+            title = { Text("Update Available", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold) },
+            text = { Text("A new version of PomoPal is available! Please download it to enjoy the latest features and bug fixes.", color = currentTheme.textPrimary) },
             confirmButton = {
                 TextButton(onClick = {
                     try {
@@ -207,7 +208,7 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                     } catch (e: Exception) {}
                     updateUrl = null
                 }) {
-                    Text("Later", color = Color.Gray)
+                    Text("Later", color = currentTheme.textSecondary)
                 }
             },
             containerColor = Color.Transparent,
@@ -229,14 +230,17 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(bottom = 16.dp, top = 8.dp)
             ) {
+                val currentTheme = com.example.ui.theme.LocalAppTheme.current
+                val currentFont = com.example.ui.theme.LocalAppFont.current
                 Box(
                     modifier = Modifier.fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
                         modifier = Modifier
+                            .shadow(8.dp, RoundedCornerShape(32.dp), spotColor = currentTheme.shadowColor)
                             .clip(RoundedCornerShape(32.dp))
-                            .background(Color.White)
+                            .background(currentTheme.surface)
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                             .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessLow)),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -244,8 +248,6 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                         val navSpring = spring<Float>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
                         val isHome = currentRoute == "home"
                         val homeWeight by animateFloatAsState(targetValue = if (isHome) 1f else 0f, animationSpec = navSpring)
-                        val currentTheme = com.example.ui.theme.LocalAppTheme.current
-                        val currentFont = com.example.ui.theme.LocalAppFont.current
                         
                         Row(
                             modifier = Modifier
@@ -634,7 +636,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                                     fontSize = 20.scaledSp,
                                     fontFamily = AppFontFamily,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF5D4037),
+                                    color = currentTheme.textPrimary,
                                     modifier = Modifier.padding(bottom = 16.dp)
                                 )
                             }
@@ -739,6 +741,13 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
     val maxVolume = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).toFloat()
     var localVolume by remember { mutableStateOf(audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toFloat()) }
     
+    LaunchedEffect(localFocus, localBreak, localCompletion, localCompletionDuration) {
+        SettingsManager.setFocusTimeMins(localFocus.toInt())
+        SettingsManager.setBreakTimeMins(localBreak.toInt())
+        SettingsManager.setCompletionSound(localCompletion)
+        SettingsManager.setCompletionDurationSec(localCompletionDuration.toInt())
+    }
+
     val completionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             try {
@@ -834,67 +843,9 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Close,
-                        contentDescription = "Cancel & Close",
+                        contentDescription = "Close",
                         tint = currentTheme.textPrimary
                     )
-                }
-            }
-        },
-        bottomBar = {
-            // Elegant sticky bottom actions panel
-            Surface(
-                color = currentTheme.background,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-            ) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp)
-                        .shadow(elevation = 6.dp, shape = RoundedCornerShape(24.dp), spotColor = currentTheme.shadowColor),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        com.example.ui.components.PomoButton(
-                            text = "Cancel",
-                            onClick = {
-                                com.example.service.SoundPlayer.stop()
-                                onDismiss()
-                            },
-                            containerColor = currentTheme.surface,
-                            contentColor = currentTheme.textPrimary,
-                            shape = RoundedCornerShape(25.dp),
-                            elevation = 2.dp,
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        com.example.ui.components.PomoButton(
-                            text = "Save Settings",
-                            onClick = {
-                                com.example.service.SoundPlayer.stop()
-                                SettingsManager.setFocusTimeMins(localFocus.toInt())
-                                SettingsManager.setBreakTimeMins(localBreak.toInt())
-                                SettingsManager.setCompletionSound(localCompletion)
-                                SettingsManager.setCompletionDurationSec(localCompletionDuration.toInt())
-                                onDismiss()
-                            },
-                            containerColor = currentTheme.primary,
-                            contentColor = Color.White,
-                            shape = RoundedCornerShape(25.dp),
-                            elevation = 4.dp,
-                            modifier = Modifier.weight(1.2f)
-                        )
-                    }
                 }
             }
         }
@@ -991,15 +942,15 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD180).copy(alpha = 0.4f))
+                colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Timer & Sound", fontSize = 16.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFF5D4037))
+                    Text("Timer & Sound", fontSize = 16.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.textPrimary)
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                        Text("Focus Time (min):", color = Color(0xFF5D4037), fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
+                        Text("Focus Time (min):", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
                         androidx.compose.foundation.text.BasicTextField(
                             value = focusInput,
                             onValueChange = { newVal ->
@@ -1010,8 +961,8 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                                 }
                             },
                             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                            textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF5D4037), fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
-                            modifier = Modifier.width(60.dp).background(Color.Black.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
+                            modifier = Modifier.width(60.dp).background(currentTheme.textPrimary.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
                             singleLine = true
                         )
                     }
@@ -1033,7 +984,7 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                        Text("Break Time (min):", color = Color(0xFF5D4037), fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
+                        Text("Break Time (min):", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
                         androidx.compose.foundation.text.BasicTextField(
                             value = breakInput,
                             onValueChange = { newVal ->
@@ -1044,8 +995,8 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                                 }
                             },
                             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                            textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF5D4037), fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
-                            modifier = Modifier.width(60.dp).background(Color.Black.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
+                            modifier = Modifier.width(60.dp).background(currentTheme.textPrimary.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
                             singleLine = true
                         )
                     }
@@ -1065,9 +1016,9 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                         colors = SliderDefaults.colors(thumbColor = Color(0xFF81D4FA), activeTrackColor = Color(0xFFB3E5FC))
                     )
                     
-                    Divider(modifier = Modifier.padding(vertical = 16.dp), color = Color.Black.copy(alpha=0.05f))
+                    Divider(modifier = Modifier.padding(vertical = 16.dp), color = currentTheme.textPrimary.copy(alpha = 0.1f))
                     
-                    Text("Volume", color = Color(0xFF5D4037), fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
+                    Text("Volume", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
                     Slider(
                         value = localVolume,
                         onValueChange = { 
@@ -1087,9 +1038,9 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    Text("Completion Sound", color = Color(0xFF5D4037), fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
+                    Text("Completion Sound", color = currentTheme.textPrimary, fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha=0.05f))) {
+                    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(currentTheme.textPrimary.copy(alpha=0.05f))) {
                         val compOptions = listOf("Beep", "Alarm", "Ring", "Custom")
                         compOptions.forEachIndexed { index, name ->
                             Box(
@@ -1110,12 +1061,12 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                                     }
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center
-                            ) { Text(name, color = if (localCompletion == index) Color.White else Color(0xFF5D4037), fontSize = 11.scaledSp, maxLines = 1) }
+                            ) { Text(name, color = if (localCompletion == index) Color.White else currentTheme.textPrimary, fontSize = 11.scaledSp, maxLines = 1) }
                         }
                     }
                     
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Completion Sound Duration: ${localCompletionDuration.toInt()} sec", color = Color(0xFF5D4037), fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
+                    Text("Completion Sound Duration: ${localCompletionDuration.toInt()} sec", color = currentTheme.textPrimary, fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
                     Slider(
                         value = localCompletionDuration,
                         onValueChange = { 
@@ -1147,8 +1098,8 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                         showBlockedApps = true 
                     },
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFCC80).copy(alpha = 0.6f))
+                colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -1156,10 +1107,10 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("App Blocker", fontWeight = FontWeight.Bold, color = Color(0xFF5D4037))
-                        Text("Select distracting apps to block during focus sessions.", fontSize = 12.scaledSp, color = Color.Gray)
+                        Text("App Blocker", fontWeight = FontWeight.Bold, color = currentTheme.textPrimary)
+                        Text("Select distracting apps to block during focus sessions.", fontSize = 12.scaledSp, color = currentTheme.textSecondary)
                     }
-                    Icon(Icons.Filled.Settings, contentDescription = "Manage", tint = Color(0xFF5D4037))
+                    Icon(Icons.Filled.Settings, contentDescription = "Manage", tint = currentTheme.textPrimary)
                 }
             }
             } // Close if (selectedTabIndex == 2)
@@ -1168,8 +1119,8 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.5f)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFCC80).copy(alpha = 0.6f))
+                colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -1187,14 +1138,14 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                             text = "System Alarm & Lock Screen Settings",
                             fontSize = 14.scaledSp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF5D4037)
+                            color = currentTheme.textPrimary
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "To make sure completion alarms show on the lock screen immediately and bypass battery saving background limits, configure these parameters:",
                         fontSize = 11.scaledSp,
-                        color = Color.DarkGray
+                        color = currentTheme.textSecondary
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Column(
@@ -1321,7 +1272,7 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                             Text(
                                 text = "💡 Side-loaded App Tip:\nIf PomoPal is not listed on the DND screen, please go to your phone's Settings > Apps > PomoPal > click the (⋮) menu in the top-right corner > select 'Allow restricted settings'. Then return here to grant access.",
                                 fontSize = 11.scaledSp,
-                                color = Color(0xFF5D4037),
+                                color = currentTheme.textPrimary,
                                 fontWeight = FontWeight.Medium,
                                 lineHeight = 16.scaledSp
                             )
@@ -1336,7 +1287,7 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                 Text(
                     text = "PomoPal v2.0",
                     fontSize = 13.scaledSp,
-                    color = Color(0xFF5D4037).copy(alpha = 0.8f),
+                    color = currentTheme.textPrimary.copy(alpha = 0.8f),
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
@@ -1344,7 +1295,7 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                 Text(
                     text = "Designed & Developed by Abhinav Yaduvanshi",
                     fontSize = 11.scaledSp,
-                    color = Color(0xFF5D4037).copy(alpha = 0.6f),
+                    color = currentTheme.textPrimary.copy(alpha = 0.6f),
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
             }
@@ -1437,6 +1388,7 @@ fun TaskItemRow(task: com.example.data.TaskItem, onSelect: (com.example.data.Tas
 @Composable
 fun PremiumJumpingTextPreview(text: String) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val currentTheme = com.example.ui.theme.LocalAppTheme.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1449,7 +1401,7 @@ fun PremiumJumpingTextPreview(text: String) {
             Text(
                 text = "Type task name...",
                 fontSize = 18.scaledSp,
-                color = Color.Gray.copy(alpha = 0.5f),
+                color = currentTheme.textSecondary.copy(alpha = 0.5f),
                 fontFamily = AppFontFamily,
                 fontWeight = FontWeight.Medium
             )
@@ -1486,7 +1438,7 @@ fun PremiumJumpingTextPreview(text: String) {
                     fontSize = 24.scaledSp,
                     fontFamily = AppFontFamily,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF5D4037),
+                    color = currentTheme.textPrimary,
                     modifier = Modifier
                         .graphicsLayer {
                             translationY = animatedOffset.value
@@ -1584,7 +1536,7 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                         fontFamily = CursiveFontFamily,
                         fontSize = 28.scaledSp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF5D4037)
+                        color = currentTheme.textPrimary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     
@@ -1602,9 +1554,9 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                             focusedTextColor = Color.Black,
                             unfocusedTextColor = Color.Black,
                             cursorColor = Color.Black,
-                            focusedBorderColor = Color(0xFF5D4037),
+                            focusedBorderColor = currentTheme.textPrimary,
                             unfocusedBorderColor = Color.LightGray,
-                            focusedLabelColor = Color(0xFF5D4037)
+                            focusedLabelColor = currentTheme.textPrimary
                         ),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                             imeAction = androidx.compose.ui.text.input.ImeAction.Done
@@ -1620,7 +1572,7 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                         singleLine = true
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Category", fontSize = 14.scaledSp, color = Color.Gray)
+                    Text("Category", fontSize = 14.scaledSp, color = currentTheme.textSecondary)
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),

@@ -27,6 +27,25 @@ object SettingsManager {
     private const val KEY_THEME_ID = "selected_app_theme"
     private const val KEY_FONT_ID = "selected_app_font"
 
+    private const val KEY_CUSTOM_BG_COLOR = "custom_bg_color"
+    private const val KEY_CUSTOM_PRIMARY_COLOR = "custom_primary_color"
+    private const val KEY_CUSTOM_SECONDARY_COLOR = "custom_secondary_color"
+    private const val KEY_CUSTOM_ACCENT_COLOR = "custom_accent_color"
+    private const val KEY_APPEARANCE_MODE = "appearance_mode"
+
+    enum class AppearanceMode(val id: String) {
+        LIGHT("light"),
+        DARK("dark"),
+        SYSTEM("system");
+
+        companion object {
+            fun fromId(id: String?): AppearanceMode = entries.firstOrNull { it.id == id } ?: SYSTEM
+        }
+    }
+
+    private val _appearanceState = kotlinx.coroutines.flow.MutableStateFlow(AppearanceMode.SYSTEM)
+    val appearanceState: kotlinx.coroutines.flow.StateFlow<AppearanceMode> = _appearanceState
+
     private val _themeState = kotlinx.coroutines.flow.MutableStateFlow(com.example.ui.theme.ThemeOption.PREMIUM)
     val themeState: kotlinx.coroutines.flow.StateFlow<com.example.ui.theme.ThemeOption> = _themeState
 
@@ -57,7 +76,8 @@ object SettingsManager {
         TimerManager.setFocusTimeMins(getFocusTimeMins())
         TimerManager.setBreakTimeMins(getBreakTimeMins())
 
-        _themeState.value = com.example.ui.theme.ThemeOption.fromId(getThemeId())
+        _appearanceState.value = getAppearanceMode()
+        updateThemeState()
         _fontState.value = com.example.ui.theme.FontOption.fromId(getFontId())
     }
 
@@ -118,7 +138,64 @@ object SettingsManager {
     fun getThemeId(): String = getPrefs().getString(KEY_THEME_ID, "premium") ?: "premium"
     fun setThemeId(themeId: String) {
         getPrefs().edit().putString(KEY_THEME_ID, themeId).apply()
-        _themeState.value = com.example.ui.theme.ThemeOption.fromId(themeId)
+        updateThemeState()
+    }
+
+    fun getCustomBgColor(): Long? = if (getPrefs().contains(KEY_CUSTOM_BG_COLOR)) getPrefs().getLong(KEY_CUSTOM_BG_COLOR, 0L) else null
+    fun setCustomBgColor(color: Long?) {
+        if (color == null) getPrefs().edit().remove(KEY_CUSTOM_BG_COLOR).apply()
+        else getPrefs().edit().putLong(KEY_CUSTOM_BG_COLOR, color).apply()
+        updateThemeState()
+    }
+
+    fun getCustomPrimaryColor(): Long? = if (getPrefs().contains(KEY_CUSTOM_PRIMARY_COLOR)) getPrefs().getLong(KEY_CUSTOM_PRIMARY_COLOR, 0L) else null
+    fun setCustomPrimaryColor(color: Long?) {
+        if (color == null) getPrefs().edit().remove(KEY_CUSTOM_PRIMARY_COLOR).apply()
+        else getPrefs().edit().putLong(KEY_CUSTOM_PRIMARY_COLOR, color).apply()
+        updateThemeState()
+    }
+
+    fun getCustomSecondaryColor(): Long? = if (getPrefs().contains(KEY_CUSTOM_SECONDARY_COLOR)) getPrefs().getLong(KEY_CUSTOM_SECONDARY_COLOR, 0L) else null
+    fun setCustomSecondaryColor(color: Long?) {
+        if (color == null) getPrefs().edit().remove(KEY_CUSTOM_SECONDARY_COLOR).apply()
+        else getPrefs().edit().putLong(KEY_CUSTOM_SECONDARY_COLOR, color).apply()
+        updateThemeState()
+    }
+
+    fun getCustomAccentColor(): Long? = if (getPrefs().contains(KEY_CUSTOM_ACCENT_COLOR)) getPrefs().getLong(KEY_CUSTOM_ACCENT_COLOR, 0L) else null
+    fun setCustomAccentColor(color: Long?) {
+        if (color == null) getPrefs().edit().remove(KEY_CUSTOM_ACCENT_COLOR).apply()
+        else getPrefs().edit().putLong(KEY_CUSTOM_ACCENT_COLOR, color).apply()
+        updateThemeState()
+    }
+
+    fun getAppearanceMode(): AppearanceMode = AppearanceMode.fromId(getPrefs().getString(KEY_APPEARANCE_MODE, AppearanceMode.SYSTEM.id))
+    fun setAppearanceMode(mode: AppearanceMode) {
+        getPrefs().edit().putString(KEY_APPEARANCE_MODE, mode.id).apply()
+        _appearanceState.value = mode
+        updateThemeState()
+    }
+
+    fun updateThemeState() {
+        val baseTheme = com.example.ui.theme.ThemeOption.PREMIUM
+        val bg = getCustomBgColor()?.toColor()
+        val pri = getCustomPrimaryColor()?.toColor()
+        val sec = getCustomSecondaryColor()?.toColor()
+        val acc = getCustomAccentColor()?.toColor()
+
+        val activeBg = bg ?: baseTheme.background
+        val activePri = pri ?: baseTheme.primary
+        val activeSec = sec ?: baseTheme.secondary
+        val activeAcc = acc ?: baseTheme.accent
+
+        _themeState.value = baseTheme.copy(
+            background = activeBg,
+            runningBg = activeBg,
+            primary = activePri,
+            secondary = activeSec,
+            accent = activeAcc,
+            timerArcColors = listOf(activePri, activeSec, activeAcc)
+        )
     }
 
     fun getFontId(): String = getPrefs().getString(KEY_FONT_ID, "comic_neue") ?: "comic_neue"

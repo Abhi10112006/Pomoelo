@@ -35,6 +35,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,172 +59,59 @@ fun ThemeFontCustomizer(
     val currentTheme by SettingsManager.themeState.collectAsState()
     val currentFont by SettingsManager.fontState.collectAsState()
 
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
-    ) {
-        // Section 1: Themes
-        Card(
-            modifier = Modifier.fillMaxWidth(),
+    var showCustomizer by remember { mutableStateOf(false) }
+
+    AnimatedVisibility(visible = showCustomizer) {
+        AppCustomizerScreen(
+            onNavigateBack = { showCustomizer = false }
+        )
+    }
+
+    AnimatedVisibility(visible = !showCustomizer) {
+        Column(
+            modifier = modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            // Section 1: Make It Yours (Replaces old Themes)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showCustomizer = true },
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
             border = BorderStroke(1.dp, currentTheme.cardBorder),
             elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
         ) {
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .shadow(4.dp, CircleShape, spotColor = currentTheme.primary)
+                        .clip(CircleShape)
+                        .background(currentTheme.primary),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .shadow(3.dp, CircleShape, spotColor = currentTheme.primary)
-                            .clip(CircleShape)
-                            .background(currentTheme.primary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Palette,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Column {
-                        Text(
-                            text = "Cute Themes",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = currentTheme.textPrimary
-                        )
-                        Text(
-                            text = "Choose your aesthetic palette",
-                            fontSize = 12.sp,
-                            color = currentTheme.textSecondary
-                        )
-                    }
+                    Text(text = "✨", fontSize = 24.sp)
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    ThemeOption.entries.forEach { theme ->
-                        val isSelected = currentTheme.id == theme.id
-                        val borderColor by animateColorAsState(
-                            targetValue = if (isSelected) theme.primary else theme.cardBorder,
-                            label = "themeBorder"
-                        )
-                        val bgColor by animateColorAsState(
-                            targetValue = if (isSelected) theme.primary.copy(alpha = 0.12f) else theme.surface,
-                            label = "themeBg"
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .shadow(
-                                    elevation = if (isSelected) 4.dp else 1.dp,
-                                    shape = RoundedCornerShape(18.dp),
-                                    spotColor = theme.shadowColor
-                                )
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(bgColor)
-                                .border(
-                                    width = if (isSelected) 2.dp else 1.dp,
-                                    color = borderColor,
-                                    shape = RoundedCornerShape(18.dp)
-                                )
-                                .clickable {
-                                    SettingsManager.setThemeId(theme.id)
-                                }
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text(
-                                        text = theme.emoji,
-                                        fontSize = 24.sp
-                                    )
-                                    Column {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Text(
-                                                text = theme.displayName,
-                                                fontSize = 15.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isSelected) theme.primary else currentTheme.textPrimary
-                                            )
-                                            if (theme.isDark) {
-                                                Surface(
-                                                    color = Color(0xFF382F5E),
-                                                    shape = RoundedCornerShape(8.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "Dark",
-                                                        fontSize = 10.sp,
-                                                        color = Color(0xFF64FFDA),
-                                                        fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        Text(
-                                            text = theme.tagline,
-                                            fontSize = 12.sp,
-                                            color = currentTheme.textSecondary
-                                        )
-                                    }
-                                }
-
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    // Color swatch dots
-                                    Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(theme.primary))
-                                    Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(theme.secondary))
-                                    Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(theme.accent))
-
-                                    Spacer(modifier = Modifier.width(6.dp))
-
-                                    if (isSelected) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(24.dp)
-                                                .clip(CircleShape)
-                                                .background(theme.primary),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Check,
-                                                contentDescription = "Selected",
-                                                tint = Color.White,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Make It Yours",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = currentTheme.textPrimary
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Create a PomoPal that feels like you.",
+                        fontSize = 13.sp,
+                        color = currentTheme.textSecondary
+                    )
                 }
             }
         }
@@ -374,4 +264,5 @@ fun ThemeFontCustomizer(
             }
         }
     }
+}
 }
