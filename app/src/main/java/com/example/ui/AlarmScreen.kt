@@ -112,27 +112,29 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
     val alarms by alarmDao.getAllAlarms().collectAsState(initial = emptyList())
     var showEditDialog by remember { mutableStateOf(false) }
     var activeEditAlarm by remember { mutableStateOf<com.example.data.AlarmItem?>(null) }
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
 
     Scaffold(
-        containerColor = Color(0xFFFAF6F0), // Ultra-premium crisp soft cream background
+        containerColor = currentTheme.background,
         topBar = {
             TopAppBar(
                 title = {
                     Column(modifier = Modifier.padding(start = 8.dp, top = 8.dp)) {
                         Text(
                             text = "Somatic Alarms ⏰",
-                            fontFamily = CursiveFontFamily,
+                            fontFamily = currentFont,
                             fontWeight = FontWeight.Black,
                             fontSize = 26.scaledSp,
-                            color = Color(0xFF3E2723),
+                            color = currentTheme.textPrimary,
                             letterSpacing = (-0.5).sp
                         )
                         Text(
                             text = "Stand up and squat to silence your morning alarm",
-                            fontFamily = MonospaceFontFamily,
+                            fontFamily = currentFont,
                             fontWeight = FontWeight.Medium,
                             fontSize = 11.scaledSp,
-                            color = Color(0xFF8D6E63)
+                            color = currentTheme.textSecondary
                         )
                     }
                 },
@@ -151,10 +153,14 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                     activeEditAlarm = null
                     showEditDialog = true
                 },
-                containerColor = Color(0xFF5D4037),
+                containerColor = currentTheme.primary,
                 modifier = Modifier.padding(bottom = 88.dp, end = 16.dp)
             ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Add Alarm", tint = Color.White)
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Add Alarm",
+                    tint = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
+                )
             }
         }
     ) { paddingValues ->
@@ -208,12 +214,12 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
 
             // Saved Alarms Card Container
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
                 shape = RoundedCornerShape(24.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(0.5.dp, Color(0xFFEFEBE9), RoundedCornerShape(24.dp))
+                    .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(24.dp))
             ) {
                 Column(
                     modifier = Modifier.padding(20.dp),
@@ -229,14 +235,14 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                 text = "Saved Wakeup Schedules  ⏰",
                                 fontSize = 16.scaledSp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF3E2723),
-                                fontFamily = AppFontFamily
+                                color = currentTheme.textPrimary,
+                                fontFamily = currentFont
                             )
                             Text(
                                 text = "Active physical alarms configured",
                                 fontSize = 11.scaledSp,
-                                color = Color.Gray,
-                                fontFamily = AppFontFamily
+                                color = currentTheme.textSecondary,
+                                fontFamily = currentFont
                             )
                         }
                     }
@@ -252,16 +258,16 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                 Icon(
                                     imageVector = Icons.Filled.NotificationsActive,
                                     contentDescription = "Empty Alarms",
-                                    tint = Color.LightGray,
+                                    tint = currentTheme.textSecondary.copy(alpha = 0.5f),
                                     modifier = Modifier.size(48.dp)
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = "No wakeup alarms set. Complete with zero physical snooze constraints.",
                                     fontSize = 11.scaledSp,
-                                    color = Color.Gray,
+                                    color = currentTheme.textSecondary,
                                     textAlign = TextAlign.Center,
-                                    fontFamily = AppFontFamily
+                                    fontFamily = currentFont
                                 )
                             }
                         }
@@ -275,8 +281,8 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(16.dp))
-                                        .background(Color(0xFFFAF6F0))
-                                        .border(0.5.dp, Color(0xFFEFEBE9), RoundedCornerShape(16.dp))
+                                        .background(currentTheme.backgroundSecondary)
+                                        .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(16.dp))
                                         .clickable {
                                             activeEditAlarm = item
                                             showEditDialog = true
@@ -299,7 +305,7 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                             text = timeStr,
                                             fontSize = 20.scaledSp,
                                             fontWeight = FontWeight.ExtraBold,
-                                            color = Color(0xFF3E2723),
+                                            color = currentTheme.textPrimary,
                                             fontFamily = MonospaceFontFamily,
                                             modifier = Modifier.weight(1f)
                                         )
@@ -311,14 +317,14 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                             Box(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(6.dp))
-                                                    .background(Color(0xFFE8F5E9))
+                                                    .background(currentTheme.primaryLight.copy(alpha = 0.25f))
                                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                                             ) {
                                                 Text(
                                                     text = "${item.squatTarget} squats",
                                                     fontSize = 9.scaledSp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF2E7D32),
+                                                    color = currentTheme.primaryDark,
                                                     fontFamily = MonospaceFontFamily
                                                 )
                                             }
@@ -340,10 +346,10 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                                     }
                                                 },
                                                 colors = SwitchDefaults.colors(
-                                                    checkedThumbColor = Color.White,
-                                                    checkedTrackColor = Color(0xFF3E2723),
-                                                    uncheckedThumbColor = Color.White,
-                                                    uncheckedTrackColor = Color(0xFFD7CCC8)
+                                                    checkedThumbColor = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
+                                                    checkedTrackColor = currentTheme.primary,
+                                                    uncheckedThumbColor = currentTheme.surface,
+                                                    uncheckedTrackColor = currentTheme.cardBorder
                                                 )
                                             )
 
@@ -361,7 +367,7 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                                 Icon(
                                                     imageVector = Icons.Filled.Delete,
                                                     contentDescription = "Delete Alarm",
-                                                    tint = Color(0xFFD32F2F),
+                                                    tint = Color(0xFFE57373),
                                                     modifier = Modifier.size(20.dp)
                                                 )
                                             }
@@ -373,8 +379,8 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                     Text(
                                         text = "${item.label} • ${formatDaysOfWeekDisplay(item.daysOfWeek)}",
                                         fontSize = 11.scaledSp,
-                                        color = Color.Gray,
-                                        fontFamily = AppFontFamily
+                                        color = currentTheme.textSecondary,
+                                        fontFamily = currentFont
                                     )
                                 }
                             }
@@ -385,12 +391,12 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
 
             // Permissions / Backend preparation card
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
                 shape = RoundedCornerShape(24.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(0.5.dp, Color(0xFFEFEBE9), RoundedCornerShape(24.dp))
+                    .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(24.dp))
             ) {
                 Column(
                     modifier = Modifier.padding(20.dp),
@@ -400,8 +406,8 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                         text = "Somatic Hardware Pre-flight",
                         fontSize = 14.scaledSp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF3E2723),
-                        fontFamily = AppFontFamily
+                        color = currentTheme.textPrimary,
+                        fontFamily = currentFont
                     )
 
                     Row(
@@ -411,7 +417,7 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                         Icon(
                             imageVector = Icons.Filled.Info,
                             contentDescription = "Info icon",
-                            tint = Color(0xFF8D6E63),
+                            tint = currentTheme.primary,
                             modifier = Modifier
                                 .size(16.dp)
                                 .padding(top = 2.dp)
@@ -419,14 +425,14 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                         Text(
                             text = "To guarantee physical snooze bypass works securely on your hardware, both dynamic alarms & push triggers must be authorized.",
                             fontSize = 11.scaledSp,
-                            color = Color.Gray,
+                            color = currentTheme.textSecondary,
                             lineHeight = 16.scaledSp,
-                            fontFamily = AppFontFamily,
+                            fontFamily = currentFont,
                             modifier = Modifier.padding(start = 12.dp)
                         )
                     }
 
-                    HorizontalDivider(color = Color(0xFFF5F5F5), thickness = 0.5.dp)
+                    HorizontalDivider(color = currentTheme.cardBorder, thickness = 0.5.dp)
 
                     // Notification Permission
                     Column(
@@ -442,8 +448,8 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                 text = "Push Service Status",
                                 fontSize = 12.scaledSp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF3E2723),
-                                fontFamily = AppFontFamily
+                                color = currentTheme.textPrimary,
+                                fontFamily = currentFont
                             )
                             if (hasNotificationPermission) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -478,16 +484,21 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                     } catch (e: Exception) {}
                                     notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8A80)),
+                                colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primary),
                                 modifier = Modifier.fillMaxWidth().height(42.dp),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
-                                Text("Grant Permission", fontSize = 12.scaledSp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Authorize Push Alarms",
+                                    fontSize = 12.scaledSp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
+                                )
                             }
                         }
                     }
 
-                    Divider(color = Color(0xFFF5F5F5), thickness = 1.dp)
+                    HorizontalDivider(color = currentTheme.cardBorder, thickness = 0.5.dp)
 
                     // Schedule Exact Alarms
                     Column(
@@ -503,7 +514,7 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                 text = "Android Exact Alarm Sync",
                                 fontSize = 13.scaledSp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF5D4037)
+                                color = currentTheme.textPrimary
                             )
                             if (hasExactAlarmPermission) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -541,11 +552,16 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                     }
                                     try { context.startActivity(intent) } catch (e: Exception) {}
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF81D4FA)),
+                                colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primary),
                                 modifier = Modifier.fillMaxWidth().height(42.dp),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
-                                Text("Grant Exact Alarm Integration", fontSize = 12.scaledSp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text(
+                                    "Grant Exact Alarm Integration",
+                                    fontSize = 12.scaledSp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
+                                )
                             }
                         }
                         
@@ -556,11 +572,16 @@ fun AlarmScreen(navController: NavController, bottomPadding: androidx.compose.ui
                                 } catch (e: Exception) {}
                                 navController.navigate("calibration")
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5D4037)),
+                            colors = ButtonDefaults.buttonColors(containerColor = currentTheme.secondary),
                             modifier = Modifier.fillMaxWidth().height(42.dp),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Calibrate Squat Sensor", fontSize = 12.scaledSp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text(
+                                "Calibrate Squat Sensor",
+                                fontSize = 12.scaledSp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (currentTheme.secondary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
+                            )
                         }
                     }
                 }
@@ -585,6 +606,8 @@ fun EditAlarmDialog(
     onDismiss: () -> Unit,
     onSave: (hour: Int, minute: Int, label: String, daysOfWeek: String, squatTarget: Int) -> Unit
 ) {
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
     val initialHour = alarm?.hour ?: 7
     var minute by remember { mutableStateOf(alarm?.minute ?: 0) }
     var label by remember { mutableStateOf(alarm?.label ?: "Morning Workout") }
@@ -616,11 +639,11 @@ fun EditAlarmDialog(
     ) {
         Card(
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
             modifier = Modifier
                 .fillMaxWidth(0.9f)
                 .padding(16.dp)
-                .border(1.dp, Color(0xFFE5D5D0).copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
+                .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(24.dp)),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
@@ -633,7 +656,8 @@ fun EditAlarmDialog(
                     text = if (alarm == null) "Add Workout Alarm" else "Edit Workout Alarm",
                     fontSize = 18.scaledSp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF5D4037)
+                    color = currentTheme.textPrimary,
+                    fontFamily = currentFont
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -670,9 +694,9 @@ fun EditAlarmDialog(
                         Text(
                             text = "Period",
                             fontSize = 11.scaledSp,
-                            color = Color.Gray,
+                            color = currentTheme.textSecondary,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = AppFontFamily,
+                            fontFamily = currentFont,
                             modifier = Modifier.padding(bottom = 6.dp)
                         )
                         
@@ -681,8 +705,8 @@ fun EditAlarmDialog(
                                 .height(54.dp)
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0xFFFAF6F0))
-                                .border(1.dp, Color(0xFFE5D5D0), RoundedCornerShape(16.dp))
+                                .background(currentTheme.backgroundSecondary)
+                                .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(16.dp))
                                 .padding(3.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -692,7 +716,7 @@ fun EditAlarmDialog(
                                     .weight(1f)
                                     .fillMaxHeight()
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(if (!activePm) Color(0xFF5D4037) else Color.Transparent)
+                                    .background(if (!activePm) currentTheme.primary else Color.Transparent)
                                     .clickable { isPm = false },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -700,8 +724,10 @@ fun EditAlarmDialog(
                                     text = "AM",
                                     fontSize = 11.scaledSp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (!activePm) Color.White else Color(0xFF5D4037),
-                                    fontFamily = AppFontFamily
+                                    color = if (!activePm) {
+                                        if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
+                                    } else currentTheme.textSecondary,
+                                    fontFamily = currentFont
                                 )
                             }
                             
@@ -710,7 +736,7 @@ fun EditAlarmDialog(
                                     .weight(1f)
                                     .fillMaxHeight()
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(if (activePm) Color(0xFF5D4037) else Color.Transparent)
+                                    .background(if (activePm) currentTheme.primary else Color.Transparent)
                                     .clickable { isPm = true },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -718,8 +744,10 @@ fun EditAlarmDialog(
                                     text = "PM",
                                     fontSize = 11.scaledSp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (activePm) Color.White else Color(0xFF5D4037),
-                                    fontFamily = AppFontFamily
+                                    color = if (activePm) {
+                                        if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
+                                    } else currentTheme.textSecondary,
+                                    fontFamily = currentFont
                                 )
                             }
                         }
@@ -732,7 +760,7 @@ fun EditAlarmDialog(
                     text = String.format("Selected Time: %d:%02d %s", amPmSelectedHour, minute, previewAmPm),
                     fontSize = 15.scaledSp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF5D4037),
+                    color = currentTheme.primary,
                     fontFamily = MonospaceFontFamily,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
@@ -746,40 +774,41 @@ fun EditAlarmDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.Black,
-                        unfocusedTextColor = Color.Black,
-                        cursorColor = Color.Black,
-                        focusedBorderColor = Color(0xFF5D4037),
-                        unfocusedBorderColor = Color.LightGray,
-                        focusedLabelColor = Color(0xFF5D4037)
+                        focusedTextColor = currentTheme.textPrimary,
+                        unfocusedTextColor = currentTheme.textPrimary,
+                        cursorColor = currentTheme.primary,
+                        focusedBorderColor = currentTheme.primary,
+                        unfocusedBorderColor = currentTheme.cardBorder,
+                        focusedLabelColor = currentTheme.primary,
+                        unfocusedLabelColor = currentTheme.textSecondary
                     ),
                     singleLine = true
                 )
 
-                // Sqad Challenge Count
+                // Squad Challenge Count
                 Column {
                     Row(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Squat Reps Challenge", fontSize = 12.scaledSp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                        Text("$squatTarget Reps", fontSize = 13.scaledSp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                        Text("Squat Reps Challenge", fontSize = 12.scaledSp, color = currentTheme.textSecondary, fontWeight = FontWeight.Bold, fontFamily = currentFont)
+                        Text("$squatTarget Reps", fontSize = 13.scaledSp, color = currentTheme.primary, fontWeight = FontWeight.Bold, fontFamily = currentFont)
                     }
                     Slider(
                         value = squatTarget.toFloat(),
                         onValueChange = { squatTarget = it.toInt() },
                         valueRange = 3f..30f,
                         colors = SliderDefaults.colors(
-                            thumbColor = Color(0xFF4CAF50),
-                            activeTrackColor = Color(0xFF4CAF50),
-                            inactiveTrackColor = Color(0xFFEAE6E1)
+                            thumbColor = currentTheme.primary,
+                            activeTrackColor = currentTheme.primary,
+                            inactiveTrackColor = currentTheme.cardBorder
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
 
                 // Day selectors
-                Text("Repeat Days", fontSize = 12.scaledSp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                Text("Repeat Days", fontSize = 12.scaledSp, color = currentTheme.textSecondary, fontWeight = FontWeight.Bold, fontFamily = currentFont)
                 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -801,8 +830,8 @@ fun EditAlarmDialog(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .background(if (isSelected) Color(0xFF5D4037) else Color(0xFFF5F5F5))
-                                .border(1.dp, if (isSelected) Color.Transparent else Color.LightGray, CircleShape)
+                                .background(if (isSelected) currentTheme.primary else currentTheme.backgroundSecondary)
+                                .border(1.dp, if (isSelected) Color.Transparent else currentTheme.cardBorder, CircleShape)
                                 .clickable {
                                     selectedDays = if (isSelected) {
                                         selectedDays - calVal
@@ -816,7 +845,10 @@ fun EditAlarmDialog(
                                 text = name,
                                 fontSize = 11.scaledSp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color.White else Color.Gray
+                                color = if (isSelected) {
+                                    if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
+                                } else currentTheme.textSecondary,
+                                fontFamily = currentFont
                             )
                         }
                     }
@@ -831,21 +863,39 @@ fun EditAlarmDialog(
                         modifier = Modifier.weight(1f)
                     ) {
                         val isSelected = selectedDays == (1..7).toSet()
-                        Text("Daily", fontSize = 11.scaledSp, color = Color(0xFF5D4037).copy(alpha = if (isSelected) 1f else 0.7f), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                        Text(
+                            "Daily",
+                            fontSize = 11.scaledSp,
+                            color = currentTheme.primary.copy(alpha = if (isSelected) 1f else 0.7f),
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            fontFamily = currentFont
+                        )
                     }
                     TextButton(
                         onClick = { selectedDays = setOf(2, 3, 4, 5, 6) },
                         modifier = Modifier.weight(1f)
                     ) {
                         val isSelected = selectedDays == setOf(2, 3, 4, 5, 6)
-                        Text("Weekdays", fontSize = 11.scaledSp, color = Color(0xFF5D4037).copy(alpha = if (isSelected) 1f else 0.7f), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                        Text(
+                            "Weekdays",
+                            fontSize = 11.scaledSp,
+                            color = currentTheme.primary.copy(alpha = if (isSelected) 1f else 0.7f),
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            fontFamily = currentFont
+                        )
                     }
                     TextButton(
                         onClick = { selectedDays = setOf(1, 7) },
                         modifier = Modifier.weight(1f)
                     ) {
                         val isSelected = selectedDays == setOf(1, 7)
-                        Text("Weekends", fontSize = 11.scaledSp, color = Color(0xFF5D4037).copy(alpha = if (isSelected) 1f else 0.7f), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                        Text(
+                            "Weekends",
+                            fontSize = 11.scaledSp,
+                            color = currentTheme.primary.copy(alpha = if (isSelected) 1f else 0.7f),
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            fontFamily = currentFont
+                        )
                     }
                 }
 
@@ -855,7 +905,7 @@ fun EditAlarmDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel", color = Color.Gray)
+                        Text("Cancel", color = currentTheme.textSecondary, fontFamily = currentFont)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -874,10 +924,15 @@ fun EditAlarmDialog(
                             }
                             onSave(computedHour, minute, label, daysStr, squatTarget)
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5D4037)),
+                        colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primary),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Save",
+                            color = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = currentFont
+                        )
                     }
                 }
             }
@@ -895,6 +950,8 @@ fun DigitalTimeStepper(
     format: String = "%02d",
     modifier: Modifier = Modifier
 ) {
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
     val items = (range.start..range.endInclusive).toList()
     val itemsCount = items.size
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -943,9 +1000,9 @@ fun DigitalTimeStepper(
         Text(
             text = label,
             fontSize = 11.scaledSp,
-            color = Color.Gray,
+            color = currentTheme.textSecondary,
             fontWeight = FontWeight.Bold,
-            fontFamily = AppFontFamily,
+            fontFamily = currentFont,
             modifier = Modifier.padding(bottom = 6.dp)
         )
         
@@ -953,8 +1010,8 @@ fun DigitalTimeStepper(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFFFAF6F0))
-                .border(1.dp, Color(0xFFE5D5D0), RoundedCornerShape(16.dp))
+                .background(currentTheme.backgroundSecondary)
+                .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(16.dp))
                 .padding(vertical = 4.dp, horizontal = 12.dp)
         ) {
             IconButton(
@@ -968,7 +1025,7 @@ fun DigitalTimeStepper(
                 Icon(
                     imageVector = Icons.Filled.KeyboardArrowUp,
                     contentDescription = "Increase",
-                    tint = Color(0xFF5D4037)
+                    tint = currentTheme.primary
                 )
             }
             
@@ -998,7 +1055,7 @@ fun DigitalTimeStepper(
                                 text = String.format(format, itemVal),
                                 fontSize = textSize.scaledSp,
                                 fontWeight = fontWeight,
-                                color = Color(0xFF5D4037).copy(alpha = alpha),
+                                color = currentTheme.textPrimary.copy(alpha = alpha),
                                 fontFamily = MonospaceFontFamily,
                                 textAlign = TextAlign.Center
                             )
@@ -1019,7 +1076,7 @@ fun DigitalTimeStepper(
                 Icon(
                     imageVector = Icons.Filled.KeyboardArrowDown,
                     contentDescription = "Decrease",
-                    tint = Color(0xFF5D4037)
+                    tint = currentTheme.primary
                 )
             }
         }

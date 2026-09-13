@@ -109,71 +109,102 @@ fun MyApplicationTheme(
 ) {
     val appearanceMode by SettingsManager.appearanceState.collectAsState()
     val isSystemDark = isSystemInDarkTheme()
-    val isDark = when (appearanceMode) {
+    val isAppearanceDark = when (appearanceMode) {
         SettingsManager.AppearanceMode.DARK -> true
         SettingsManager.AppearanceMode.LIGHT -> false
         SettingsManager.AppearanceMode.SYSTEM -> isSystemDark
     }
 
-    val baseBackground = if (isDark && themeOption.background == ThemeOption.PREMIUM.background) {
-        Color(0xFF121212)
-    } else {
+    val hasCustomBg = SettingsManager.getCustomBgColor() != null
+    val baseBackground = if (hasCustomBg) {
         themeOption.background
+    } else {
+        if (isAppearanceDark) Color(0xFF161514) else ThemeOption.PREMIUM.background
     }
     
     val bgLuminance = baseBackground.luminance()
     val isBgDark = bgLuminance < 0.5f
 
-    val textPri = if (isBgDark) Color.White else Color(0xFF1E1E1E)
-    val textSec = if (isBgDark) Color(0xFFBDBDBD) else Color(0xFF757575)
+    // Derive text contrast strictly from actual active background luminance
+    val baseTextPri = if (isBgDark) Color(0xFFF7F7F7) else Color(0xFF26201D)
+    val baseTextSec = if (isBgDark) Color(0xFFB4B4B4) else Color(0xFF6B5F58)
     
     val surface = if (isBgDark) {
-        if (baseBackground == Color(0xFF121212)) Color(0xFF1E1E1E) else baseBackground.lighten(0.1f)
+        baseBackground.lighten(0.08f)
     } else {
-        Color.White.blend(baseBackground, 0.3f)
+        Color.White.blend(baseBackground, 0.25f)
     }
     
-    val border = if (isBgDark) baseBackground.lighten(0.2f) else baseBackground.darken(0.1f)
+    val textPri = ensureContrast(baseTextPri, surface, minContrast = 4.5)
+    val textSec = ensureContrast(baseTextSec, surface, minContrast = 3.0)
+    
+    val border = if (isBgDark) baseBackground.lighten(0.18f) else baseBackground.darken(0.12f)
+    val bgSecondary = if (isBgDark) baseBackground.lighten(0.04f) else baseBackground.darken(0.06f)
 
-    val activePri = ensureContrast(themeOption.primary, baseBackground)
-    val activeSec = ensureContrast(themeOption.secondary, baseBackground)
-    val activeAcc = ensureContrast(themeOption.accent, baseBackground)
+    val activePri = ensureContrast(themeOption.primary, baseBackground, minContrast = 3.0)
+    val activeSec = ensureContrast(themeOption.secondary, baseBackground, minContrast = 3.0)
+    val activeAcc = ensureContrast(themeOption.accent, baseBackground, minContrast = 3.0)
+    
+    val priDark = activePri.darken(0.15f)
+    val priLight = activePri.lighten(0.15f)
+    
+    val pillActive = if (isBgDark) activePri.copy(alpha = 0.28f) else activePri.copy(alpha = 0.15f)
+    val shadow = if (isBgDark) Color.Black.copy(alpha = 0.5f) else Color(0xFF4A3F35).copy(alpha = 0.15f)
+    val breakBg = if (isBgDark) baseBackground.blend(activeSec, 0.12f) else baseBackground.blend(activeSec, 0.10f)
 
     val safeTheme = themeOption.copy(
         background = baseBackground,
         runningBg = baseBackground,
+        breakBg = breakBg,
         surface = surface,
         cardBorder = border,
+        backgroundSecondary = bgSecondary,
+        pillActiveBg = pillActive,
         textPrimary = textPri,
         textSecondary = textSec,
         primary = activePri,
+        primaryDark = priDark,
+        primaryLight = priLight,
         secondary = activeSec,
         accent = activeAcc,
         timerArcColors = listOf(activePri, activeSec, activeAcc),
+        shadowColor = shadow,
         isDark = isBgDark
     )
 
     val duration = 400
     val animBg by animateColorAsState(safeTheme.background, tween(duration), label = "bg")
     val animPri by animateColorAsState(safeTheme.primary, tween(duration), label = "pri")
+    val animPriDark by animateColorAsState(safeTheme.primaryDark, tween(duration), label = "priDark")
+    val animPriLight by animateColorAsState(safeTheme.primaryLight, tween(duration), label = "priLight")
     val animSec by animateColorAsState(safeTheme.secondary, tween(duration), label = "sec")
     val animAcc by animateColorAsState(safeTheme.accent, tween(duration), label = "acc")
     val animRunBg by animateColorAsState(safeTheme.runningBg, tween(duration), label = "runBg")
+    val animBreakBg by animateColorAsState(safeTheme.breakBg, tween(duration), label = "breakBg")
     val animSurface by animateColorAsState(safeTheme.surface, tween(duration), label = "surface")
     val animBorder by animateColorAsState(safeTheme.cardBorder, tween(duration), label = "border")
+    val animBgSec by animateColorAsState(safeTheme.backgroundSecondary, tween(duration), label = "bgSec")
+    val animPillActiveBg by animateColorAsState(safeTheme.pillActiveBg, tween(duration), label = "pillActiveBg")
     val animTextPri by animateColorAsState(safeTheme.textPrimary, tween(duration), label = "textPri")
     val animTextSec by animateColorAsState(safeTheme.textSecondary, tween(duration), label = "textSec")
+    val animShadow by animateColorAsState(safeTheme.shadowColor, tween(duration), label = "shadow")
 
     val animatedThemeOption = safeTheme.copy(
         background = animBg,
         primary = animPri,
+        primaryDark = animPriDark,
+        primaryLight = animPriLight,
         secondary = animSec,
         accent = animAcc,
         runningBg = animRunBg,
+        breakBg = animBreakBg,
         surface = animSurface,
         cardBorder = animBorder,
+        backgroundSecondary = animBgSec,
+        pillActiveBg = animPillActiveBg,
         textPrimary = animTextPri,
         textSecondary = animTextSec,
+        shadowColor = animShadow,
         timerArcColors = listOf(animPri, animSec, animAcc)
     )
 

@@ -219,7 +219,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
 
                 if (sessionsByDay.isEmpty()) {
                     item {
-                        Text("No completed focus sessions yet. Time to start working!", color = Color.Gray, modifier = Modifier.padding(16.dp))
+                        Text("No completed focus sessions yet. Time to start working!", color = currentTheme.textSecondary, modifier = Modifier.padding(16.dp))
                     }
                 } else {
                     // 1. Recent Days (0-7 days ago) - Fully expanded Daily Headers
@@ -236,7 +236,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                             ) {
                                 Text(
                                     getDayLabel(dateMillis, todayStart, dayInMillis),
-                                    color = Color.Gray,
+                                    color = currentTheme.textSecondary,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = MonospaceFontFamily
                                 )
@@ -254,7 +254,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                     Icon(
                                         imageVector = Icons.Default.Delete,
                                         contentDescription = "Delete Day",
-                                        tint = Color.Gray,
+                                        tint = currentTheme.textSecondary,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -347,7 +347,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                     text = {
                         Text(
                             text = "You are about to clear an entire block of history. This will remove all associated study minutes from your daily summary. Do you want to proceed?",
-                            color = Color.DarkGray,
+                            color = currentTheme.textSecondary,
                             fontSize = 14.scaledSp
                         )
                     },
@@ -363,7 +363,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                             colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primary),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("[ Delete anyway ]", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("[ Delete anyway ]", color = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White, fontWeight = FontWeight.Bold)
                         }
                     },
                     dismissButton = {
@@ -376,7 +376,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                             Text("[ Cancel ]", color = currentTheme.textSecondary)
                         }
                     },
-                    containerColor = Color.White,
+                    containerColor = currentTheme.surface,
                     shape = RoundedCornerShape(24.dp)
                 )
             }
@@ -569,7 +569,7 @@ fun MicroSummaryPill(
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete Day",
-                        tint = Color.Gray,
+                        tint = currentTheme.textSecondary,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -756,7 +756,7 @@ fun HistorySessionPill(
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete Task Sessions",
-                        tint = Color.Gray,
+                        tint = currentTheme.textSecondary,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -765,7 +765,7 @@ fun HistorySessionPill(
                 Icon(
                     imageVector = Icons.Default.KeyboardArrowDown,
                     contentDescription = "Expand",
-                    tint = Color.Gray,
+                    tint = currentTheme.textSecondary,
                     modifier = Modifier.rotate(arrowRotation)
                 )
             }
@@ -807,7 +807,7 @@ fun HistorySessionPill(
                                     Icon(
                                         imageVector = Icons.Default.Delete,
                                         contentDescription = "Delete",
-                                        tint = currentTheme.surface,
+                                        tint = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }

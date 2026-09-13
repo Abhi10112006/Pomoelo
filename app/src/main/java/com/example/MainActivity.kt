@@ -124,7 +124,8 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 )
-                Box(modifier = Modifier.fillMaxSize().background(currentTheme.background)) {
+                val activeTheme = LocalAppTheme.current
+                Box(modifier = Modifier.fillMaxSize().background(activeTheme.background)) {
                     com.example.ui.components.PaperTextureOverlay()
                     PomoPalApp(viewModel)
                 }

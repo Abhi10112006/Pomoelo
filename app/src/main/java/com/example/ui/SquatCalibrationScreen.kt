@@ -1,6 +1,7 @@
 package com.example.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -8,15 +9,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.ui.unit.sp
+import com.example.ui.theme.LocalAppTheme
+import com.example.ui.theme.LocalAppFont
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -29,6 +33,8 @@ fun SquatCalibrationScreen(
     val isComplete by viewModel.isCalibrationComplete.collectAsState()
     val powerScore by viewModel.powerScore.collectAsState()
     val view = androidx.compose.ui.platform.LocalView.current
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
 
     DisposableEffect(Unit) {
         viewModel.startCalibration()
@@ -40,13 +46,20 @@ fun SquatCalibrationScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Auto-Calibration", fontWeight = FontWeight.Bold, color = Color(0xFF5D4037)) },
+                title = {
+                    Text(
+                        "Auto-Calibration",
+                        fontWeight = FontWeight.Bold,
+                        color = currentTheme.textPrimary,
+                        fontFamily = currentFont
+                    )
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFFAF6F0)
+                    containerColor = Color.Transparent
                 )
             )
         },
-        containerColor = Color(0xFFFAF6F0)
+        containerColor = currentTheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -60,7 +73,7 @@ fun SquatCalibrationScreen(
                 Icon(
                     imageVector = Icons.Default.Settings,
                     contentDescription = "Calibration",
-                    tint = Color(0xFFE65100),
+                    tint = currentTheme.primary,
                     modifier = Modifier.size(72.dp)
                 )
                 Spacer(modifier = Modifier.height(24.dp))
@@ -69,7 +82,8 @@ fun SquatCalibrationScreen(
                     text = "Let's calibrate your hardware. Hold your phone and squat continuously for 10 seconds.",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Medium,
-                    color = Color(0xFF5D4037),
+                    color = currentTheme.textPrimary,
+                    fontFamily = currentFont,
                     textAlign = TextAlign.Center,
                     lineHeight = 24.sp
                 )
@@ -80,9 +94,9 @@ fun SquatCalibrationScreen(
                     CircularProgressIndicator(
                         progress = { timeLeft / 10f },
                         modifier = Modifier.size(160.dp),
-                        color = Color(0xFFE65100),
+                        color = currentTheme.primary,
                         strokeWidth = 12.dp,
-                        trackColor = Color(0xFFE5D5D0)
+                        trackColor = currentTheme.cardBorder
                     )
                     
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -90,13 +104,14 @@ fun SquatCalibrationScreen(
                             text = "$timeLeft",
                             fontSize = 64.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFFE65100)
+                            color = currentTheme.primary
                         )
                         Text(
                             text = "sec",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.Gray
+                            color = currentTheme.textSecondary,
+                            fontFamily = currentFont
                         )
                     }
                 }
@@ -104,7 +119,7 @@ fun SquatCalibrationScreen(
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
                     contentDescription = "Success",
-                    tint = Color(0xFF00E676),
+                    tint = Color(0xFF66BB6A),
                     modifier = Modifier.size(72.dp)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -112,16 +127,19 @@ fun SquatCalibrationScreen(
                     text = "Calibration Complete!",
                     fontSize = 28.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFF5D4037)
+                    color = currentTheme.textPrimary,
+                    fontFamily = currentFont
                 )
                 
                 Spacer(modifier = Modifier.height(32.dp))
                 
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                     shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(24.dp))
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -132,22 +150,24 @@ fun SquatCalibrationScreen(
                         Text(
                             text = "SQUAT POWER SCORE",
                             fontSize = 12.sp,
-                            color = Color.Gray,
+                            color = currentTheme.textSecondary,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.5.sp
+                            letterSpacing = 1.5.sp,
+                            fontFamily = currentFont
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = String.format("%.2f", powerScore),
                             fontSize = 64.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFFE65100)
+                            color = currentTheme.primary
                         )
                         Text(
                             text = "Motion Energy",
                             fontSize = 14.sp,
-                            color = Color(0xFF5D4037),
-                            fontWeight = FontWeight.Medium
+                            color = currentTheme.textPrimary,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = currentFont
                         )
                     }
                 }
@@ -156,9 +176,10 @@ fun SquatCalibrationScreen(
                 Text(
                     text = "Awesome! We've captured your unique motion signature. To wake up tomorrow, make sure you drop down and stand back up with this same energy to silence the alarm.",
                     fontSize = 16.sp,
-                    color = Color.Gray,
+                    color = currentTheme.textSecondary,
                     textAlign = TextAlign.Center,
-                    lineHeight = 24.sp
+                    lineHeight = 24.sp,
+                    fontFamily = currentFont
                 )
                 
                 Spacer(modifier = Modifier.height(48.dp))
@@ -170,13 +191,19 @@ fun SquatCalibrationScreen(
                         } catch (e: Exception) {}
                         onNavigateBack()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5D4037)),
+                    colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primary),
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
                 ) {
-                    Text("Finish Setup", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Finish Setup",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
+                        fontFamily = currentFont
+                    )
                 }
             }
         }

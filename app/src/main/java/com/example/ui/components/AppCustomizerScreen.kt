@@ -1,7 +1,8 @@
 package com.example.ui.components
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -24,11 +24,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.service.SettingsManager
+import com.example.service.toColor
 import com.example.service.toLongValue
+import com.example.ui.theme.LocalAppFont
 import com.example.ui.theme.LocalAppTheme
 import com.example.ui.theme.ThemeOption
 import com.example.ui.theme.luminance
@@ -79,185 +87,313 @@ fun AppCustomizerScreen(
     onNavigateBack: () -> Unit
 ) {
     val currentTheme = LocalAppTheme.current
+    val currentAppFont = LocalAppFont.current
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
+    CompositionLocalProvider(
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = currentAppFont)
     ) {
-        // Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            IconButton(
-                onClick = onNavigateBack,
-                modifier = Modifier
-                    .background(currentTheme.surface, CircleShape)
-                    .border(1.dp, currentTheme.cardBorder, CircleShape)
+            // Header
+            val view = LocalView.current
+            var showResetDialog by remember { mutableStateOf(false) }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = currentTheme.textPrimary
+                IconButton(
+                    onClick = {
+                        try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                        onNavigateBack()
+                    },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(currentTheme.surface)
+                        .border(1.dp, currentTheme.cardBorder, CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = currentTheme.textPrimary
+                    )
+                }
+                
+                Spacer(modifier = Modifier.width(16.dp))
+                
+                Text(
+                    text = "Make It Yours",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = currentTheme.textPrimary
                 )
+                
+                Spacer(modifier = Modifier.weight(1f))
+                
+                // Reset Button
+                IconButton(
+                    onClick = {
+                        try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                        if (SettingsManager.isCustomized()) {
+                            showResetDialog = true
+                        } else {
+                            SettingsManager.resetToPomoPal()
+                        }
+                    },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(currentTheme.surface)
+                        .border(1.dp, currentTheme.cardBorder, CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Replay,
+                        contentDescription = "Reset to PomoPal",
+                        tint = currentTheme.textSecondary
+                    )
+                }
             }
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
-            Text(
-                text = "Make It Yours",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = currentTheme.textPrimary
+
+            // Live Preview Area
+            val infiniteTransition = rememberInfiniteTransition(label = "preview_pulse")
+            val progress by infiniteTransition.animateFloat(
+                initialValue = 0.75f,
+                targetValue = 0.95f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(2500, easing = EaseInOutSine),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "progress"
             )
             
-            Spacer(modifier = Modifier.weight(1f))
-            
-            // Reset Button
-            IconButton(
-                onClick = {
-                    SettingsManager.setCustomBgColor(null)
-                    SettingsManager.setCustomPrimaryColor(null)
-                    SettingsManager.setCustomSecondaryColor(null)
-                    SettingsManager.setCustomAccentColor(null)
-                },
+            Card(
                 modifier = Modifier
-                    .background(currentTheme.surface, CircleShape)
-                    .border(1.dp, currentTheme.cardBorder, CircleShape)
+                    .fillMaxWidth()
+                    .height(280.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = currentTheme.background),
+                border = BorderStroke(1.dp, currentTheme.cardBorder),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Replay,
-                    contentDescription = "Reset",
-                    tint = currentTheme.textSecondary
-                )
-            }
-        }
-
-        // Live Preview Area
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(180.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = currentTheme.background),
-            border = BorderStroke(1.dp, currentTheme.cardBorder),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                Box(
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    // Fake Timer Ring
-                    Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .border(4.dp, currentTheme.primary, CircleShape),
-                        contentAlignment = Alignment.Center
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
-                            text = "25:00",
-                            fontSize = 20.sp,
+                            "Focus Session",
+                            color = currentTheme.textSecondary,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = currentTheme.textPrimary
+                            letterSpacing = 1.sp
                         )
-                    }
-                    
-                    // Fake Pills
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .background(currentTheme.secondary.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Text("Secondary", color = currentTheme.secondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        
+                        // Animated Timer Arc
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                progress = { 1f },
+                                modifier = Modifier.size(110.dp),
+                                color = currentTheme.primary.copy(alpha = 0.15f),
+                                strokeWidth = 8.dp,
+                                strokeCap = StrokeCap.Round
+                            )
+                            CircularProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier.size(110.dp),
+                                color = currentTheme.primary,
+                                strokeWidth = 8.dp,
+                                strokeCap = StrokeCap.Round
+                            )
+                            Text(
+                                text = "25:00",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = currentTheme.textPrimary
+                            )
                         }
+                        
+                        // Start Button
                         Box(
                             modifier = Modifier
-                                .background(currentTheme.accent.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .background(currentTheme.primary, RoundedCornerShape(20.dp))
+                                .padding(horizontal = 28.dp, vertical = 12.dp)
                         ) {
-                            Text("Accent", color = currentTheme.accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Start Focus",
+                                color = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+                        
+                        // Mini Task Card
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth(0.75f)
+                                .background(currentTheme.surface, RoundedCornerShape(12.dp))
+                                .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier.size(16.dp).border(2.dp, currentTheme.secondary, CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Deep Work Phase", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = currentTheme.textPrimary)
+                                Text("Productivity", fontSize = 9.sp, color = currentTheme.accent)
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // Section: Appearance Mode
-        CustomizationSection(
-            title = "Appearance",
-            subtitle = "System-wide theme setting",
-            theme = currentTheme
-        ) {
-            val currentMode by SettingsManager.appearanceState.collectAsState()
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Section: Appearance Mode
+            CustomizationSection(
+                title = "Appearance",
+                subtitle = "System-wide theme setting",
+                theme = currentTheme
             ) {
-                AppearanceOption("System", SettingsManager.AppearanceMode.SYSTEM, currentMode)
-                AppearanceOption("Light", SettingsManager.AppearanceMode.LIGHT, currentMode)
-                AppearanceOption("Dark", SettingsManager.AppearanceMode.DARK, currentMode)
+                val currentMode by SettingsManager.appearanceState.collectAsState()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AppearanceOption("System", SettingsManager.AppearanceMode.SYSTEM, currentMode)
+                    AppearanceOption("Light", SettingsManager.AppearanceMode.LIGHT, currentMode)
+                    AppearanceOption("Dark", SettingsManager.AppearanceMode.DARK, currentMode)
+                }
             }
-        }
 
-        // Section: Background Customization
-        CustomizationSection(
-            title = "Background Color",
-            subtitle = "Main app canvas",
-            theme = currentTheme
-        ) {
-            ColorPickerRow(
-                options = backgroundOptions,
-                selectedColor = currentTheme.background,
-                onColorSelected = { color -> SettingsManager.setCustomBgColor(color.toLongValue()) }
-            )
-        }
+            // Section: Background Customization
+            val customBg = SettingsManager.getCustomBgColor()?.toColor() ?: if (currentTheme.isDark) Color(0xFF1E1E1E) else ThemeOption.PREMIUM.background
+            val customPri = SettingsManager.getCustomPrimaryColor()?.toColor() ?: ThemeOption.PREMIUM.primary
+            val customSec = SettingsManager.getCustomSecondaryColor()?.toColor() ?: ThemeOption.PREMIUM.secondary
+            val customAcc = SettingsManager.getCustomAccentColor()?.toColor() ?: ThemeOption.PREMIUM.accent
 
-        // Section: Primary Accent
-        CustomizationSection(
-            title = "Primary Accent",
-            subtitle = "Buttons and main highlights",
-            theme = currentTheme
-        ) {
-            ColorPickerRow(
-                options = primaryOptions,
-                selectedColor = currentTheme.primary,
-                onColorSelected = { color -> SettingsManager.setCustomPrimaryColor(color.toLongValue()) }
-            )
-        }
+            CustomizationSection(
+                title = "Background Color",
+                subtitle = "Main app canvas",
+                theme = currentTheme
+            ) {
+                ColorPickerRow(
+                    options = backgroundOptions,
+                    selectedColor = customBg,
+                    onColorSelected = { color -> SettingsManager.setCustomBgColor(color.toLongValue()) }
+                )
+            }
 
-        // Section: Secondary
-        CustomizationSection(
-            title = "Secondary Details",
-            subtitle = "Supporting highlights and shapes",
-            theme = currentTheme
-        ) {
-            ColorPickerRow(
-                options = secondaryOptions,
-                selectedColor = currentTheme.secondary,
-                onColorSelected = { color -> SettingsManager.setCustomSecondaryColor(color.toLongValue()) }
-            )
+            // Section: Primary Accent
+            CustomizationSection(
+                title = "Primary Accent",
+                subtitle = "Buttons and main highlights",
+                theme = currentTheme
+            ) {
+                ColorPickerRow(
+                    options = primaryOptions,
+                    selectedColor = customPri,
+                    onColorSelected = { color -> SettingsManager.setCustomPrimaryColor(color.toLongValue()) }
+                )
+            }
+
+            // Section: Secondary
+            CustomizationSection(
+                title = "Secondary Details",
+                subtitle = "Supporting highlights and shapes",
+                theme = currentTheme
+            ) {
+                ColorPickerRow(
+                    options = secondaryOptions,
+                    selectedColor = customSec,
+                    onColorSelected = { color -> SettingsManager.setCustomSecondaryColor(color.toLongValue()) }
+                )
+            }
+            
+            // Section: Accent
+            CustomizationSection(
+                title = "Accent Details",
+                subtitle = "Tertiary highlights and shapes",
+                theme = currentTheme
+            ) {
+                ColorPickerRow(
+                    options = accentOptions,
+                    selectedColor = customAcc,
+                    onColorSelected = { color -> SettingsManager.setCustomAccentColor(color.toLongValue()) }
+                )
+            }
+
+            if (showResetDialog) {
+                AlertDialog(
+                    onDismissRequest = { showResetDialog = false },
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "↺",
+                                fontSize = 20.sp,
+                                color = currentTheme.primary
+                            )
+                            Text(
+                                text = "Reset to PomoPal",
+                                fontWeight = FontWeight.Bold,
+                                color = currentTheme.textPrimary
+                            )
+                        }
+                    },
+                    text = {
+                        Text(
+                            text = "Restore default colors, appearance, and visual settings to the original PomoPal Signature design? Your selected font will be kept.",
+                            color = currentTheme.textSecondary,
+                            fontSize = 14.sp
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                try {
+                                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                                } catch (e: Exception) {}
+                                SettingsManager.resetToPomoPal()
+                                showResetDialog = false
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = currentTheme.primary,
+                                contentColor = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = "Reset",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showResetDialog = false }
+                        ) {
+                            Text(
+                                text = "Cancel",
+                                color = currentTheme.textSecondary
+                            )
+                        }
+                    },
+                    containerColor = currentTheme.surface,
+                    shape = RoundedCornerShape(24.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
         }
-        
-        // Section: Accent
-        CustomizationSection(
-            title = "Accent Details",
-            subtitle = "Tertiary highlights and shapes",
-            theme = currentTheme
-        ) {
-            ColorPickerRow(
-                options = accentOptions,
-                selectedColor = currentTheme.accent,
-                onColorSelected = { color -> SettingsManager.setCustomAccentColor(color.toLongValue()) }
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(32.dp))
     }
 }
 
@@ -269,18 +405,25 @@ fun RowScope.AppearanceOption(
 ) {
     val theme = LocalAppTheme.current
     val isSelected = mode == currentMode
+    val onSelectedColor = if (theme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
     val bgColor by animateColorAsState(if (isSelected) theme.primary else theme.surface, label = "bg")
-    val textColor by animateColorAsState(if (isSelected) Color.White else theme.textPrimary, label = "text")
+    val textColor by animateColorAsState(if (isSelected) onSelectedColor else theme.textPrimary, label = "text")
     val borderColor by animateColorAsState(if (isSelected) theme.primary else theme.cardBorder, label = "border")
 
+    val view = LocalView.current
     Box(
         modifier = Modifier
             .weight(1f)
+            .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(bgColor)
             .border(1.dp, borderColor, RoundedCornerShape(12.dp))
-            .clickable { SettingsManager.setAppearanceMode(mode) }
-            .padding(vertical = 12.dp),
+            .clickable { 
+                try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                SettingsManager.setAppearanceMode(mode) 
+            }
+            .semantics { role = Role.RadioButton }
+            .padding(vertical = 12.dp, horizontal = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(text = label, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -293,6 +436,8 @@ fun ColorPickerRow(
     selectedColor: Color,
     onColorSelected: (Color) -> Unit
 ) {
+    val view = LocalView.current
+    val currentTheme = LocalAppTheme.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -300,30 +445,38 @@ fun ColorPickerRow(
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         options.forEach { color ->
-            val isSelected = selectedColor == color
-            val animatedScale by androidx.compose.animation.core.animateFloatAsState(
-                targetValue = if (isSelected) 1.2f else 1f,
-                label = "scale"
-            )
+            val isSelected = selectedColor.toArgb() == color.toArgb()
             
             Box(
                 modifier = Modifier
                     .size(48.dp)
+                    .shadow(
+                        elevation = if (isSelected) 4.dp else 1.dp,
+                        shape = CircleShape,
+                        spotColor = if (isSelected) color else currentTheme.shadowColor
+                    )
                     .clip(CircleShape)
                     .background(color)
                     .border(
                         width = if (isSelected) 3.dp else 1.dp,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.1f),
+                        color = if (isSelected) currentTheme.primary else currentTheme.cardBorder,
                         shape = CircleShape
                     )
-                    .clickable { onColorSelected(color) },
+                    .clickable(
+                        onClickLabel = "Select color",
+                        role = Role.RadioButton,
+                        onClick = { 
+                            try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                            onColorSelected(color) 
+                        }
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 if (isSelected) {
                     Icon(
                         imageVector = Icons.Filled.Check,
-                        contentDescription = "Selected",
-                        tint = if (color.luminance() > 0.5f) Color.Black else Color.White,
+                        contentDescription = "Selected color",
+                        tint = if (color.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -361,6 +514,7 @@ fun CustomizationSection(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = theme.surface),
             border = BorderStroke(1.dp, theme.cardBorder),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -372,3 +526,4 @@ fun CustomizationSection(
         }
     }
 }
+

@@ -1,6 +1,7 @@
 package com.example.ui.theme
 
 import androidx.compose.material3.Typography
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -89,16 +90,19 @@ val PoppinsFontFamily: FontFamily = try {
 enum class FontOption(
     val id: String,
     val displayName: String,
-    val previewSample: String,
+    val sampleText: String = "Aa Bb Cc 123",
+    val description: String,
     val badge: String,
     val fontFamily: FontFamily
 ) {
-    COMIC_NEUE("comic_neue", "Comic Neue", "Cute & bouncy Comic Sans vibe", "Popular", ComicNeueFontFamily),
-    SNIGLET("sniglet", "Sniglet", "Soft, rounded & adorable letters", "Bubbly", SnigletFontFamily),
-    BALSAMIQ("balsamiq", "Balsamiq Sans", "Hand-drawn playful comic notebook", "Comic", BalsamiqSansFontFamily),
-    PATRICK_HAND("patrick_hand", "Patrick Hand", "Friendly and neat handwritten script", "Casual", PatrickHandFontFamily),
-    SHORT_STACK("short_stack", "Short Stack", "Playful geometric curved strokes", "Playful", ShortStackFontFamily),
-    CHEWY("chewy", "Chewy", "Chunky candy-shop cartoon bouncy", "Sweet", ChewyFontFamily);
+    COMIC_NEUE("comic_neue", "Comic Neue", "Aa Bb Cc 123", "Cute & bouncy Comic Sans vibe", "Popular", ComicNeueFontFamily),
+    SNIGLET("sniglet", "Sniglet", "Aa Bb Cc 123", "Soft, rounded & adorable", "Bubbly", SnigletFontFamily),
+    BALSAMIQ("balsamiq", "Balsamiq Sans", "Aa Bb Cc 123", "Hand-drawn playful comic notebook", "Comic", BalsamiqSansFontFamily),
+    PATRICK_HAND("patrick_hand", "Patrick Hand", "Aa Bb Cc 123", "Friendly and neat handwritten script", "Casual", PatrickHandFontFamily),
+    SHORT_STACK("short_stack", "Short Stack", "Aa Bb Cc 123", "Playful geometric curved strokes", "Playful", ShortStackFontFamily),
+    CHEWY("chewy", "Chewy", "Aa Bb Cc 123", "Chunky candy-shop cartoon bouncy", "Sweet", ChewyFontFamily);
+
+    val previewSample: String get() = description
 
     companion object {
         fun fromId(id: String?): FontOption {
@@ -220,9 +224,15 @@ fun createAppTypography(fontFamily: FontFamily): Typography {
 // Composition Local for the currently active font family
 val LocalAppFont = compositionLocalOf { ComicNeueFontFamily }
 
-// Backward compatibility references
-val AppFontFamily get() = ComicNeueFontFamily
-val CursiveFontFamily get() = ComicNeueFontFamily
+// Backward compatibility references that dynamically resolve to the active font
+val AppFontFamily: FontFamily
+    @Composable
+    get() = LocalAppFont.current
+
+val CursiveFontFamily: FontFamily
+    @Composable
+    get() = LocalAppFont.current
+
 val MonospaceFontFamily get() = SpecialEliteFontFamily
 
 

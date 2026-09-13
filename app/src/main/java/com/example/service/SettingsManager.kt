@@ -203,4 +203,26 @@ object SettingsManager {
         getPrefs().edit().putString(KEY_FONT_ID, fontId).apply()
         _fontState.value = com.example.ui.theme.FontOption.fromId(fontId)
     }
+
+    fun isCustomized(): Boolean {
+        return getCustomBgColor() != null ||
+                getCustomPrimaryColor() != null ||
+                getCustomSecondaryColor() != null ||
+                getCustomAccentColor() != null ||
+                getAppearanceMode() != AppearanceMode.SYSTEM ||
+                getThemeId() != "premium"
+    }
+
+    fun resetToPomoPal() {
+        getPrefs().edit()
+            .remove(KEY_CUSTOM_BG_COLOR)
+            .remove(KEY_CUSTOM_PRIMARY_COLOR)
+            .remove(KEY_CUSTOM_SECONDARY_COLOR)
+            .remove(KEY_CUSTOM_ACCENT_COLOR)
+            .putString(KEY_THEME_ID, "premium")
+            .putString(KEY_APPEARANCE_MODE, AppearanceMode.SYSTEM.id)
+            .apply()
+        _appearanceState.value = AppearanceMode.SYSTEM
+        updateThemeState()
+    }
 }
