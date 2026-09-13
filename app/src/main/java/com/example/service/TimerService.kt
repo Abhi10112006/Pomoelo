@@ -159,7 +159,7 @@ class TimerService : Service() {
                     "duration" to data.durationMinutes,
                     "completedAt" to data.endTime
                 )
-                com.example.CloudBackendManager.saveUserData("${dummyUserId}_${data.endTime}", cloudData)
+
             }
         }.launchIn(serviceScope)
     }

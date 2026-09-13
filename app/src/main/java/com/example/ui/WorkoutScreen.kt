@@ -1,5 +1,8 @@
 package com.example.ui
 
+import com.example.ui.components.pomoShadow
+
+import com.example.service.SquatSensorService
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -32,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
+import com.example.ui.theme.LocalAppTheme
+import com.example.ui.theme.LocalAppFont
 
 @Composable
 fun WorkoutScreen(bottomPadding: Dp) {
@@ -39,11 +44,16 @@ fun WorkoutScreen(bottomPadding: Dp) {
     var isTracking by remember { mutableStateOf(false) }
     var secondsElapsed by remember { mutableStateOf(0) }
     
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
+
+    
     // Tracking Variables
     var distanceMeters by remember { mutableStateOf(0f) }
     var sessionSteps by remember { mutableStateOf(0) }
     var initialSteps by remember { mutableStateOf(-1) }
     var squatsCount by remember { mutableStateOf(0) }
+    var isShaking by remember { mutableStateOf(false) }
 
     // Permissions
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -56,6 +66,7 @@ fun WorkoutScreen(bottomPadding: Dp) {
     // Hardware Managers (Local only)
     val locationManager = remember { context.getSystemService(Context.LOCATION_SERVICE) as LocationManager }
     val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
+    val squatSensorService = remember { SquatSensorService(context) }
 
     var lastLocation by remember { mutableStateOf<Location?>(null) }
     
@@ -92,26 +103,6 @@ fun WorkoutScreen(bottomPadding: Dp) {
         }
     }
 
-    // Sensor Callback for Auto Squats (Accelerometer)
-    var isSquattingDown by remember { mutableStateOf(false) }
-    val accelListener = remember {
-        object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                if (isTracking && event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-                    val y = event.values[1] // Y-axis acceleration
-                    // Simple heuristic: Phone held vertically, dips down then comes up
-                    if (y < 4.5f && !isSquattingDown) {
-                        isSquattingDown = true
-                    } else if (y > 9.5f && isSquattingDown) {
-                        isSquattingDown = false
-                        squatsCount++
-                    }
-                }
-            }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-        }
-    }
-
     LaunchedEffect(isTracking) {
         if (isTracking) {
             // Register Sensors
@@ -124,9 +115,14 @@ fun WorkoutScreen(bottomPadding: Dp) {
             sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)?.also { stepSensor ->
                 sensorManager.registerListener(stepListener, stepSensor, SensorManager.SENSOR_DELAY_UI)
             }
-            sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.also { accelSensor ->
-                sensorManager.registerListener(accelListener, accelSensor, SensorManager.SENSOR_DELAY_NORMAL)
-            }
+            
+            // Start advanced squat tracking
+            squatSensorService.startTracking(
+                targetSquats = Int.MAX_VALUE,
+                onComplete = { /* Never completes with MAX_VALUE */ },
+                onUpdate = { count -> squatsCount = count },
+                onShakeWarning = { shaking -> isShaking = shaking }
+            )
 
             while (true) {
                 delay(1000)
@@ -136,7 +132,7 @@ fun WorkoutScreen(bottomPadding: Dp) {
             // Unregister
             try { locationManager.removeUpdates(locationListener) } catch (e: Exception) { }
             sensorManager.unregisterListener(stepListener)
-            sensorManager.unregisterListener(accelListener)
+            squatSensorService.stopTracking()
             lastLocation = null
         }
     }
@@ -153,40 +149,46 @@ fun WorkoutScreen(bottomPadding: Dp) {
             imageVector = Icons.AutoMirrored.Filled.DirectionsRun,
             contentDescription = "Workout",
             modifier = Modifier.size(80.dp),
-            tint = Color(0xFF4CAF50)
+            tint = currentTheme.primary
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = "Offline Workout",
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF333333)
+            fontFamily = currentFont,
+            color = currentTheme.textPrimary
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "Using local GPS & hardware sensors",
             fontSize = 14.sp,
-            color = Color.Gray
+            fontFamily = currentFont,
+            color = currentTheme.textSecondary
         )
                 
         Spacer(modifier = Modifier.height(32.dp))
                 
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().pomoShadow(
+                shape = RoundedCornerShape(16.dp),
+                elevation = 4.dp,
+                shadowColor = currentTheme.shadowColor
+            ),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Duration", fontSize = 16.sp, color = Color.Gray)
+                Text("Duration", fontSize = 16.sp, fontFamily = currentFont, color = currentTheme.textSecondary)
                 Text(
                     text = String.format("%02d:%02d", secondsElapsed / 60, secondsElapsed % 60),
                     fontSize = 48.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF4CAF50)
+                    color = currentTheme.primary
                 )
                 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -196,21 +198,21 @@ fun WorkoutScreen(bottomPadding: Dp) {
                     horizontalArrangement = Arrangement.SpaceAround
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Distance", fontSize = 14.sp, color = Color.Gray)
+                        Text("Distance", fontSize = 14.sp, fontFamily = currentFont, color = currentTheme.textSecondary)
                         Text(
                             text = String.format("%.2f km", distanceMeters / 1000f),
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2196F3)
+                            color = currentTheme.secondary
                         )
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Steps", fontSize = 14.sp, color = Color.Gray)
+                        Text("Steps", fontSize = 14.sp, fontFamily = currentFont, color = currentTheme.textSecondary)
                         Text(
                             text = "$sessionSteps",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFFF9800)
+                            color = currentTheme.accent
                         )
                     }
                 }
@@ -223,21 +225,21 @@ fun WorkoutScreen(bottomPadding: Dp) {
                     horizontalArrangement = Arrangement.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Squats", fontSize = 14.sp, color = Color.Gray)
+                        Text("Squats", fontSize = 14.sp, fontFamily = currentFont, color = currentTheme.textSecondary)
                         Text(
                             text = "$squatsCount",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF9C27B0)
+                            color = currentTheme.primaryDark
                         )
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     IconButton(
                         onClick = { squatsCount++ },
                         modifier = Modifier.size(48.dp),
-                        colors = IconButtonDefaults.iconButtonColors(containerColor = Color(0xFFF3E5F5))
+                        colors = IconButtonDefaults.iconButtonColors(containerColor = currentTheme.pillActiveBg)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Squat", tint = Color(0xFF9C27B0))
+                        Icon(Icons.Default.Add, contentDescription = "Add Squat", tint = currentTheme.primary)
                     }
                 }
             }
@@ -245,7 +247,7 @@ fun WorkoutScreen(bottomPadding: Dp) {
                 
         Spacer(modifier = Modifier.height(32.dp))
                 
-        Button(
+        com.example.ui.components.PomoButton(
             onClick = {
                 if (!isTracking) {
                     // Check permissions before starting
@@ -267,17 +269,21 @@ fun WorkoutScreen(bottomPadding: Dp) {
                     isTracking = false
                 }
             },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (isTracking) Color.Red else Color(0xFF4CAF50)
-            ),
-            modifier = Modifier.height(56.dp)
+            containerColor = if (isTracking) currentTheme.primaryDark else currentTheme.primary,
+            modifier = Modifier.fillMaxWidth().height(56.dp)
         ) {
             Icon(
                 imageVector = if (isTracking) Icons.Default.Stop else Icons.Default.PlayArrow,
-                contentDescription = if (isTracking) "Stop" else "Start"
+                contentDescription = if (isTracking) "Stop" else "Start",
+                tint = currentTheme.surface
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Text(if (isTracking) "Stop Workout" else "Start Workout")
+            Text(
+                text = if (isTracking) "Stop Workout" else "Start Workout",
+                fontFamily = currentFont,
+                color = currentTheme.surface,
+                fontWeight = FontWeight.Bold
+            )
         }
         
         if (!isTracking && secondsElapsed > 0) {
@@ -290,9 +296,9 @@ fun WorkoutScreen(bottomPadding: Dp) {
                     initialSteps = -1
                     squatsCount = 0
                 },
-                modifier = Modifier.height(56.dp)
+                modifier = Modifier.fillMaxWidth().height(56.dp)
             ) {
-                Text("Reset", color = Color.DarkGray)
+                Text("Reset", color = currentTheme.textSecondary, fontFamily = currentFont, fontWeight = FontWeight.Bold)
             }
         }
     }

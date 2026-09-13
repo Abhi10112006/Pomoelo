@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.ui.components.pomoShadow
+
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -41,6 +43,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+import com.example.ui.theme.LocalAppTheme
+import com.example.ui.theme.LocalAppFont
+
 data class AppItem(val packageName: String, val label: String, val isBlocked: Boolean)
 
 @Composable
@@ -76,6 +81,9 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
     var appList by remember { mutableStateOf<List<AppItem>>(emptyList()) }
     var blockedSet by remember { mutableStateOf(SettingsManager.getBlockedApps()) }
     var isLoading by remember { mutableStateOf(true) }
+
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
 
     androidx.activity.compose.BackHandler {
         try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
@@ -115,19 +123,19 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Distraction Manager", fontWeight = FontWeight.Bold, color = Color(0xFF5D4037)) },
+                title = { Text("Distraction Manager", fontWeight = FontWeight.Bold, fontFamily = currentFont, color = currentTheme.textPrimary) },
                 navigationIcon = {
                     IconButton(onClick = {
                         try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
                         onBack()
                     }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color(0xFF5D4037))
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = currentTheme.textPrimary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFFFF0EC))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         },
-        containerColor = Color(0xFFFFF0EC)
+        containerColor = Color.Transparent
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
             
@@ -136,60 +144,66 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Search apps...", color = Color.Gray) },
+                placeholder = { Text("Search apps...", color = currentTheme.textSecondary, fontFamily = currentFont) },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color(0xFFFF8A80),
-                    unfocusedBorderColor = Color(0xFFFFCC80),
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White
+                    focusedBorderColor = currentTheme.primary,
+                    unfocusedBorderColor = currentTheme.cardBorder,
+                    focusedContainerColor = currentTheme.surface,
+                    unfocusedContainerColor = currentTheme.surface,
+                    focusedTextColor = currentTheme.textPrimary,
+                    unfocusedTextColor = currentTheme.textPrimary
                 )
             )
 
             if (!hasAccessibilityPermission) {
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFD54F)),
+                    colors = CardDefaults.cardColors(containerColor = currentTheme.accent),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFF5D4037))
+                            Icon(Icons.Filled.Warning, contentDescription = null, tint = currentTheme.textPrimary)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Service Required", fontWeight = FontWeight.Bold, color = Color(0xFF5D4037))
+                            Text("Service Required", fontWeight = FontWeight.Bold, fontFamily = currentFont, color = currentTheme.textPrimary)
                         }
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("To block these apps when the timer is running, please enable 'PomoPal App Blocker' in your device's Accessibility Settings.", color = Color(0xFF5D4037))
+                        Text("To block these apps when the timer is running, please enable 'PomoPal App Blocker' in your device's Accessibility Settings.", fontFamily = currentFont, color = currentTheme.textPrimary)
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(
+                        com.example.ui.components.PomoButton(
                             onClick = {
                                 try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
                                 context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.White)
-                        ) {
-                            Text("Open Settings", color = Color(0xFF5D4037))
-                        }
+                            containerColor = currentTheme.surface,
+                            contentColor = currentTheme.textPrimary,
+                            text = "Open Settings"
+                        )
                     }
                 }
             } else {
                 Card(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).pomoShadow(
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = 2.dp,
+                        shadowColor = currentTheme.shadowColor
+                    ),
+                    colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
                     shape = RoundedCornerShape(16.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    Text("Select the target apps you want to block while the focus timer is actively running.", modifier = Modifier.padding(16.dp), color = Color.Gray, fontSize = 14.sp)
+                    Text("Select the target apps you want to block while the focus timer is actively running.", modifier = Modifier.padding(16.dp), color = currentTheme.textSecondary, fontFamily = currentFont, fontSize = 14.sp)
                 }
             }
 
             if (isLoading) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    CircularProgressIndicator(color = Color(0xFFFF8A80))
+                    CircularProgressIndicator(color = currentTheme.primary)
                 }
             } else {
                 val filteredAppList = remember(appList, searchQuery) {
@@ -204,7 +218,7 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                     items(filteredAppList, key = { it.packageName }) { app ->
                         val isSelected = app.isBlocked
                         val containerColor by animateColorAsState(
-                            targetValue = if (isSelected) Color(0xFFFF8A80).copy(alpha = 0.12f) else Color.Transparent,
+                            targetValue = if (isSelected) currentTheme.primary.copy(alpha = 0.12f) else Color.Transparent,
                             animationSpec = tween(400),
                             label = "bgColor"
                         )
@@ -244,7 +258,8 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                                 text = app.label, 
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium, 
                                 fontSize = 16.sp, 
-                                color = Color(0xFF5D4037),
+                                fontFamily = currentFont,
+                                color = currentTheme.textPrimary,
                                 modifier = Modifier.weight(1f)
                             )
                             
@@ -252,7 +267,7 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                                 modifier = Modifier
                                     .size(28.dp)
                                     .background(
-                                        color = if (isSelected) Color(0xFFFF8A80) else Color.Gray.copy(alpha = 0.1f), 
+                                        color = if (isSelected) currentTheme.primary else Color.Gray.copy(alpha = 0.1f), 
                                         shape = CircleShape
                                     ),
                                 contentAlignment = Alignment.Center
@@ -261,7 +276,7 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                                     Icon(
                                         imageVector = Icons.Filled.Check, 
                                         contentDescription = "Blocked", 
-                                        tint = Color.White,
+                                        tint = currentTheme.surface,
                                         modifier = Modifier.scale(checkScale).size(18.dp)
                                     )
                                 }

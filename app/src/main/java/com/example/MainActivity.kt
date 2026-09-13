@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.Settings
 import android.Manifest
@@ -109,7 +110,12 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            MyApplicationTheme {
+            val currentTheme by SettingsManager.themeState.collectAsState()
+            val currentFont by SettingsManager.fontState.collectAsState()
+            MyApplicationTheme(
+                themeOption = currentTheme,
+                fontOption = currentFont
+            ) {
                 val viewModel: TimerViewModel = viewModel(
                     factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                         override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
@@ -118,7 +124,10 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 )
-                PomoPalApp(viewModel)
+                Box(modifier = Modifier.fillMaxSize().background(currentTheme.background)) {
+                    com.example.ui.components.PaperTextureOverlay()
+                    PomoPalApp(viewModel)
+                }
             }
         }
     }
@@ -199,7 +208,7 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                     Text("Later", color = Color.Gray)
                 }
             },
-            containerColor = Color(0xFFFFF0EC),
+            containerColor = Color.Transparent,
             shape = RoundedCornerShape(24.dp)
         )
     }
@@ -233,11 +242,13 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                         val navSpring = spring<Float>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
                         val isHome = currentRoute == "home"
                         val homeWeight by animateFloatAsState(targetValue = if (isHome) 1f else 0f, animationSpec = navSpring)
+                        val currentTheme = com.example.ui.theme.LocalAppTheme.current
+                        val currentFont = com.example.ui.theme.LocalAppFont.current
                         
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(24.dp))
-                                .background(if (isHome) Color(0xFFFFEBEE) else Color.Transparent)
+                                .background(if (isHome) currentTheme.pillActiveBg else Color.Transparent)
                                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                                     try {
                                         view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -250,16 +261,17 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                             Icon(
                                 imageVector = Icons.Filled.Home,
                                 contentDescription = "Home",
-                                tint = if (isHome) Color(0xFFFF8A80) else Color.Gray,
+                                tint = if (isHome) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.5f),
                                 modifier = Modifier.size(24.dp)
                             )
                             if (homeWeight > 0.1f) {
                                 Spacer(modifier = Modifier.width(8.dp * homeWeight))
                                 Text(
                                     text = "Timer",
-                                    color = Color(0xFFFF8A80),
+                                    color = currentTheme.primary,
                                     fontSize = (14 * homeWeight).sp,
                                     fontWeight = FontWeight.Bold,
+                                    fontFamily = currentFont,
                                     maxLines = 1
                                 )
                             }
@@ -271,7 +283,7 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(24.dp))
-                                .background(if (isHistory) Color(0xFFE1F5FE) else Color.Transparent)
+                                .background(if (isHistory) currentTheme.pillActiveBg else Color.Transparent)
                                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                                     try {
                                         view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -284,16 +296,17 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                             Icon(
                                 imageVector = Icons.Default.List,
                                 contentDescription = "History",
-                                tint = if (isHistory) Color(0xFF81D4FA) else Color.Gray,
+                                tint = if (isHistory) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.5f),
                                 modifier = Modifier.size(24.dp)
                             )
                             if (historyWeight > 0.1f) {
                                 Spacer(modifier = Modifier.width(8.dp * historyWeight))
                                 Text(
                                     text = "History",
-                                    color = Color(0xFF81D4FA),
+                                    color = currentTheme.primary,
                                     fontSize = (14 * historyWeight).sp,
                                     fontWeight = FontWeight.Bold,
+                                    fontFamily = currentFont,
                                     maxLines = 1
                                 )
                             }
@@ -305,7 +318,7 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(24.dp))
-                                .background(if (isAlarm) Color(0xFFFFF3E0) else Color.Transparent)
+                                .background(if (isAlarm) currentTheme.pillActiveBg else Color.Transparent)
                                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                                     try {
                                         view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -318,16 +331,17 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                             Icon(
                                 imageVector = Icons.Filled.Notifications,
                                 contentDescription = "Alarm",
-                                tint = if (isAlarm) Color(0xFFFFB74D) else Color.Gray,
+                                tint = if (isAlarm) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.5f),
                                 modifier = Modifier.size(24.dp)
                             )
                             if (alarmWeight > 0.1f) {
                                 Spacer(modifier = Modifier.width(8.dp * alarmWeight))
                                 Text(
                                     text = "Alarm",
-                                    color = Color(0xFFFFB74D),
+                                    color = currentTheme.primary,
                                     fontSize = (14 * alarmWeight).sp,
                                     fontWeight = FontWeight.Bold,
+                                    fontFamily = currentFont,
                                     maxLines = 1
                                 )
                             }
@@ -339,7 +353,7 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(24.dp))
-                                .background(if (isWorkout) Color(0xFFE8F5E9) else Color.Transparent)
+                                .background(if (isWorkout) currentTheme.pillActiveBg else Color.Transparent)
                                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                                     try {
                                         view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -352,16 +366,17 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                             Icon(
                                 imageVector = Icons.Filled.DirectionsRun,
                                 contentDescription = "Workout",
-                                tint = if (isWorkout) Color(0xFF4CAF50) else Color.Gray,
+                                tint = if (isWorkout) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.5f),
                                 modifier = Modifier.size(24.dp)
                             )
                             if (workoutWeight > 0.1f) {
                                 Spacer(modifier = Modifier.width(8.dp * workoutWeight))
                                 Text(
                                     text = "Workout",
-                                    color = Color(0xFF4CAF50),
+                                    color = currentTheme.primary,
                                     fontSize = (14 * workoutWeight).sp,
                                     fontWeight = FontWeight.Bold,
+                                    fontFamily = currentFont,
                                     maxLines = 1
                                 )
                             }
@@ -417,20 +432,6 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
     LaunchedEffect(Unit) {
         viewModel.autoCleanupIfNeeded()
     }
-    LaunchedEffect(Unit) {
-        val lastBackup = com.example.service.SettingsManager.getLastBackupTime()
-        val backupFreq = com.example.service.SettingsManager.getAutoBackupFreq()
-        val freqMs = when (backupFreq) { 1 -> 24L * 60 * 60 * 1000L; 2 -> 7L * 24 * 60 * 60 * 1000L; else -> 0L }
-        if (freqMs > 0 && System.currentTimeMillis() - lastBackup > freqMs) {
-            val account = com.example.GoogleAuthManager.getLastSignedInAccount(context)
-            if (account != null) {
-                kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                    val success = com.example.GoogleDriveManager.backupData(context, account, "auto-backup")
-                    if (success) com.example.service.SettingsManager.setLastBackupTime(System.currentTimeMillis())
-                }
-            }
-        }
-    }
     val timerState by viewModel.timerState.collectAsState()
     val isBreakMode by TimerManager.isBreakMode.collectAsState()
     val currentQuote by viewModel.currentQuote.collectAsState()
@@ -444,13 +445,13 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
     val showSettings by viewModel.isSettingsOpen.collectAsState()
     var showFullScreenSeriousness by remember { mutableStateOf(false) }
     
-    var account by remember { mutableStateOf(com.example.GoogleAuthManager.getLastSignedInAccount(context)) }
+
     LaunchedEffect(showSettings) {
         if (!showSettings) {
-            account = com.example.GoogleAuthManager.getLastSignedInAccount(context)
+
         }
     }
-    val userName = com.example.service.SettingsManager.getUserName() ?: account?.givenName ?: "Friend"
+    val userName = com.example.service.SettingsManager.getUserName() ?: "Friend"
 
     LaunchedEffect(timerState, isBreakMode) {
         if (timerState == TimerManager.TimerState.STOPPED || isBreakMode) {
@@ -458,17 +459,23 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
         }
     }
 
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
+
     val stateColor by animateColorAsState(
         targetValue = when {
-            isBreakMode -> Color(0xFFE8F5E9)
-            timerState == TimerManager.TimerState.RUNNING -> Color(0xFFFFF0EC)
-            else -> Color(0xFFFCEBEE)
+            isBreakMode -> currentTheme.breakBg
+            timerState == TimerManager.TimerState.RUNNING -> currentTheme.runningBg
+            else -> currentTheme.background
         },
-        animationSpec = tween(durationMillis = 1000, easing = LinearEasing),
+        animationSpec = tween(durationMillis = 800, easing = LinearEasing),
         label = "bgColor"
     )
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(stateColor)) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(stateColor.copy(alpha = 0.85f))) {
+        if (currentTheme.id == "premium" && !isBreakMode) {
+            com.example.ui.components.PremiumBackgroundOverlays()
+        }
         val availableHeight = maxHeight
         val circleSize = when {
             availableHeight < 640.dp -> 180.dp
@@ -501,8 +508,14 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                         } catch (e: Exception) {}
                         viewModel.setAddingTask(true)
                     },
-                    containerColor = Color(0xFFFF8A80),
-                    shape = CircleShape
+                    containerColor = currentTheme.primary,
+                    contentColor = Color.White,
+                    shape = CircleShape,
+                    modifier = Modifier.shadow(
+                        elevation = 6.dp,
+                        shape = CircleShape,
+                        spotColor = currentTheme.shadowColor
+                    )
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = "Add Task")
                 }
@@ -526,13 +539,14 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(44.dp)
+                            .shadow(3.dp, RoundedCornerShape(16.dp), spotColor = currentTheme.shadowColor)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(Color.White.copy(alpha = 0.8f))
-                            .border(1.dp, Color.White, RoundedCornerShape(16.dp)),
+                            .background(currentTheme.surface)
+                            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(16.dp)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("🍅", fontSize = 24.scaledSp)
+                        Text(currentTheme.emoji, fontSize = 24.scaledSp)
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
@@ -540,25 +554,26 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                             text = "PomoPal",
                             fontSize = 24.scaledSp,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = AppFontFamily,
-                            color = Color(0xFF5D4037),
+                            fontFamily = currentFont,
+                            color = currentTheme.textPrimary,
                             modifier = Modifier.padding(bottom = 0.dp)
                         )
                         Text(
-                            text = "Hi, $userName",
+                            text = "Hi, $userName ✨",
                             fontSize = 12.scaledSp,
-                            fontFamily = AppFontFamily,
-                            color = Color(0xFF5D4037).copy(alpha = 0.6f),
+                            fontFamily = currentFont,
+                            color = currentTheme.textSecondary,
                             modifier = Modifier.padding(top = 0.dp)
                         )
                     }
                 }
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(42.dp)
+                        .shadow(3.dp, CircleShape, spotColor = currentTheme.shadowColor)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.4f))
-                        .border(1.dp, Color.White.copy(alpha = 0.6f), CircleShape)
+                        .background(currentTheme.surface)
+                        .border(1.dp, currentTheme.cardBorder, CircleShape)
                         .clickable {
                             try {
                                 view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -567,7 +582,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                         },
                      contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = Color(0xFF5D4037))
+                    Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = currentTheme.textPrimary)
                 }
             }
             Spacer(modifier = Modifier.height(verticalSpacing))
@@ -785,25 +800,9 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
     }
     
     val scope = rememberCoroutineScope()
-    var googleAccount by remember { mutableStateOf(GoogleAuthManager.getLastSignedInAccount(context)) }
-    
-    val googleSignInLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(result.data)
-            try {
-                googleAccount = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-    var showBackupStatus by remember { mutableStateOf<String?>(null) }
-
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = Color(0xFFFFF0EC),
+        containerColor = Color.Transparent,
         topBar = {
             Row(
                 modifier = Modifier
@@ -846,14 +845,16 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                     .fillMaxWidth()
                     .navigationBarsPadding()
             ) {
+                val currentTheme = LocalAppTheme.current
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                        .padding(horizontal = 24.dp, vertical = 16.dp)
+                        .shadow(elevation = 6.dp, shape = RoundedCornerShape(24.dp), spotColor = currentTheme.shadowColor),
                     shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD180).copy(alpha = 0.5f)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                    colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Row(
                         modifier = Modifier
@@ -862,29 +863,22 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Button(
+                        com.example.ui.components.PomoButton(
+                            text = "Cancel",
                             onClick = {
-                                try {
-                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                } catch (e: Exception) {}
                                 com.example.service.SoundPlayer.stop()
                                 onDismiss()
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEFEBE9)),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF5D4037).copy(alpha = 0.15f)),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(50.dp),
-                            shape = RoundedCornerShape(25.dp)
-                        ) {
-                            Text("Cancel", color = Color(0xFF5D4037), fontWeight = FontWeight.Bold, fontSize = 15.scaledSp)
-                        }
+                            containerColor = currentTheme.surface,
+                            contentColor = currentTheme.textPrimary,
+                            shape = RoundedCornerShape(25.dp),
+                            elevation = 2.dp,
+                            modifier = Modifier.weight(1f)
+                        )
 
-                        Button(
+                        com.example.ui.components.PomoButton(
+                            text = "Save Settings",
                             onClick = {
-                                try {
-                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                } catch (e: Exception) {}
                                 com.example.service.SoundPlayer.stop()
                                 SettingsManager.setFocusTimeMins(localFocus.toInt())
                                 SettingsManager.setBreakTimeMins(localBreak.toInt())
@@ -892,27 +886,26 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                                 SettingsManager.setCompletionDurationSec(localCompletionDuration.toInt())
                                 onDismiss()
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8A80)),
-                            modifier = Modifier
-                                .weight(1.2f)
-                                .height(50.dp),
-                            shape = RoundedCornerShape(25.dp)
-                        ) {
-                            Text("Save Settings", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.scaledSp)
-                        }
+                            containerColor = currentTheme.primary,
+                            contentColor = Color.White,
+                            shape = RoundedCornerShape(25.dp),
+                            elevation = 4.dp,
+                            modifier = Modifier.weight(1.2f)
+                        )
                     }
                 }
             }
         }
     ) { paddingValues ->
         var selectedTabIndex by remember { mutableStateOf(0) }
-        val tabs = listOf("Timer & Sound", "App Blocker", "System", "Cloud Backup", "About")
+        val tabs = listOf("Timer & Sound", "Theme & Font", "App Blocker", "System", "About")
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            val currentTheme = LocalAppTheme.current
             androidx.compose.foundation.lazy.LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -920,18 +913,41 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
             ) {
                 items(tabs.size) { index ->
                     val isSelected = selectedTabIndex == index
-                    Surface(
-                        color = if (isSelected) Color(0xFFFF8A80) else Color.White,
-                        shape = RoundedCornerShape(16.dp),
-                        border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD180).copy(alpha = 0.5f)),
-                        modifier = Modifier.clickable { 
-                            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-                            selectedTabIndex = index 
-                        }
+                    val tabBgColor by androidx.compose.animation.animateColorAsState(
+                        targetValue = if (isSelected) currentTheme.primary else currentTheme.surface, 
+                        animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow), label = ""
+                    )
+                    val tabTextColor by androidx.compose.animation.animateColorAsState(
+                        targetValue = if (isSelected) Color.White else currentTheme.textPrimary, 
+                        animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow), label = ""
+                    )
+                    val tabElevation by androidx.compose.animation.core.animateDpAsState(
+                        targetValue = if (isSelected) 4.dp else 1.dp, 
+                        animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow), label = ""
+                    )
+                    
+                    Box(
+                        modifier = Modifier
+                            .shadow(
+                                elevation = tabElevation,
+                                shape = RoundedCornerShape(16.dp),
+                                spotColor = currentTheme.shadowColor
+                            )
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(tabBgColor)
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) currentTheme.primary else currentTheme.cardBorder,
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                            .clickable { 
+                                try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                                selectedTabIndex = index 
+                            }
                     ) {
                         Text(
                             text = tabs[index],
-                            color = if (isSelected) Color.White else Color(0xFF5D4037),
+                            color = tabTextColor,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.scaledSp
@@ -948,7 +964,25 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
             ) {
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                if (selectedTabIndex == 0) {
+                androidx.compose.animation.AnimatedContent(
+                    targetState = selectedTabIndex,
+                    transitionSpec = {
+                        (androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(220, delayMillis = 90)) +
+                        androidx.compose.animation.slideInHorizontally(
+                            initialOffsetX = { fullWidth -> if (targetState > initialState) fullWidth else -fullWidth },
+                            animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 300f)
+                        )).togetherWith(
+                            androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(90)) +
+                            androidx.compose.animation.slideOutHorizontally(
+                                targetOffsetX = { fullWidth -> if (targetState > initialState) -fullWidth else fullWidth },
+                                animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 300f)
+                            )
+                        )
+                    },
+                    label = "SettingsTabTransition"
+                ) { tabIndex ->
+                    Column {
+                        if (tabIndex == 0) {
                     var focusInput by remember(localFocus) { mutableStateOf(localFocus.toInt().toString()) }
             var breakInput by remember(localBreak) { mutableStateOf(localBreak.toInt().toString()) }
 
@@ -1100,7 +1134,11 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
             
             }
             
-            if (selectedTabIndex == 1) {
+            if (tabIndex == 1) {
+                com.example.ui.components.ThemeFontCustomizer()
+            }
+            
+            if (tabIndex == 2) {
                 Card(
                     modifier = Modifier.fillMaxWidth().clickable { 
                         try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
@@ -1122,9 +1160,9 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                     Icon(Icons.Filled.Settings, contentDescription = "Manage", tint = Color(0xFF5D4037))
                 }
             }
-            } // Close if (selectedTabIndex == 1)
+            } // Close if (selectedTabIndex == 2)
 
-            if (selectedTabIndex == 2) {
+            if (tabIndex == 3) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -1289,148 +1327,10 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                     }
                 }
             }
-            } // Close if (selectedTabIndex == 2)
-            
-            if (selectedTabIndex == 3) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD180).copy(alpha = 0.3f))
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.Sync,
-                            contentDescription = null,
-                            tint = Color(0xFF4285F4),
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Cloud Backup & Sync",
-                            fontSize = 16.scaledSp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF5D4037)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Backup your data securely to Google Drive and keep your profile personalized.",
-                        fontSize = 12.scaledSp,
-                        color = Color.DarkGray
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    if (googleAccount != null) {
-                        Text(
-                            text = "Signed in as: ${googleAccount?.email}",
-                            fontSize = 12.scaledSp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF4CAF50)
-                        )
-                        val lastBackup = com.example.service.SettingsManager.getLastBackupTime()
-                        val lastBackupText = if (lastBackup > 0L) {
-                            val sdf = java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.getDefault())
-                            "Last backup: " + sdf.format(java.util.Date(lastBackup))
-                        } else {
-                            "Last backup: Never"
-                        }
-                        Text(
-                            text = lastBackupText,
-                            fontSize = 12.scaledSp,
-                            color = Color.Gray
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Auto Backup Frequency:",
-                            fontSize = 12.scaledSp,
-                            color = Color(0xFF5D4037)
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        
-                        var autoBackupFreq by remember { mutableStateOf(com.example.service.SettingsManager.getAutoBackupFreq()) }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("Never", "Daily", "Weekly").forEachIndexed { index, label ->
-                                val isSelected = autoBackupFreq == index
-                                Surface(
-                                    modifier = Modifier.weight(1f).clickable { 
-                                        autoBackupFreq = index 
-                                        com.example.service.SettingsManager.setAutoBackupFreq(index)
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isSelected) Color(0xFF4285F4) else Color(0xFFF5F5F5),
-                                    contentColor = if (isSelected) Color.White else Color.DarkGray
-                                ) {
-                                    Text(label, modifier = Modifier.padding(vertical = 8.dp), textAlign = TextAlign.Center, fontSize = 12.scaledSp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        showBackupStatus?.let { status ->
-                            Text(
-                                text = status,
-                                fontSize = 12.scaledSp,
-                                color = Color(0xFFE65100),
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                        }
-                        
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = {
-                                    showBackupStatus = "Backing up..."
-                                    scope.launch {
-                                        // Backup to Google Drive
-                                        val data = "{\"focusMins\": \$localFocus, \"breakMins\": \$localBreak}"
-                                        val success = com.example.GoogleDriveManager.backupData(context, googleAccount!!, data)
-                                        if (success) {
-                                            com.example.service.SettingsManager.setLastBackupTime(System.currentTimeMillis())
-                                        }
-                                        showBackupStatus = if (success) "Backup Successful! ✅" else "Backup Failed ❌"
-                                    }
-                                },
-                                modifier = Modifier.weight(1f).height(48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4285F4)),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("Backup Now", color = Color.White)
-                            }
-                            
-                            Button(
-                                onClick = {
-                                    com.example.GoogleAuthManager.getSignInClient(context).signOut().addOnCompleteListener {
-                                        googleAccount = null
-                                        showBackupStatus = null
-                                    }
-                                },
-                                modifier = Modifier.weight(1f).height(48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE0E0E0)),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("Sign Out", color = Color.DarkGray)
-                            }
-                        }
-                    } else {
-                        Button(
-                            onClick = {
-                                val signInIntent = GoogleAuthManager.getSignInClient(context).signInIntent
-                                googleSignInLauncher.launch(signInIntent)
-                            },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4285F4)),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Sign in with Google", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
             } // Close if (selectedTabIndex == 3)
             
-            if (selectedTabIndex == 4) {
-                // The user specified credits: PomoPal v1.0, Designed & Developed by Abhinav Yaduvanshi
+            if (tabIndex == 4) {
+                Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = "PomoPal v2.0",
                     fontSize = 13.scaledSp,
@@ -1449,6 +1349,8 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
             
             Spacer(modifier = Modifier.height(100.dp))
         }
+                    } // closes Column
+                } // closes AnimatedContent
     }
 }
 }
@@ -1457,11 +1359,15 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
 fun TaskItemRow(task: com.example.data.TaskItem, onSelect: (com.example.data.TaskItem) -> Unit, onDelete: () -> Unit, modifier: Modifier = Modifier) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val view = androidx.compose.ui.platform.LocalView.current
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
     Card(
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
         modifier = modifier
             .fillMaxWidth()
+            .shadow(elevation = 3.dp, shape = RoundedCornerShape(24.dp), spotColor = currentTheme.shadowColor)
+            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(24.dp))
             .clip(RoundedCornerShape(24.dp))
             .clickable {
                 try {
@@ -1469,7 +1375,7 @@ fun TaskItemRow(task: com.example.data.TaskItem, onSelect: (com.example.data.Tas
                 } catch (e: Exception) {}
                 onSelect(task)
             },
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
@@ -1485,8 +1391,19 @@ fun TaskItemRow(task: com.example.data.TaskItem, onSelect: (com.example.data.Tas
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = task.name, fontWeight = FontWeight.Bold, fontFamily = AppFontFamily)
-                Text(text = task.categoryName, fontSize = 12.scaledSp, color = Color.Gray)
+                Text(
+                    text = task.name, 
+                    fontWeight = FontWeight.Bold, 
+                    fontFamily = currentFont,
+                    color = currentTheme.textPrimary,
+                    fontSize = 15.scaledSp
+                )
+                Text(
+                    text = task.categoryName, 
+                    fontSize = 12.scaledSp, 
+                    color = currentTheme.textSecondary,
+                    fontFamily = currentFont
+                )
             }
             if (task.completedPomodoros > 0) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1498,7 +1415,7 @@ fun TaskItemRow(task: com.example.data.TaskItem, onSelect: (com.example.data.Tas
                     } else {
                         Text("🍅", fontSize = 16.scaledSp)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(text = "x${task.completedPomodoros}", fontWeight = FontWeight.Bold, color = Color(0xFF5D4037))
+                        Text(text = "x${task.completedPomodoros}", fontWeight = FontWeight.Bold, color = currentTheme.textPrimary, fontFamily = currentFont)
                     }
                 }
                 Spacer(modifier = Modifier.width(16.dp))
@@ -1613,6 +1530,8 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
         )
 
         val view = androidx.compose.ui.platform.LocalView.current
+        val currentTheme = LocalAppTheme.current
+        val currentFont = LocalAppFont.current
 
         Box(
             modifier = Modifier
@@ -1625,7 +1544,7 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
         ) {
             Card(
                 shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF0EC)),
+                colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
                 modifier = Modifier
                     .fillMaxWidth(0.9f)
                     .graphicsLayer {
@@ -1633,10 +1552,12 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                         scaleY = scale
                         this.alpha = alpha
                     }
+                    .shadow(elevation = 12.dp, shape = RoundedCornerShape(28.dp), spotColor = currentTheme.shadowColor)
+                    .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(28.dp))
                     .pointerInput(Unit) {
                         detectTapGestures(onTap = { focusManager.clearFocus() })
                     },
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 var title by remember { mutableStateOf("") }
                 
@@ -1729,21 +1650,19 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                                 onCancel()
                             }
                         ) {
-                            Text("Cancel", color = Color.Gray, fontWeight = FontWeight.Medium)
+                            Text("Cancel", color = currentTheme.textSecondary, fontWeight = FontWeight.Medium, fontFamily = currentFont)
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Button(
+                        com.example.ui.components.PomoButton(
+                            text = "Save Task",
                             onClick = {
-                                try {
-                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                } catch (e: Exception) {}
-                                onSave(title.ifEmpty { "Do nothing" }, selectedCategory.first, selectedCategory.second.value.toLong())
+                                onSave(title.ifEmpty { "Focus Task" }, selectedCategory.first, selectedCategory.second.value.toLong())
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5D4037)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
+                            containerColor = currentTheme.primary,
+                            contentColor = Color.White,
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = 4.dp
+                        )
                     }
                 }
             }
@@ -1756,26 +1675,42 @@ fun AnimatedScaleBox(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    shape: androidx.compose.ui.graphics.Shape = CircleShape,
+    elevation: androidx.compose.ui.unit.Dp = 6.dp,
+    shadowColor: androidx.compose.ui.graphics.Color = Color.Black.copy(alpha = 0.2f),
     content: @Composable () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed && enabled) 0.85f else 1f,
+        targetValue = if (isPressed && enabled) 0.90f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
         label = "scale"
+    )
+    val currentElevation by animateDpAsState(
+        targetValue = if (isPressed && enabled) 1.5.dp else if (enabled) elevation else 0.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "elevation"
     )
     val view = androidx.compose.ui.platform.LocalView.current
     
     Box(
         modifier = modifier
             .scale(scale)
+            .shadow(
+                elevation = currentElevation,
+                shape = shape,
+                clip = false,
+                spotColor = shadowColor,
+                ambientColor = shadowColor.copy(alpha = shadowColor.alpha * 0.4f)
+            )
+            .clip(shape)
             .alpha(if (enabled) 1f else 0.5f)
             .clickable(
                 enabled = enabled,
                 interactionSource = interactionSource,
-                indication = null,
+                indication = androidx.compose.material3.ripple(bounded = true),
                 onClick = {
                     try {
                         view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -1792,12 +1727,16 @@ fun AnimatedScaleBox(
 @Composable
 fun AppControls(state: TimerManager.TimerState, context: android.content.Context) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val currentTheme = LocalAppTheme.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
         AnimatedScaleBox(
+            shape = CircleShape,
+            elevation = 5.dp,
+            shadowColor = Color.Black.copy(alpha = 0.15f),
             onClick = {
                 val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_STOP }
                 context.startService(intent)
@@ -1807,18 +1746,21 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
                 modifier = Modifier
                     .size(56.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.6f))
-                    .border(1.dp, Color.White, CircleShape),
+                    .background(currentTheme.surface)
+                    .border(1.5.dp, currentTheme.cardBorder, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.Stop, contentDescription = "Stop", tint = Color(0xFF5D4037), modifier = Modifier.size(28.dp))
+                Icon(Icons.Filled.Stop, contentDescription = "Stop", tint = currentTheme.textPrimary, modifier = Modifier.size(28.dp))
             }
         }
 
-        Spacer(modifier = Modifier.width(24.dp))
+        Spacer(modifier = Modifier.width(26.dp))
 
         val isRunning = state == TimerManager.TimerState.RUNNING
         AnimatedScaleBox(
+            shape = CircleShape,
+            elevation = 8.dp,
+            shadowColor = currentTheme.shadowColor,
             onClick = {
                 val action = if (isRunning) TimerService.ACTION_PAUSE else TimerService.ACTION_START
                 val intent = Intent(context, TimerService::class.java).apply { this.action = action }
@@ -1829,7 +1771,12 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
                 modifier = Modifier
                     .size(80.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFFF8A80)),
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                            colors = listOf(currentTheme.primaryLight, currentTheme.primary)
+                        )
+                    )
+                    .border(2.dp, Color.White.copy(alpha = 0.8f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 AnimatedContent(targetState = isRunning, label = "playPause") { running ->
@@ -1843,11 +1790,14 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
             }
         }
 
-        Spacer(modifier = Modifier.width(24.dp))
+        Spacer(modifier = Modifier.width(26.dp))
 
         val isBreakMode by TimerManager.isBreakMode.collectAsState()
         AnimatedScaleBox(
             enabled = !isRunning,
+            shape = CircleShape,
+            elevation = 5.dp,
+            shadowColor = Color.Black.copy(alpha = 0.15f),
             onClick = {
                 val isServiceActive = state != TimerManager.TimerState.STOPPED
                 if (isServiceActive) {
@@ -1866,14 +1816,14 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
                 modifier = Modifier
                     .size(56.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.6f))
-                    .border(1.dp, Color.White, CircleShape),
+                    .background(currentTheme.surface)
+                    .border(1.5.dp, currentTheme.cardBorder, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Filled.Sync,
                     contentDescription = "Switch Mode",
-                    tint = Color(0xFF5D4037),
+                    tint = currentTheme.textPrimary,
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -1895,8 +1845,8 @@ fun SlidingTimer(timeRemaining: Int, fontSize: androidx.compose.ui.unit.TextUnit
                     text = ":",
                     fontSize = fontSize,
                     fontWeight = FontWeight.Black,
-                    fontFamily = MonospaceFontFamily,
-                    color = Color(0xFF5D4037),
+                    fontFamily = LocalAppFont.current,
+                    color = LocalAppTheme.current.textPrimary,
                     modifier = Modifier.padding(bottom = 6.dp)
                 )
             } else {
@@ -1924,8 +1874,8 @@ fun SlidingTimer(timeRemaining: Int, fontSize: androidx.compose.ui.unit.TextUnit
                         text = targetDigit.toString(),
                         fontSize = fontSize,
                         fontWeight = FontWeight.Black,
-                        fontFamily = MonospaceFontFamily,
-                        color = Color(0xFF5D4037)
+                        fontFamily = LocalAppFont.current,
+                        color = LocalAppTheme.current.textPrimary
                     )
                 }
             }
@@ -1945,6 +1895,7 @@ fun TimerDisplay(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val view = androidx.compose.ui.platform.LocalView.current
+    val currentTheme = LocalAppTheme.current
     var animatedText by remember { mutableStateOf("") }
     
     // Typing effect for Task Name
@@ -1969,27 +1920,28 @@ fun TimerDisplay(
             modifier = Modifier
                 .fillMaxWidth(0.65f)
                 .aspectRatio(1f)
+                .shadow(10.dp, CircleShape, spotColor = currentTheme.shadowColor)
                 .clip(CircleShape)
                 .background(
                     brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.6f), Color.White.copy(alpha = 0.2f))
+                        colors = listOf(currentTheme.surface.copy(alpha = 0.95f), currentTheme.surface.copy(alpha = 0.7f))
                     )
                 )
-                .border(4.dp, Color.White, CircleShape)
+                .border(4.dp, currentTheme.cardBorder, CircleShape)
         ) {
             val dynamicCircleSize = maxWidth
             Canvas(modifier = Modifier
                 .fillMaxSize()
                 .padding(if (dynamicCircleSize < 200.dp) 8.dp else 16.dp)) {
                 drawArc(
-                    color = Color.White.copy(alpha = 0.2f),
+                    color = currentTheme.cardBorder.copy(alpha = 0.5f),
                     startAngle = -90f,
                     sweepAngle = 360f,
                     useCenter = false,
                     style = Stroke(width = if (dynamicCircleSize < 200.dp) 4.dp.toPx() else 8.dp.toPx(), cap = StrokeCap.Round)
                 )
                 drawArc(
-                    color = if (isBreakMode) Color(0xFF81D4FA) else Color(0xFFFF8A80),
+                    color = if (isBreakMode) currentTheme.secondary else currentTheme.primary,
                     startAngle = -90f,
                     sweepAngle = animatedProgress.value * 360f,
                     useCenter = false,
@@ -2004,8 +1956,8 @@ fun TimerDisplay(
                 val timerFontSize = baseFontSize.coerceAtMost(if (isLongFormat) 38f else 54f).sp
                 SlidingTimer(timeRemaining = timeRemaining, fontSize = timerFontSize)
                 Spacer(modifier = Modifier.height(if (dynamicCircleSize < 200.dp) 2.dp else 4.dp))
-                val stateBg = if (isBreakMode) Color(0xFFE1F5FE) else Color(0xFFFFCDD2)
-                val stateTextCol = if (isBreakMode) Color(0xFF0288D1) else Color(0xFFD32F2F)
+                val stateBg = if (isBreakMode) currentTheme.secondary.copy(alpha = 0.18f) else currentTheme.primary.copy(alpha = 0.18f)
+                val stateTextCol = if (isBreakMode) currentTheme.secondary else currentTheme.primary
                 val stateText = if (isBreakMode) "BREAK TIME" else "WORK TIME"
                 val isTimerRunning = state == TimerManager.TimerState.RUNNING
                 Box(
@@ -2035,6 +1987,7 @@ fun TimerDisplay(
                         text = stateText,
                         fontSize = if (dynamicCircleSize < 200.dp) 9.scaledSp else 12.scaledSp,
                         fontWeight = FontWeight.Bold,
+                        fontFamily = LocalAppFont.current,
                         color = stateTextCol,
                         letterSpacing = 1.scaledSp
                     )
@@ -2049,14 +2002,14 @@ fun TimerDisplay(
                 modifier = Modifier
                     .size(12.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF81C784))
+                    .background(currentTheme.primary)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = "Current Task",
                 fontSize = 14.scaledSp,
-                color = Color(0xFF5D4037).copy(alpha = 0.7f),
-                fontFamily = AppFontFamily
+                color = currentTheme.textSecondary,
+                fontFamily = LocalAppFont.current
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -2064,13 +2017,14 @@ fun TimerDisplay(
             Text(
                 text = animatedText,
                 fontSize = 24.scaledSp,
-                fontFamily = CursiveFontFamily,
-                color = Color(0xFF5D4037),
+                fontFamily = LocalAppFont.current,
+                color = currentTheme.textPrimary,
                 fontWeight = FontWeight.Bold
             )
-            val cursorAlpha = rememberInfiniteTransition().animateFloat(
+            val cursorAlpha = rememberInfiniteTransition(label = "cursor").animateFloat(
                 initialValue = 1f, targetValue = 0f, 
-                animationSpec = infiniteRepeatable(tween(500), RepeatMode.Reverse)
+                animationSpec = infiniteRepeatable(tween(500), RepeatMode.Reverse),
+                label = "cursorAlpha"
             )
             Spacer(modifier = Modifier.width(4.dp))
             Box(
@@ -2078,7 +2032,7 @@ fun TimerDisplay(
                     .width(4.dp)
                     .height(28.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFFF8A80).copy(alpha = cursorAlpha.value))
+                    .background(currentTheme.primary.copy(alpha = cursorAlpha.value))
             )
         }
     }
@@ -2086,9 +2040,10 @@ fun TimerDisplay(
 
 @Composable
 fun AnimatedQuoteCard(quote: String, isBreak: Boolean) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val quoteColor = if (isBreak) Color(0xFF2E7D32) else Color(0xFF8D6E63)
-    val accentColor = if (isBreak) Color(0xFF81C784) else Color(0xFFFF8A80)
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
+    val quoteColor = if (isBreak) currentTheme.secondary else currentTheme.textPrimary
+    val accentColor = if (isBreak) currentTheme.secondary else currentTheme.primary
     
     // Create soft pulse animation for an artistic breathing effect
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -2113,11 +2068,16 @@ fun AnimatedQuoteCard(quote: String, isBreak: Boolean) {
 
     Card(
         shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.7f)),
+        colors = CardDefaults.cardColors(containerColor = currentTheme.surface.copy(alpha = 0.85f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 12.dp, bottom = 24.dp)
+            .shadow(
+                elevation = 6.dp,
+                shape = RoundedCornerShape(28.dp),
+                spotColor = currentTheme.shadowColor
+            )
             .graphicsLayer {
                 scaleX = pulseScale
                 scaleY = pulseScale
@@ -2137,7 +2097,7 @@ fun AnimatedQuoteCard(quote: String, isBreak: Boolean) {
             Text(
                 text = "“",
                 fontSize = 80.scaledSp,
-                fontFamily = AppFontFamily,
+                fontFamily = currentFont,
                 fontWeight = FontWeight.Bold,
                 color = accentColor.copy(alpha = 0.15f),
                 modifier = Modifier
@@ -2170,7 +2130,7 @@ fun AnimatedQuoteCard(quote: String, isBreak: Boolean) {
                             text = targetQuote.ifEmpty { "Stay present and fully engaged." },
                             fontSize = 18.scaledSp,
                             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                            fontFamily = AppFontFamily,
+                            fontFamily = currentFont,
                             fontWeight = FontWeight.Medium,
                             color = quoteColor,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -2193,7 +2153,7 @@ fun AnimatedQuoteCard(quote: String, isBreak: Boolean) {
             Text(
                 text = "”",
                 fontSize = 80.scaledSp,
-                fontFamily = AppFontFamily,
+                fontFamily = currentFont,
                 fontWeight = FontWeight.Bold,
                 color = accentColor.copy(alpha = 0.15f),
                 modifier = Modifier

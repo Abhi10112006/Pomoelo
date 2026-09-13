@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.ui.components.pomoShadow
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
@@ -113,8 +115,11 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
     val displayFocus by animateIntAsState(targetValue = animatedFocusTime, animationSpec = tween(1000), label = "focus")
     val displayBreak by animateIntAsState(targetValue = animatedBreakTime, animationSpec = tween(1000), label = "break")
 
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
+
     Scaffold(
-        containerColor = Color(0xFFFCEBEE),
+        containerColor = Color.Transparent,
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
@@ -122,9 +127,9 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
             ) { data ->
                 Snackbar(
                     snackbarData = data,
-                    containerColor = Color(0xFF3E2723), // Athletic Accent deep brown slate
-                    contentColor = Color.White,
-                    actionColor = Color(0xFFFFCC80) // Enhanced gold-peach with super high contrast (>7.4:1) against deep brown
+                    containerColor = currentTheme.primaryDark,
+                    contentColor = currentTheme.surface,
+                    actionColor = currentTheme.accent
                 )
             }
         }
@@ -139,40 +144,52 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
             Text(
                 "Your Focus Dashboard",
                 fontSize = 28.scaledSp,
-                fontFamily = CursiveFontFamily,
+                fontFamily = currentFont,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF5D4037)
+                color = currentTheme.textPrimary
             )
             
             Spacer(modifier = Modifier.height(24.dp))
             
             // Dashboard widget
-            Row(
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color.White)
-                    .padding(24.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                    .pomoShadow(
+                        shape = RoundedCornerShape(24.dp),
+                        elevation = 6.dp,
+                        shadowColor = currentTheme.shadowColor
+                    )
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$displayPomodoros", fontSize = 32.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFFFF8A80), fontFamily = MonospaceFontFamily)
-                    Text("Sessions", fontSize = 14.scaledSp, color = Color.Gray, fontFamily = AppFontFamily)
-                }
-                Box(modifier = Modifier.width(1.dp).height(50.dp).background(Color(0xFFE0E0E0)))
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${displayFocus / 60}h ${displayFocus % 60}m", fontSize = 24.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFF81D4FA), fontFamily = MonospaceFontFamily)
-                    Text("Focus", fontSize = 14.scaledSp, color = Color.Gray, fontFamily = AppFontFamily)
-                }
-                Box(modifier = Modifier.width(1.dp).height(50.dp).background(Color(0xFFE0E0E0)))
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${displayBreak / 60}h ${displayBreak % 60}m", fontSize = 24.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFFA5D6A7), fontFamily = MonospaceFontFamily)
-                    Text("Rest", fontSize = 14.scaledSp, color = Color.Gray, fontFamily = AppFontFamily)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("$displayPomodoros", fontSize = 32.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.primary, fontFamily = MonospaceFontFamily)
+                        Text("Sessions", fontSize = 14.scaledSp, color = currentTheme.textSecondary, fontFamily = currentFont)
+                    }
+                    Box(modifier = Modifier.width(1.dp).height(50.dp).background(currentTheme.cardBorder))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("${displayFocus / 60}h ${displayFocus % 60}m", fontSize = 24.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.secondary, fontFamily = MonospaceFontFamily)
+                        Text("Focus", fontSize = 14.scaledSp, color = currentTheme.textSecondary, fontFamily = currentFont)
+                    }
+                    Box(modifier = Modifier.width(1.dp).height(50.dp).background(currentTheme.cardBorder))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("${displayBreak / 60}h ${displayBreak % 60}m", fontSize = 24.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.accent, fontFamily = MonospaceFontFamily)
+                        Text("Rest", fontSize = 14.scaledSp, color = currentTheme.textSecondary, fontFamily = currentFont)
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(32.dp))
 
-            Text("Task History", fontSize = 20.scaledSp, fontWeight = FontWeight.SemiBold, color = Color(0xFF8D6E63), fontFamily = CursiveFontFamily)
+            Text("Task History", fontSize = 20.scaledSp, fontWeight = FontWeight.SemiBold, color = currentTheme.textPrimary, fontFamily = currentFont)
             Spacer(modifier = Modifier.height(16.dp))
 
             LazyColumn(
@@ -212,7 +229,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(Color(0xFFFCEBEE))
+                                    .background(currentTheme.backgroundSecondary)
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
@@ -265,7 +282,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                     if (pastMonthDays.isNotEmpty()) {
                         item {
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("Previous Days", fontSize = 16.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFFBCAAA4), modifier = Modifier.padding(vertical = 8.dp))
+                            Text("Previous Days", fontSize = 16.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.textSecondary, modifier = Modifier.padding(vertical = 8.dp))
                         }
                         items(pastMonthDays, key = { it }) { dateMillis ->
                             val dateSessions = sessionsByDay[dateMillis]!!
@@ -292,7 +309,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                     if (archiveMonths.isNotEmpty()) {
                         item {
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("Archives", fontSize = 16.scaledSp, fontWeight = FontWeight.Bold, color = Color(0xFFBCAAA4), modifier = Modifier.padding(vertical = 8.dp))
+                            Text("Archives", fontSize = 16.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.textSecondary, modifier = Modifier.padding(vertical = 8.dp))
                         }
                         items(archiveMonths.entries.toList(), key = { it.key }) { (monthStr, sessions) ->
                             MonthSummaryCard(
@@ -323,8 +340,8 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                         Text(
                             text = tier2Title,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF5D4037),
-                            fontFamily = AppFontFamily
+                            color = currentTheme.textPrimary,
+                            fontFamily = currentFont
                         )
                     },
                     text = {
@@ -343,7 +360,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                 viewModel.deleteSessions(tier2SessionsToDelete)
                                 showTier2Dialog = false
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8A80)),
+                            colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primary),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text("[ Delete anyway ]", color = Color.White, fontWeight = FontWeight.Bold)
@@ -356,7 +373,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                 showTier2Dialog = false
                             }
                         ) {
-                            Text("[ Cancel ]", color = Color(0xFF8D6E63))
+                            Text("[ Cancel ]", color = currentTheme.textSecondary)
                         }
                     },
                     containerColor = Color.White,
@@ -498,13 +515,16 @@ fun MicroSummaryPill(
     val focusSessions = sessions.filter { !it.isBreak }
     val totalFocusMins = focusSessions.sumOf { it.durationMinutes }
     val sessionsCount = focusSessions.size
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
     
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.6f)),
+        colors = CardDefaults.cardColors(containerColor = currentTheme.surface.copy(alpha = 0.6f)),
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(16.dp))
             .clickable {
                 try {
                     view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -528,13 +548,13 @@ fun MicroSummaryPill(
                         fontFamily = MonospaceFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.scaledSp,
-                        color = Color.DarkGray
+                        color = currentTheme.textPrimary
                     )
                     Text(
                         text = "${totalFocusMins / 60}h ${totalFocusMins % 60}m Focus | $sessionsCount Sessions",
-                        fontFamily = AppFontFamily,
+                        fontFamily = currentFont,
                         fontSize = 12.scaledSp,
-                        color = Color.Gray
+                        color = currentTheme.textSecondary
                     )
                 }
                 IconButton(
@@ -585,13 +605,16 @@ fun MonthSummaryCard(
     val totalFocusMins = focusSessions.sumOf { it.durationMinutes }
     val totalDays = sessions.groupBy { getStartOfDay(it.startTime) }.size
     val dailyAvg = if (totalDays > 0) totalFocusMins / totalDays else 0
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
     
     Card(
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFECEFF1)),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
+            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(24.dp))
             .clickable {
                 try {
                     view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -610,7 +633,7 @@ fun MonthSummaryCard(
                     "📁 $monthStr Summary",
                     fontSize = 16.scaledSp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF455A64),
+                    color = currentTheme.textPrimary,
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(
@@ -625,26 +648,26 @@ fun MonthSummaryCard(
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete Month",
-                        tint = Color(0xFF455A64),
+                        tint = currentTheme.textPrimary,
                         modifier = Modifier.size(20.dp)
                     )
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Total Focus: ${totalFocusMins / 60}h ${totalFocusMins % 60}m | Daily Avg: ${dailyAvg / 60}h ${dailyAvg % 60}m", fontSize = 13.scaledSp, color = Color(0xFF607D8B), fontFamily = MonospaceFontFamily)
+            Text("Total Focus: ${totalFocusMins / 60}h ${totalFocusMins % 60}m | Daily Avg: ${dailyAvg / 60}h ${dailyAvg % 60}m", fontSize = 13.scaledSp, color = currentTheme.textSecondary, fontFamily = MonospaceFontFamily)
             
             AnimatedVisibility(visible = expanded) {
                 Column(modifier = Modifier.padding(top = 16.dp)) {
-                    HorizontalDivider(color = Color(0xFFCFD8DC), modifier = Modifier.padding(bottom = 12.dp))
-                    Text("Breakdown Details", fontWeight = FontWeight.SemiBold, fontSize = 14.scaledSp, color = Color(0xFF455A64))
+                    HorizontalDivider(color = currentTheme.cardBorder, modifier = Modifier.padding(bottom = 12.dp))
+                    Text("Breakdown Details", fontWeight = FontWeight.SemiBold, fontSize = 14.scaledSp, color = currentTheme.textPrimary)
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     val groupedTasks = sessions.groupBy { it.taskName }
                     groupedTasks.entries.sortedByDescending { it.value.sumOf { s -> s.durationMinutes } }.forEach { (task, list) ->
                         val taskMins = list.sumOf { it.durationMinutes }
-                        val taskColor = if (task.contains("Break")) Color(0xFF546E7A) else Color(0xFF455A64)
+                        val taskColor = if (task.contains("Break")) currentTheme.accent else currentTheme.textPrimary
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(task, color = taskColor, fontSize = 13.scaledSp, fontFamily = AppFontFamily)
+                            Text(task, color = taskColor, fontSize = 13.scaledSp, fontFamily = currentFont)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("${taskMins / 60}h ${taskMins % 60}m", color = taskColor, fontWeight = FontWeight.Bold, fontSize = 13.scaledSp, fontFamily = MonospaceFontFamily)
                             }
@@ -667,12 +690,21 @@ fun HistorySessionPill(
     var expanded by remember { mutableStateOf(false) }
     val arrowRotation by animateFloatAsState(if (expanded) 180f else 0f, label = "arrow")
 
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
+    
     Card(
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
+            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(24.dp))
+            .pomoShadow(
+                shape = RoundedCornerShape(24.dp),
+                elevation = 4.dp,
+                shadowColor = currentTheme.shadowColor
+            )
             .clickable {
                 try {
                     view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -684,7 +716,7 @@ fun HistorySessionPill(
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             val totalMins = sessions.sumOf { it.durationMinutes }
             val hasFocus = sessions.any { !it.isBreak }
-            val tintColor = if (!hasFocus) Color(0xFF81D4FA) else Color(0xFFFF8A80)
+            val tintColor = if (!hasFocus) currentTheme.secondary else currentTheme.primary
             
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -701,8 +733,8 @@ fun HistorySessionPill(
                     Text(
                         text = "$taskName • ",
                         fontWeight = FontWeight.Bold,
-                        fontFamily = AppFontFamily,
-                        color = Color(0xFF5D4037)
+                        fontFamily = currentFont,
+                        color = currentTheme.textPrimary
                     )
                     Text(
                         text = "${totalMins}m",
@@ -768,14 +800,14 @@ fun HistorySessionPill(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(RoundedCornerShape(12.dp))
-                                        .background(Color(0xFFFF8A80))
+                                        .background(currentTheme.primary)
                                         .padding(horizontal = 16.dp),
                                     contentAlignment = Alignment.CenterEnd
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Delete,
                                         contentDescription = "Delete",
-                                        tint = Color.White,
+                                        tint = currentTheme.surface,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
@@ -784,14 +816,14 @@ fun HistorySessionPill(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(Color.White)
+                                        .background(currentTheme.surface)
                                         .padding(start = 28.dp, top = 8.dp, bottom = 8.dp, end = 16.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
                                         text = "⚡ $type ($start - $end)", 
-                                        color = Color.Gray, 
+                                        color = currentTheme.textSecondary, 
                                         fontSize = 12.scaledSp, 
                                         fontFamily = MonospaceFontFamily,
                                         modifier = Modifier.weight(1f)

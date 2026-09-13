@@ -145,7 +145,13 @@ tasks.register("downloadFonts") {
         "special_elite_regular.ttf" to "https://raw.githubusercontent.com/google/fonts/main/apache/specialelite/SpecialElite-Regular.ttf",
         "poppins_regular.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Regular.ttf",
         "poppins_medium.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Medium.ttf",
-        "poppins_bold.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Bold.ttf"
+        "poppins_bold.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Bold.ttf",
+        "sniglet_regular.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/sniglet/Sniglet-Regular.ttf",
+        "balsamiq_sans_regular.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/balsamiqsans/BalsamiqSans-Regular.ttf",
+        "balsamiq_sans_bold.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/balsamiqsans/BalsamiqSans-Bold.ttf",
+        "patrick_hand_regular.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/patrickhand/PatrickHand-Regular.ttf",
+        "short_stack_regular.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/shortstack/ShortStack-Regular.ttf",
+        "chewy_regular.ttf" to "https://raw.githubusercontent.com/google/fonts/main/apache/chewy/Chewy-Regular.ttf"
     )
     doLast {
         if (!fontDir.allExists()) {

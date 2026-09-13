@@ -24,6 +24,15 @@ object SettingsManager {
     private const val KEY_SQUAT_VALLEY_THRESHOLD = "user_squat_valley_threshold"
     private const val KEY_SQUAT_PEAK_THRESHOLD = "user_squat_peak_threshold"
 
+    private const val KEY_THEME_ID = "selected_app_theme"
+    private const val KEY_FONT_ID = "selected_app_font"
+
+    private val _themeState = kotlinx.coroutines.flow.MutableStateFlow(com.example.ui.theme.ThemeOption.PREMIUM)
+    val themeState: kotlinx.coroutines.flow.StateFlow<com.example.ui.theme.ThemeOption> = _themeState
+
+    private val _fontState = kotlinx.coroutines.flow.MutableStateFlow(com.example.ui.theme.FontOption.COMIC_NEUE)
+    val fontState: kotlinx.coroutines.flow.StateFlow<com.example.ui.theme.FontOption> = _fontState
+
     @Volatile
     private var prefs: SharedPreferences? = null
 
@@ -47,6 +56,9 @@ object SettingsManager {
         // Load into TimerManager
         TimerManager.setFocusTimeMins(getFocusTimeMins())
         TimerManager.setBreakTimeMins(getBreakTimeMins())
+
+        _themeState.value = com.example.ui.theme.ThemeOption.fromId(getThemeId())
+        _fontState.value = com.example.ui.theme.FontOption.fromId(getFontId())
     }
 
     fun getSquatValleyThreshold(): Float? = if (getPrefs().contains(KEY_SQUAT_VALLEY_THRESHOLD)) getPrefs().getFloat(KEY_SQUAT_VALLEY_THRESHOLD, -0.4f) else null
@@ -102,4 +114,16 @@ object SettingsManager {
     fun setLastBackupTime(timeMs: Long) = getPrefs().edit().putLong(KEY_LAST_BACKUP_TIME, timeMs).apply()
     fun getAutoBackupFreq(): Int = getPrefs().getInt(KEY_AUTO_BACKUP_FREQ, 0)
     fun setAutoBackupFreq(freq: Int) = getPrefs().edit().putInt(KEY_AUTO_BACKUP_FREQ, freq).apply()
+
+    fun getThemeId(): String = getPrefs().getString(KEY_THEME_ID, "premium") ?: "premium"
+    fun setThemeId(themeId: String) {
+        getPrefs().edit().putString(KEY_THEME_ID, themeId).apply()
+        _themeState.value = com.example.ui.theme.ThemeOption.fromId(themeId)
+    }
+
+    fun getFontId(): String = getPrefs().getString(KEY_FONT_ID, "comic_neue") ?: "comic_neue"
+    fun setFontId(fontId: String) {
+        getPrefs().edit().putString(KEY_FONT_ID, fontId).apply()
+        _fontState.value = com.example.ui.theme.FontOption.fromId(fontId)
+    }
 }
