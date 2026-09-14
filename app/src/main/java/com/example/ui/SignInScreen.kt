@@ -443,15 +443,11 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
     val errorColor = if (currentTheme.isDark) Color(0xFFCF6679) else Color(0xFFB00020)
     val floatOffsetPx = with(density) { floatAnimDp.dp.toPx() }
 
-    BoxWithConstraints(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(currentTheme.background)
-            .windowInsetsPadding(WindowInsets.systemBars)
-            .imePadding()
     ) {
-        val minHeight = maxHeight
-
         // Mesmerizing Ambient Glow Orbs in background (Spatial Lighting Canvas)
         Canvas(
             modifier = Modifier
@@ -500,8 +496,8 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
 
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = minHeight)
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.ime))
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 20.dp)
                 .graphicsLayer {
@@ -743,18 +739,6 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                                 onDone = {
                                     keyboardController?.hide()
                                     focusManager.clearFocus()
-                                    if (name.isNotBlank() && !isExiting) {
-                                        try { view.performHapticFeedback(HapticFeedbackConstants.CONFIRM) } catch (e: Exception) {}
-                                        SettingsManager.setUserName(name.trim())
-                                        isExiting = true
-                                        coroutineScope.launch {
-                                            delay(320)
-                                            onSignInSuccess()
-                                        }
-                                    } else if (name.isBlank()) {
-                                        showError = true
-                                        try { view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) } catch (e: Exception) {}
-                                    }
                                 }
                             ),
                             decorationBox = { innerTextField ->
