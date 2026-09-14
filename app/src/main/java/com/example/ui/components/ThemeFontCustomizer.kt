@@ -16,6 +16,12 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +62,7 @@ import com.example.service.SettingsManager
 import com.example.ui.theme.FontOption
 import com.example.ui.theme.LocalAppFont
 import com.example.ui.theme.LocalAppTheme
+import com.example.ui.theme.blend
 import com.example.ui.theme.luminance
 
 @Composable
@@ -176,188 +183,187 @@ fun ThemeFontCustomizer(
                     }
                 }
 
-                // Section 2: Playful Fonts
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
-                    border = BorderStroke(1.dp, currentTheme.cardBorder),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                // Section 2: Typography
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column(
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp)
+                            .size(38.dp)
+                            .shadow(3.dp, CircleShape, spotColor = currentTheme.secondary)
+                            .clip(CircleShape)
+                            .background(currentTheme.secondary),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .shadow(3.dp, CircleShape, spotColor = currentTheme.secondary)
-                                    .clip(CircleShape)
-                                    .background(currentTheme.secondary),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.FontDownload,
-                                    contentDescription = null,
-                                    tint = if (currentTheme.secondary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                        Icon(
+                            imageVector = Icons.Filled.FontDownload,
+                            contentDescription = null,
+                            tint = if (currentTheme.secondary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Typography",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = currentTheme.textPrimary,
+                            fontFamily = currentAppFont
+                        )
+                        Text(
+                            text = "Choose the personality of your PomoPal.",
+                            fontSize = 12.sp,
+                            color = currentTheme.textSecondary,
+                            fontFamily = currentAppFont
+                        )
+                    }
+                }
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    FontOption.entries.forEach { font ->
+                        val isSelected = currentFont.id == font.id
+                        val borderColor by animateColorAsState(
+                            targetValue = if (isSelected) currentTheme.primary else currentTheme.cardBorder,
+                            label = "fontBorder"
+                        )
+                        val targetBgColor = if (isSelected) {
+                            if (currentTheme.isDark) {
+                                currentTheme.surface.blend(currentTheme.primary, 0.18f)
+                            } else {
+                                currentTheme.surface.blend(currentTheme.primary, 0.08f)
                             }
-                            Column {
-                                Text(
-                                    text = "Playful Fonts",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = currentTheme.textPrimary,
-                                    fontFamily = currentAppFont
-                                )
-                                Text(
-                                    text = "Cute typography tailored for high focus",
-                                    fontSize = 12.sp,
-                                    color = currentTheme.textSecondary,
-                                    fontFamily = currentAppFont
-                                )
-                            }
+                        } else {
+                            currentTheme.surface
                         }
+                        val cardBgColor by animateColorAsState(
+                            targetValue = targetBgColor,
+                            label = "fontCardBg"
+                        )
+                        val cardElevation by animateDpAsState(
+                            targetValue = if (isSelected) 4.dp else 1.dp,
+                            label = "fontElevation"
+                        )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        val interactionSource = remember { MutableInteractionSource() }
+                        val isPressed by interactionSource.collectIsPressedAsState()
+                        val scale by animateFloatAsState(targetValue = if (isPressed) 0.97f else 1f, label = "scale")
 
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .scale(scale)
+                                .clickable(
+                                    interactionSource = interactionSource,
+                                    indication = LocalIndication.current,
+                                    role = Role.RadioButton,
+                                    onClickLabel = "Select ${font.displayName} font",
+                                    onClick = {
+                                        try {
+                                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                        } catch (e: Exception) {}
+                                        SettingsManager.setFontId(font.id)
+                                    }
+                                ),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = cardBgColor
+                            ),
+                            border = BorderStroke(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = borderColor
+                            ),
+                            elevation = CardDefaults.cardElevation(
+                                defaultElevation = cardElevation
+                            )
                         ) {
-                            FontOption.entries.forEach { font ->
-                                val isSelected = currentFont.id == font.id
-                                val borderColor by animateColorAsState(
-                                    targetValue = if (isSelected) currentTheme.primary else currentTheme.cardBorder,
-                                    label = "fontBorder"
-                                )
-                                val bgColor by animateColorAsState(
-                                    targetValue = if (isSelected) {
-                                        currentTheme.primary.copy(alpha = if (currentTheme.isDark) 0.18f else 0.08f)
-                                    } else {
-                                        currentTheme.backgroundSecondary
-                                    },
-                                    label = "fontBg"
-                                )
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .shadow(
-                                            elevation = if (isSelected) 4.dp else 0.dp,
-                                            shape = RoundedCornerShape(20.dp),
-                                            spotColor = if (isSelected) currentTheme.primary else currentTheme.shadowColor
-                                        )
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(bgColor)
-                                        .border(
-                                            width = if (isSelected) 2.dp else 1.dp,
-                                            color = borderColor,
-                                            shape = RoundedCornerShape(20.dp)
-                                        )
-                                        .clickable(
-                                            role = Role.RadioButton,
-                                            onClickLabel = "Select ${font.displayName} font",
-                                            onClick = {
-                                                try {
-                                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                                } catch (e: Exception) {}
-                                                SettingsManager.setFontId(font.id)
-                                            }
-                                        )
-                                        .padding(18.dp)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                // Header: Font name + Badge + Selection Check
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        // Header: Font name + Badge + Selection Check
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                            ) {
-                                                Text(
-                                                    text = font.displayName,
-                                                    fontFamily = font.fontFamily,
-                                                    fontSize = 18.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (isSelected) currentTheme.primary else currentTheme.textPrimary
-                                                )
-                                                Surface(
-                                                    color = currentTheme.primary.copy(alpha = if (currentTheme.isDark) 0.25f else 0.14f),
-                                                    shape = RoundedCornerShape(8.dp)
-                                                ) {
-                                                    Text(
-                                                        text = font.badge,
-                                                        fontFamily = font.fontFamily,
-                                                        fontSize = 11.sp,
-                                                        color = currentTheme.primary,
-                                                        fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                                    )
-                                                }
-                                            }
-
-                                            if (isSelected) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(24.dp)
-                                                        .clip(CircleShape)
-                                                        .background(currentTheme.primary),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Filled.Check,
-                                                        contentDescription = "Selected",
-                                                        tint = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
-                                                        modifier = Modifier.size(16.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        // Sample Preview using that font
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(if (isSelected) currentTheme.surface.copy(alpha = 0.85f) else currentTheme.surface)
-                                                .border(
-                                                    width = 1.dp,
-                                                    color = if (isSelected) currentTheme.primary.copy(alpha = 0.25f) else currentTheme.cardBorder.copy(alpha = 0.6f),
-                                                    shape = RoundedCornerShape(12.dp)
-                                                )
-                                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                                        Text(
+                                            text = font.displayName,
+                                            fontFamily = font.fontFamily,
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) currentTheme.primary else currentTheme.textPrimary
+                                        )
+                                        Surface(
+                                            color = currentTheme.primary.copy(alpha = if (currentTheme.isDark) 0.25f else 0.14f),
+                                            shape = RoundedCornerShape(8.dp)
                                         ) {
                                             Text(
-                                                text = font.sampleText,
+                                                text = font.badge,
                                                 fontFamily = font.fontFamily,
-                                                fontSize = 22.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                letterSpacing = 0.5.sp,
-                                                color = if (isSelected) currentTheme.primary else currentTheme.textPrimary
+                                                fontSize = 11.sp,
+                                                color = currentTheme.primary,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                             )
                                         }
+                                    }
 
-                                        // Description/Subtext
-                                        Text(
-                                            text = font.description,
-                                            fontFamily = font.fontFamily,
-                                            fontSize = 13.sp,
-                                            color = currentTheme.textSecondary
-                                        )
+                                    if (isSelected) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(CircleShape)
+                                                .background(currentTheme.primary),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Check,
+                                                contentDescription = "Selected",
+                                                tint = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
                                     }
                                 }
+
+                                // Typography Previews
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "Aa Bb Cc 123",
+                                        fontFamily = font.fontFamily,
+                                        fontSize = 26.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isSelected) currentTheme.primary else currentTheme.textPrimary
+                                    )
+                                    Text(
+                                        text = "Focus • Study • Grow",
+                                        fontFamily = font.fontFamily,
+                                        fontSize = 15.sp,
+                                        color = currentTheme.textSecondary
+                                    )
+                                }
+
+                                // Description/Subtext
+                                Text(
+                                    text = font.description,
+                                    fontFamily = font.fontFamily,
+                                    fontSize = 13.sp,
+                                    color = currentTheme.textSecondary
+                                )
                             }
                         }
                     }

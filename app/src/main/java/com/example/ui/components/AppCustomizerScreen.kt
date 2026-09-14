@@ -256,12 +256,13 @@ fun AppCustomizerScreen(
             }
 
             // Section: Appearance Mode
+            val currentMode by SettingsManager.appearanceState.collectAsState()
+            
             CustomizationSection(
                 title = "Appearance",
                 subtitle = "System-wide theme setting",
                 theme = currentTheme
             ) {
-                val currentMode by SettingsManager.appearanceState.collectAsState()
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -286,14 +287,22 @@ fun AppCustomizerScreen(
                 ColorPickerRow(
                     options = backgroundOptions,
                     selectedColor = customBg,
-                    onColorSelected = { color -> SettingsManager.setCustomBgColor(color.toLongValue()) }
+                    onColorSelected = { color -> 
+                        SettingsManager.setCustomBgColor(color.toLongValue())
+                        val isDarkColor = color.luminance() < 0.5f
+                        if (isDarkColor && currentMode == SettingsManager.AppearanceMode.LIGHT) {
+                            SettingsManager.setAppearanceMode(SettingsManager.AppearanceMode.DARK)
+                        } else if (!isDarkColor && currentMode == SettingsManager.AppearanceMode.DARK) {
+                            SettingsManager.setAppearanceMode(SettingsManager.AppearanceMode.LIGHT)
+                        }
+                    }
                 )
             }
 
-            // Section: Primary Accent
+            // Section: Primary
             CustomizationSection(
-                title = "Primary Accent",
-                subtitle = "Buttons and main highlights",
+                title = "Primary",
+                subtitle = "Buttons & main actions",
                 theme = currentTheme
             ) {
                 ColorPickerRow(
@@ -305,8 +314,8 @@ fun AppCustomizerScreen(
 
             // Section: Secondary
             CustomizationSection(
-                title = "Secondary Details",
-                subtitle = "Supporting highlights and shapes",
+                title = "Secondary",
+                subtitle = "Supporting elements",
                 theme = currentTheme
             ) {
                 ColorPickerRow(
@@ -318,8 +327,8 @@ fun AppCustomizerScreen(
             
             // Section: Accent
             CustomizationSection(
-                title = "Accent Details",
-                subtitle = "Tertiary highlights and shapes",
+                title = "Accent",
+                subtitle = "Small highlights & details",
                 theme = currentTheme
             ) {
                 ColorPickerRow(
@@ -438,50 +447,72 @@ fun ColorPickerRow(
 ) {
     val view = LocalView.current
     val currentTheme = LocalAppTheme.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        options.forEach { color ->
-            val isSelected = selectedColor.toArgb() == color.toArgb()
-            
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .shadow(
-                        elevation = if (isSelected) 4.dp else 1.dp,
-                        shape = CircleShape,
-                        spotColor = if (isSelected) color else currentTheme.shadowColor
-                    )
-                    .clip(CircleShape)
-                    .background(color)
-                    .border(
-                        width = if (isSelected) 3.dp else 1.dp,
-                        color = if (isSelected) currentTheme.primary else currentTheme.cardBorder,
-                        shape = CircleShape
-                    )
-                    .clickable(
-                        onClickLabel = "Select color",
-                        role = Role.RadioButton,
-                        onClick = { 
-                            try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-                            onColorSelected(color) 
-                        }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                if (isSelected) {
-                    Icon(
-                        imageVector = Icons.Filled.Check,
-                        contentDescription = "Selected color",
-                        tint = if (color.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            options.forEach { color ->
+                val isSelected = selectedColor.toArgb() == color.toArgb()
+                
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .shadow(
+                            elevation = if (isSelected) 4.dp else 1.dp,
+                            shape = CircleShape,
+                            spotColor = if (isSelected) color else currentTheme.shadowColor
+                        )
+                        .clip(CircleShape)
+                        .background(color)
+                        .border(
+                            width = if (isSelected) 3.dp else 1.dp,
+                            color = if (isSelected) currentTheme.primary else currentTheme.cardBorder,
+                            shape = CircleShape
+                        )
+                        .clickable(
+                            onClickLabel = "Select color",
+                            role = Role.RadioButton,
+                            onClick = { 
+                                try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                                onColorSelected(color) 
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = "Selected color",
+                            tint = if (color.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
+            
+            // Add extra space at the end to ensure the last item is not covered by the gradient when scrolled
+            Spacer(modifier = Modifier.width(16.dp))
         }
+
+        // Gradient fade on the right edge
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .width(48.dp)
+                .height(48.dp)
+                .background(
+                    brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            currentTheme.surface.copy(alpha = 0.8f),
+                            currentTheme.surface
+                        )
+                    )
+                )
+        )
     }
 }
 

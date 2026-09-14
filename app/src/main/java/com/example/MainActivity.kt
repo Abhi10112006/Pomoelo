@@ -223,7 +223,7 @@ fun PomoPalApp(viewModel: TimerViewModel) {
         bottomBar = {
             // Floating Bottom Pill Navigation
             AnimatedVisibility(
-                visible = !isAddingTask && timerState == TimerManager.TimerState.STOPPED && !isSettingsOpen,
+                visible = currentRoute != "signin" && !isAddingTask && timerState == TimerManager.TimerState.STOPPED && !isSettingsOpen,
                 enter = slideInVertically(initialOffsetY = { it * 2 }, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessVeryLow)) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it * 2 }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeOut(),
                 modifier = Modifier
