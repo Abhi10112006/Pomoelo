@@ -225,7 +225,10 @@ fun PomoPalApp(viewModel: TimerViewModel) {
             val isSignInRoute = currentRoute == "signin" || (navBackStackEntry?.destination?.route == "signin") || (navBackStackEntry == null && startDest == "signin")
             AnimatedVisibility(
                 visible = !isSignInRoute && !isAddingTask && timerState == TimerManager.TimerState.STOPPED && !isSettingsOpen,
-                enter = slideInVertically(initialOffsetY = { it * 2 }, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessVeryLow)) + fadeIn(),
+                enter = slideInVertically(
+                    initialOffsetY = { it * 2 },
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
+                ) + fadeIn(animationSpec = tween(400, delayMillis = 220)),
                 exit = slideOutVertically(targetOffsetY = { it * 2 }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeOut(),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -395,17 +398,53 @@ fun PomoPalApp(viewModel: TimerViewModel) {
         NavHost(
             navController = navController,
             startDestination = startDest,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            enterTransition = {
+                fadeIn(animationSpec = tween(400, easing = LinearOutSlowInEasing)) + 
+                slideInVertically(
+                    animationSpec = tween(400, easing = LinearOutSlowInEasing),
+                    initialOffsetY = { it / 12 }
+                )
+            },
+            exitTransition = {
+                fadeOut(animationSpec = tween(350, easing = FastOutSlowInEasing))
+            },
+            popEnterTransition = {
+                fadeIn(animationSpec = tween(400, easing = LinearOutSlowInEasing)) +
+                slideInVertically(
+                    animationSpec = tween(400, easing = LinearOutSlowInEasing),
+                    initialOffsetY = { -it / 12 }
+                )
+            },
+            popExitTransition = {
+                fadeOut(animationSpec = tween(350, easing = FastOutSlowInEasing))
+            }
         ) {
             val bottomPadding = paddingValues.calculateBottomPadding()
-            composable("signin") {
+            composable(
+                route = "signin",
+                exitTransition = {
+                    fadeOut(animationSpec = tween(400, easing = LinearOutSlowInEasing)) +
+                    scaleOut(targetScale = 0.94f, animationSpec = tween(400, easing = FastOutSlowInEasing))
+                },
+                popExitTransition = {
+                    fadeOut(animationSpec = tween(400, easing = LinearOutSlowInEasing)) +
+                    scaleOut(targetScale = 0.94f, animationSpec = tween(400, easing = FastOutSlowInEasing))
+                }
+            ) {
                 com.example.ui.SignInScreen(navController = navController, onSignInSuccess = {
                     navController.navigate("home") {
                         popUpTo("signin") { inclusive = true }
                     }
                 })
             }
-            composable("home") {
+            composable(
+                route = "home",
+                enterTransition = {
+                    fadeIn(animationSpec = tween(550, delayMillis = 80, easing = LinearOutSlowInEasing)) +
+                    scaleIn(initialScale = 1.04f, animationSpec = tween(550, delayMillis = 80, easing = LinearOutSlowInEasing))
+                }
+            ) {
                 HomeScreen(viewModel, navController, bottomPadding)
             }
             composable("history") {
