@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -519,18 +520,16 @@ fun MicroSummaryPill(
     val currentFont = LocalAppFont.current
     
     Card(
+        onClick = {
+            try {
+                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            } catch (e: Exception) {}
+            expanded = !expanded
+        },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = currentTheme.surface.copy(alpha = 0.6f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(16.dp))
-            .clickable {
-                try {
-                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                } catch (e: Exception) {}
-                expanded = !expanded
-            },
+        border = BorderStroke(1.dp, currentTheme.cardBorder),
+        modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -609,18 +608,16 @@ fun MonthSummaryCard(
     val currentFont = LocalAppFont.current
     
     Card(
+        onClick = {
+            try {
+                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            } catch (e: Exception) {}
+            expanded = !expanded
+        },
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(24.dp))
-            .clickable {
-                try {
-                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                } catch (e: Exception) {}
-                expanded = !expanded
-            },
+        border = BorderStroke(1.dp, currentTheme.cardBorder),
+        modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {

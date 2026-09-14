@@ -172,22 +172,26 @@ fun MyApplicationTheme(
         isDark = isBgDark
     )
 
-    val duration = 400
-    val animBg by animateColorAsState(safeTheme.background, tween(duration), label = "bg")
-    val animPri by animateColorAsState(safeTheme.primary, tween(duration), label = "pri")
-    val animPriDark by animateColorAsState(safeTheme.primaryDark, tween(duration), label = "priDark")
-    val animPriLight by animateColorAsState(safeTheme.primaryLight, tween(duration), label = "priLight")
-    val animSec by animateColorAsState(safeTheme.secondary, tween(duration), label = "sec")
-    val animAcc by animateColorAsState(safeTheme.accent, tween(duration), label = "acc")
-    val animRunBg by animateColorAsState(safeTheme.runningBg, tween(duration), label = "runBg")
-    val animBreakBg by animateColorAsState(safeTheme.breakBg, tween(duration), label = "breakBg")
-    val animSurface by animateColorAsState(safeTheme.surface, tween(duration), label = "surface")
-    val animBorder by animateColorAsState(safeTheme.cardBorder, tween(duration), label = "border")
-    val animBgSec by animateColorAsState(safeTheme.backgroundSecondary, tween(duration), label = "bgSec")
-    val animPillActiveBg by animateColorAsState(safeTheme.pillActiveBg, tween(duration), label = "pillActiveBg")
-    val animTextPri by animateColorAsState(safeTheme.textPrimary, tween(duration), label = "textPri")
-    val animTextSec by animateColorAsState(safeTheme.textSecondary, tween(duration), label = "textSec")
-    val animShadow by animateColorAsState(safeTheme.shadowColor, tween(duration), label = "shadow")
+    // Smooth, premium Material 3 Emphasized Decelerate animation curve for luxury color morphing
+    val colorAnimationSpec = tween<Color>(
+        durationMillis = 450,
+        easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
+    )
+    val animBg by animateColorAsState(safeTheme.background, colorAnimationSpec, label = "bg")
+    val animPri by animateColorAsState(safeTheme.primary, colorAnimationSpec, label = "pri")
+    val animPriDark by animateColorAsState(safeTheme.primaryDark, colorAnimationSpec, label = "priDark")
+    val animPriLight by animateColorAsState(safeTheme.primaryLight, colorAnimationSpec, label = "priLight")
+    val animSec by animateColorAsState(safeTheme.secondary, colorAnimationSpec, label = "sec")
+    val animAcc by animateColorAsState(safeTheme.accent, colorAnimationSpec, label = "acc")
+    val animRunBg by animateColorAsState(safeTheme.runningBg, colorAnimationSpec, label = "runBg")
+    val animBreakBg by animateColorAsState(safeTheme.breakBg, colorAnimationSpec, label = "breakBg")
+    val animSurface by animateColorAsState(safeTheme.surface, colorAnimationSpec, label = "surface")
+    val animBorder by animateColorAsState(safeTheme.cardBorder, colorAnimationSpec, label = "border")
+    val animBgSec by animateColorAsState(safeTheme.backgroundSecondary, colorAnimationSpec, label = "bgSec")
+    val animPillActiveBg by animateColorAsState(safeTheme.pillActiveBg, colorAnimationSpec, label = "pillActiveBg")
+    val animTextPri by animateColorAsState(safeTheme.textPrimary, colorAnimationSpec, label = "textPri")
+    val animTextSec by animateColorAsState(safeTheme.textSecondary, colorAnimationSpec, label = "textSec")
+    val animShadow by animateColorAsState(safeTheme.shadowColor, colorAnimationSpec, label = "shadow")
 
     val animatedThemeOption = safeTheme.copy(
         background = animBg,
@@ -205,7 +209,8 @@ fun MyApplicationTheme(
         textPrimary = animTextPri,
         textSecondary = animTextSec,
         shadowColor = animShadow,
-        timerArcColors = listOf(animPri, animSec, animAcc)
+        timerArcColors = listOf(animPri, animSec, animAcc),
+        isDark = animBg.luminance() < 0.5f
     )
 
     val colorScheme = animatedThemeOption.toColorScheme()

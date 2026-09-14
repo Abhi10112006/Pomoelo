@@ -167,10 +167,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PomoPalApp(viewModel: TimerViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val startDest = if (com.example.service.SettingsManager.getUserName() == null) "signin" else "home"
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route ?: "home"
-    val startDest = if (com.example.service.SettingsManager.getUserName() == null) "signin" else "home"
+    val currentRoute = navBackStackEntry?.destination?.route ?: startDest
     val isAddingTask by viewModel.isAddingTask.collectAsState()
     val timerState by viewModel.timerState.collectAsState()
     val isSettingsOpen by viewModel.isSettingsOpen.collectAsState()
@@ -222,8 +222,9 @@ fun PomoPalApp(viewModel: TimerViewModel) {
         containerColor = Color.Transparent,
         bottomBar = {
             // Floating Bottom Pill Navigation
+            val isSignInRoute = currentRoute == "signin" || (navBackStackEntry?.destination?.route == "signin") || (navBackStackEntry == null && startDest == "signin")
             AnimatedVisibility(
-                visible = currentRoute != "signin" && !isAddingTask && timerState == TimerManager.TimerState.STOPPED && !isSettingsOpen,
+                visible = !isSignInRoute && !isAddingTask && timerState == TimerManager.TimerState.STOPPED && !isSettingsOpen,
                 enter = slideInVertically(initialOffsetY = { it * 2 }, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessVeryLow)) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it * 2 }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeOut(),
                 modifier = Modifier
@@ -1093,15 +1094,27 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
             }
             
             if (tabIndex == 2) {
+                val blockedInteraction = remember { MutableInteractionSource() }
+                val isBlockedPressed by blockedInteraction.collectIsPressedAsState()
+                val blockedScale by animateFloatAsState(
+                    targetValue = if (isBlockedPressed) 0.96f else 1f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "blockedScale"
+                )
                 Card(
-                    modifier = Modifier.fillMaxWidth().clickable { 
+                    onClick = { 
                         try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
                         showBlockedApps = true 
                     },
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder)
-            ) {
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scale(blockedScale),
+                    shape = RoundedCornerShape(16.dp),
+                    interactionSource = blockedInteraction,
+                    colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp, pressedElevation = 0.dp)
+                ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically,

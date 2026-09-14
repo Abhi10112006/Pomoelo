@@ -6,6 +6,8 @@ import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -129,23 +131,40 @@ fun ThemeFontCustomizer(
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 // Section 1: Make It Yours (Replaces old Themes)
+                val makeItYoursInteraction = remember { MutableInteractionSource() }
+                val isMakeItYoursPressed by makeItYoursInteraction.collectIsPressedAsState()
+                val makeItYoursScale by animateFloatAsState(
+                    targetValue = if (isMakeItYoursPressed) 0.96f else 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    ),
+                    label = "makeItYoursScale"
+                )
+                val makeItYoursElevation by animateDpAsState(
+                    targetValue = if (isMakeItYoursPressed) 1.dp else 3.dp,
+                    animationSpec = spring(stiffness = Spring.StiffnessLow),
+                    label = "makeItYoursElevation"
+                )
+
                 Card(
+                    onClick = {
+                        try {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        } catch (e: Exception) {}
+                        showCustomizer = true
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(
-                            role = Role.Button,
-                            onClickLabel = "Open Make It Yours customizer",
-                            onClick = {
-                                try {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                } catch (e: Exception) {}
-                                showCustomizer = true
-                            }
-                        ),
+                        .scale(makeItYoursScale),
                     shape = RoundedCornerShape(24.dp),
+                    interactionSource = makeItYoursInteraction,
                     colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
                     border = BorderStroke(1.dp, currentTheme.cardBorder),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                    elevation = CardDefaults.cardElevation(
+                        defaultElevation = makeItYoursElevation,
+                        pressedElevation = 1.dp
+                    )
                 ) {
                     Row(
                         modifier = Modifier
@@ -252,25 +271,32 @@ fun ThemeFontCustomizer(
 
                         val interactionSource = remember { MutableInteractionSource() }
                         val isPressed by interactionSource.collectIsPressedAsState()
-                        val scale by animateFloatAsState(targetValue = if (isPressed) 0.97f else 1f, label = "scale")
+                        val scale by animateFloatAsState(
+                            targetValue = if (isPressed) 0.96f else 1f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessLow
+                            ),
+                            label = "fontScale"
+                        )
+                        val elevation by animateDpAsState(
+                            targetValue = if (isPressed) 1.dp else cardElevation,
+                            animationSpec = spring(stiffness = Spring.StiffnessLow),
+                            label = "fontElevation"
+                        )
 
                         Card(
+                            onClick = {
+                                try {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                } catch (e: Exception) {}
+                                SettingsManager.setFontId(font.id)
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .scale(scale)
-                                .clickable(
-                                    interactionSource = interactionSource,
-                                    indication = LocalIndication.current,
-                                    role = Role.RadioButton,
-                                    onClickLabel = "Select ${font.displayName} font",
-                                    onClick = {
-                                        try {
-                                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        } catch (e: Exception) {}
-                                        SettingsManager.setFontId(font.id)
-                                    }
-                                ),
+                                .scale(scale),
                             shape = RoundedCornerShape(20.dp),
+                            interactionSource = interactionSource,
                             colors = CardDefaults.cardColors(
                                 containerColor = cardBgColor
                             ),
@@ -279,7 +305,8 @@ fun ThemeFontCustomizer(
                                 color = borderColor
                             ),
                             elevation = CardDefaults.cardElevation(
-                                defaultElevation = cardElevation
+                                defaultElevation = elevation,
+                                pressedElevation = 1.dp
                             )
                         ) {
                             Column(

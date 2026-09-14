@@ -1,13 +1,21 @@
 package com.example.ui.components
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -22,9 +30,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
@@ -105,22 +115,35 @@ fun AppCustomizerScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
+                val backInteraction = remember { MutableInteractionSource() }
+                val isBackPressed by backInteraction.collectIsPressedAsState()
+                val backScale by animateFloatAsState(
+                    targetValue = if (isBackPressed) 0.92f else 1f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "backScale"
+                )
+
+                Surface(
                     onClick = {
                         try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
                         onNavigateBack()
                     },
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(currentTheme.surface)
-                        .border(1.dp, currentTheme.cardBorder, CircleShape)
+                        .size(44.dp)
+                        .scale(backScale),
+                    shape = CircleShape,
+                    color = currentTheme.surface,
+                    border = BorderStroke(1.dp, currentTheme.cardBorder),
+                    interactionSource = backInteraction
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = currentTheme.textPrimary
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = currentTheme.textPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
                 
                 Spacer(modifier = Modifier.width(16.dp))
@@ -135,7 +158,15 @@ fun AppCustomizerScreen(
                 Spacer(modifier = Modifier.weight(1f))
                 
                 // Reset Button
-                IconButton(
+                val resetInteraction = remember { MutableInteractionSource() }
+                val isResetPressed by resetInteraction.collectIsPressedAsState()
+                val resetScale by animateFloatAsState(
+                    targetValue = if (isResetPressed) 0.92f else 1f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "resetScale"
+                )
+
+                Surface(
                     onClick = {
                         try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
                         if (SettingsManager.isCustomized()) {
@@ -145,16 +176,21 @@ fun AppCustomizerScreen(
                         }
                     },
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(currentTheme.surface)
-                        .border(1.dp, currentTheme.cardBorder, CircleShape)
+                        .size(44.dp)
+                        .scale(resetScale),
+                    shape = CircleShape,
+                    color = currentTheme.surface,
+                    border = BorderStroke(1.dp, currentTheme.cardBorder),
+                    interactionSource = resetInteraction
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Replay,
-                        contentDescription = "Reset to PomoPal",
-                        tint = currentTheme.textSecondary
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.Replay,
+                            contentDescription = "Reset to PomoPal",
+                            tint = currentTheme.textSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
 
@@ -220,6 +256,11 @@ fun AppCustomizerScreen(
                         }
                         
                         // Start Button
+                        val startBtnTextColor by animateColorAsState(
+                            targetValue = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
+                            animationSpec = tween(450, easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)),
+                            label = "startBtnTextColor"
+                        )
                         Box(
                             modifier = Modifier
                                 .background(currentTheme.primary, RoundedCornerShape(20.dp))
@@ -227,7 +268,7 @@ fun AppCustomizerScreen(
                         ) {
                             Text(
                                 "Start Focus",
-                                color = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
+                                color = startBtnTextColor,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp
                             )
@@ -257,7 +298,34 @@ fun AppCustomizerScreen(
 
             // Section: Appearance Mode
             val currentMode by SettingsManager.appearanceState.collectAsState()
-            
+            val isSystemDark = isSystemInDarkTheme()
+            val themeState by SettingsManager.themeState.collectAsState()
+            val customBg = themeState.background
+            val customPri = themeState.primary
+            val customSec = themeState.secondary
+            val customAcc = themeState.accent
+
+            // Helper function to handle appearance mode selection with automatic background adaptation
+            val handleAppearanceSelect: (SettingsManager.AppearanceMode) -> Unit = { mode ->
+                SettingsManager.setAppearanceMode(mode)
+                val isTargetDark = when (mode) {
+                    SettingsManager.AppearanceMode.DARK -> true
+                    SettingsManager.AppearanceMode.LIGHT -> false
+                    SettingsManager.AppearanceMode.SYSTEM -> isSystemDark
+                }
+                val currentBgColor = SettingsManager.getCustomBgColor()?.toColor() 
+                    ?: if (isTargetDark) Color(0xFF1E1E1E) else Color(0xFFFAF9F6)
+                val isCurrentlyDarkBg = currentBgColor.luminance() < 0.5f
+
+                if (isTargetDark && !isCurrentlyDarkBg) {
+                    // Current background is light -> automatically switch to dark Classic (0xFF1E1E1E)
+                    SettingsManager.setCustomBgColor(Color(0xFF1E1E1E).toLongValue())
+                } else if (!isTargetDark && isCurrentlyDarkBg) {
+                    // Current background is dark -> automatically switch to light Ivory (0xFFFAF9F6)
+                    SettingsManager.setCustomBgColor(Color(0xFFFAF9F6).toLongValue())
+                }
+            }
+
             CustomizationSection(
                 title = "Appearance",
                 subtitle = "System-wide theme setting",
@@ -267,18 +335,19 @@ fun AppCustomizerScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    AppearanceOption("System", SettingsManager.AppearanceMode.SYSTEM, currentMode)
-                    AppearanceOption("Light", SettingsManager.AppearanceMode.LIGHT, currentMode)
-                    AppearanceOption("Dark", SettingsManager.AppearanceMode.DARK, currentMode)
+                    AppearanceOption("System", SettingsManager.AppearanceMode.SYSTEM, currentMode) {
+                        handleAppearanceSelect(SettingsManager.AppearanceMode.SYSTEM)
+                    }
+                    AppearanceOption("Light", SettingsManager.AppearanceMode.LIGHT, currentMode) {
+                        handleAppearanceSelect(SettingsManager.AppearanceMode.LIGHT)
+                    }
+                    AppearanceOption("Dark", SettingsManager.AppearanceMode.DARK, currentMode) {
+                        handleAppearanceSelect(SettingsManager.AppearanceMode.DARK)
+                    }
                 }
             }
 
             // Section: Background Customization
-            val customBg = SettingsManager.getCustomBgColor()?.toColor() ?: if (currentTheme.isDark) Color(0xFF1E1E1E) else ThemeOption.PREMIUM.background
-            val customPri = SettingsManager.getCustomPrimaryColor()?.toColor() ?: ThemeOption.PREMIUM.primary
-            val customSec = SettingsManager.getCustomSecondaryColor()?.toColor() ?: ThemeOption.PREMIUM.secondary
-            val customAcc = SettingsManager.getCustomAccentColor()?.toColor() ?: ThemeOption.PREMIUM.accent
-
             CustomizationSection(
                 title = "Background Color",
                 subtitle = "Main app canvas",
@@ -290,10 +359,14 @@ fun AppCustomizerScreen(
                     onColorSelected = { color -> 
                         SettingsManager.setCustomBgColor(color.toLongValue())
                         val isDarkColor = color.luminance() < 0.5f
-                        if (isDarkColor && currentMode == SettingsManager.AppearanceMode.LIGHT) {
-                            SettingsManager.setAppearanceMode(SettingsManager.AppearanceMode.DARK)
-                        } else if (!isDarkColor && currentMode == SettingsManager.AppearanceMode.DARK) {
-                            SettingsManager.setAppearanceMode(SettingsManager.AppearanceMode.LIGHT)
+                        if (isDarkColor) {
+                            if (currentMode == SettingsManager.AppearanceMode.LIGHT || (currentMode == SettingsManager.AppearanceMode.SYSTEM && !isSystemDark)) {
+                                SettingsManager.setAppearanceMode(SettingsManager.AppearanceMode.DARK)
+                            }
+                        } else {
+                            if (currentMode == SettingsManager.AppearanceMode.DARK || (currentMode == SettingsManager.AppearanceMode.SYSTEM && isSystemDark)) {
+                                SettingsManager.setAppearanceMode(SettingsManager.AppearanceMode.LIGHT)
+                            }
                         }
                     }
                 )
@@ -410,32 +483,52 @@ fun AppCustomizerScreen(
 fun RowScope.AppearanceOption(
     label: String,
     mode: SettingsManager.AppearanceMode,
-    currentMode: SettingsManager.AppearanceMode
+    currentMode: SettingsManager.AppearanceMode,
+    onSelect: () -> Unit
 ) {
     val theme = LocalAppTheme.current
     val isSelected = mode == currentMode
     val onSelectedColor = if (theme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
-    val bgColor by animateColorAsState(if (isSelected) theme.primary else theme.surface, label = "bg")
-    val textColor by animateColorAsState(if (isSelected) onSelectedColor else theme.textPrimary, label = "text")
-    val borderColor by animateColorAsState(if (isSelected) theme.primary else theme.cardBorder, label = "border")
+    val animSpec = tween<Color>(450, easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f))
+    val bgColor by animateColorAsState(if (isSelected) theme.primary else theme.surface, animSpec, label = "bg")
+    val textColor by animateColorAsState(if (isSelected) onSelectedColor else theme.textPrimary, animSpec, label = "text")
+    val borderColor by animateColorAsState(if (isSelected) theme.primary else theme.cardBorder, animSpec, label = "border")
 
     val view = LocalView.current
-    Box(
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "appearanceScale"
+    )
+    val elevation by animateDpAsState(
+        targetValue = if (isPressed) 1.dp else (if (isSelected) 3.dp else 1.dp),
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "appearanceElevation"
+    )
+
+    Surface(
+        onClick = { 
+            try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+            onSelect() 
+        },
         modifier = Modifier
             .weight(1f)
             .heightIn(min = 48.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(bgColor)
-            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
-            .clickable { 
-                try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-                SettingsManager.setAppearanceMode(mode) 
-            }
-            .semantics { role = Role.RadioButton }
-            .padding(vertical = 12.dp, horizontal = 8.dp),
-        contentAlignment = Alignment.Center
+            .scale(scale),
+        shape = RoundedCornerShape(12.dp),
+        color = bgColor,
+        border = BorderStroke(1.dp, borderColor),
+        shadowElevation = elevation,
+        interactionSource = interactionSource
     ) {
-        Text(text = label, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Box(
+            modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = label, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
@@ -447,6 +540,10 @@ fun ColorPickerRow(
 ) {
     val view = LocalView.current
     val currentTheme = LocalAppTheme.current
+    val colorChangeAnimSpec = tween<Color>(450, easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f))
+    val dpAnimSpec = tween<androidx.compose.ui.unit.Dp>(350, easing = FastOutSlowInEasing)
+    val floatAnimSpec = tween<Float>(350, easing = FastOutSlowInEasing)
+
     Box(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -456,23 +553,50 @@ fun ColorPickerRow(
         ) {
             options.forEach { color ->
                 val isSelected = selectedColor.toArgb() == color.toArgb()
-                
+                val targetBorderWidth = if (isSelected) 3.dp else 1.dp
+                val targetBorderColor = if (isSelected) currentTheme.primary else currentTheme.cardBorder
+                val borderWidth by animateDpAsState(targetBorderWidth, dpAnimSpec, label = "borderWidth")
+                val borderColor by animateColorAsState(targetBorderColor, colorChangeAnimSpec, label = "borderColor")
+                val itemInteraction = remember { MutableInteractionSource() }
+                val isItemPressed by itemInteraction.collectIsPressedAsState()
+                val scale by animateFloatAsState(
+                    targetValue = if (isItemPressed) 0.93f else (if (isSelected) 1.08f else 1f),
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "scale"
+                )
+                val elevation by animateDpAsState(
+                    targetValue = if (isItemPressed) 1.dp else (if (isSelected) 6.dp else 1.dp),
+                    dpAnimSpec,
+                    label = "elevation"
+                )
+                val iconTintColor by animateColorAsState(
+                    if (color.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
+                    colorChangeAnimSpec,
+                    label = "iconTint"
+                )
+
                 Box(
                     modifier = Modifier
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                        }
                         .size(48.dp)
                         .shadow(
-                            elevation = if (isSelected) 4.dp else 1.dp,
+                            elevation = elevation,
                             shape = CircleShape,
                             spotColor = if (isSelected) color else currentTheme.shadowColor
                         )
                         .clip(CircleShape)
                         .background(color)
                         .border(
-                            width = if (isSelected) 3.dp else 1.dp,
-                            color = if (isSelected) currentTheme.primary else currentTheme.cardBorder,
+                            width = borderWidth,
+                            color = borderColor,
                             shape = CircleShape
                         )
                         .clickable(
+                            interactionSource = itemInteraction,
+                            indication = androidx.compose.material3.ripple(bounded = true, radius = 24.dp),
                             onClickLabel = "Select color",
                             role = Role.RadioButton,
                             onClick = { 
@@ -482,11 +606,15 @@ fun ColorPickerRow(
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isSelected) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isSelected,
+                        enter = scaleIn(tween(250, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
+                        exit = scaleOut(tween(200, easing = FastOutSlowInEasing)) + fadeOut(tween(150))
+                    ) {
                         Icon(
                             imageVector = Icons.Filled.Check,
                             contentDescription = "Selected color",
-                            tint = if (color.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
+                            tint = iconTintColor,
                             modifier = Modifier.size(20.dp)
                         )
                     }

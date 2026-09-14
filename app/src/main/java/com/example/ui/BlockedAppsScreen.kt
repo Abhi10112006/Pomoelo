@@ -362,7 +362,7 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
                                     color = currentTheme.primary.copy(alpha = 0.12f),
-                                    modifier = Modifier.clickable {
+                                    onClick = {
                                         try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
                                         val previewIntent = Intent(context, BlockedAppActivity::class.java).apply {
                                             putExtra(BlockedAppActivity.EXTRA_PACKAGE_NAME, "com.instagram.android")
