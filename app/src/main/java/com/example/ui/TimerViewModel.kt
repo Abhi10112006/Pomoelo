@@ -70,8 +70,14 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
 
     private val _isSettingsOpen = kotlinx.coroutines.flow.MutableStateFlow(false)
     val isSettingsOpen: StateFlow<Boolean> = _isSettingsOpen.asStateFlow()
+    
+    private val _settingsTab = kotlinx.coroutines.flow.MutableStateFlow(0)
+    val settingsTab: StateFlow<Int> = _settingsTab.asStateFlow()
 
-    fun setSettingsOpen(isOpen: Boolean) {
+    fun setSettingsOpen(isOpen: Boolean, tab: Int = 0) {
+        if (isOpen) {
+            _settingsTab.value = tab
+        }
         _isSettingsOpen.value = isOpen
     }
 

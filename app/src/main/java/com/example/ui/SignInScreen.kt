@@ -443,11 +443,13 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
     val errorColor = if (currentTheme.isDark) Color(0xFFCF6679) else Color(0xFFB00020)
     val floatOffsetPx = with(density) { floatAnimDp.dp.toPx() }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(currentTheme.background)
+            .windowInsetsPadding(WindowInsets.systemBars)
     ) {
+        val availableHeight = maxHeight
         // Mesmerizing Ambient Glow Orbs in background (Spatial Lighting Canvas)
         Canvas(
             modifier = Modifier
@@ -497,17 +499,22 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.ime))
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 20.dp)
-                .graphicsLayer {
-                    alpha = exitAlpha
-                    scaleX = exitScale
-                    scaleY = exitScale
-                    translationY = exitTranslationY
-                },
-            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = availableHeight)
+                    .padding(horizontal = 24.dp, vertical = 20.dp)
+                    .graphicsLayer {
+                        alpha = exitAlpha
+                        scaleX = exitScale
+                        scaleY = exitScale
+                        translationY = exitTranslationY
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
             // 1. Zero-Gravity Interactive Student Constellation (Spacious, unconstrained floating space)
             Box(
                 modifier = Modifier
@@ -569,7 +576,7 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.weight(1f))
 
             // 2. Hero Mascot with warm breathing aura & crisp depth
             Box(
@@ -639,7 +646,7 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.weight(1.5f))
 
             // 4. Staggered Input Field Area with mesmerizing interactive feedback
             Column(
@@ -824,7 +831,7 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.weight(1.5f))
 
             // 5. Staggered CTA Button
             Box(
@@ -906,9 +913,10 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
+}
 }
 
 

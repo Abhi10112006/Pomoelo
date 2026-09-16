@@ -111,6 +111,11 @@ fun AppCustomizerScreen(
             val view = LocalView.current
             var showResetDialog by remember { mutableStateOf(false) }
 
+            androidx.activity.compose.BackHandler(enabled = true) {
+                try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                onNavigateBack()
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically

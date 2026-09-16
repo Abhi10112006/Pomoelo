@@ -78,6 +78,11 @@ fun ThemeFontCustomizer(
 
     var showCustomizer by remember { mutableStateOf(false) }
 
+    androidx.activity.compose.BackHandler(enabled = showCustomizer) {
+        try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+        showCustomizer = false
+    }
+
     AnimatedContent(
         targetState = showCustomizer,
         transitionSpec = {

@@ -174,10 +174,12 @@ fun PomoPalApp(viewModel: TimerViewModel) {
     val isAddingTask by viewModel.isAddingTask.collectAsState()
     val timerState by viewModel.timerState.collectAsState()
     val isSettingsOpen by viewModel.isSettingsOpen.collectAsState()
+    val settingsInitialTab by viewModel.settingsTab.collectAsState()
     var updateUrl by remember { mutableStateOf<String?>(null) }
     val view = androidx.compose.ui.platform.LocalView.current
 
     val currentTheme = com.example.ui.theme.LocalAppTheme.current
+    val protectionStates = com.example.ui.rememberSystemProtectionStates()
     LaunchedEffect(Unit) {
         val url = UpdateChecker.checkForUpdates()
         if (url != null) {
@@ -236,6 +238,7 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                     .padding(bottom = 16.dp, top = 8.dp)
             ) {
                 val currentTheme = com.example.ui.theme.LocalAppTheme.current
+    val protectionStates = com.example.ui.rememberSystemProtectionStates()
                 val currentFont = com.example.ui.theme.LocalAppFont.current
                 Box(
                     modifier = Modifier.fillMaxWidth(),
@@ -488,7 +491,10 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
     val view = androidx.compose.ui.platform.LocalView.current
 
     val showSettings by viewModel.isSettingsOpen.collectAsState()
+    val settingsInitialTab by viewModel.settingsTab.collectAsState()
     var showFullScreenSeriousness by remember { mutableStateOf(false) }
+    var showJustInTimeSetup by remember { mutableStateOf(false) }
+    val protectionStates = com.example.ui.rememberSystemProtectionStates()
     
 
     LaunchedEffect(showSettings) {
@@ -576,6 +582,21 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(16.dp))
+            
+            // Small Global Indicator
+            androidx.compose.animation.AnimatedVisibility(
+                visible = protectionStates.needsAttention && timerState == TimerManager.TimerState.STOPPED,
+                enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
+            ) {
+                com.example.ui.SystemProtectionBanner(
+                    state = protectionStates,
+                    onFixClicked = {
+                        showJustInTimeSetup = true
+                    }
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -591,7 +612,11 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                             .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(16.dp)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(currentTheme.emoji, fontSize = 24.scaledSp)
+                        com.example.ui.components.PomoPalMascot(
+                            expression = com.example.ui.components.MascotExpression.IDLE,
+                            modifier = Modifier.size(32.dp).padding(top = 2.dp),
+                            isBreathing = false
+                        )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
@@ -604,7 +629,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                             modifier = Modifier.padding(bottom = 0.dp)
                         )
                         Text(
-                            text = "Hi, $userName ✨",
+                            text = "Hi, $userName",
                             fontSize = 12.scaledSp,
                             fontFamily = currentFont,
                             color = currentTheme.textSecondary,
@@ -612,6 +637,15 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                         )
                     }
                 }
+                
+                val settingsInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                val isSettingsPressed by settingsInteraction.collectIsPressedAsState()
+                val settingsRotation by androidx.compose.animation.core.animateFloatAsState(
+                    targetValue = if (isSettingsPressed) 90f else 0f,
+                    animationSpec = androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy, stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
+                    label = "settingsRotation"
+                )
+                
                 Box(
                     modifier = Modifier
                         .size(42.dp)
@@ -619,15 +653,23 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                         .clip(CircleShape)
                         .background(currentTheme.surface)
                         .border(1.dp, currentTheme.cardBorder, CircleShape)
-                        .clickable {
+                        .clickable(
+                            interactionSource = settingsInteraction,
+                            indication = androidx.compose.material3.ripple()
+                        ) {
                             try {
                                 view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                             } catch (e: Exception) {}
-                            viewModel.setSettingsOpen(true)
+                            viewModel.setSettingsOpen(true, 0)
                         },
                      contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = currentTheme.textPrimary)
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = "Settings",
+                        tint = currentTheme.textPrimary,
+                        modifier = Modifier.graphicsLayer { rotationZ = settingsRotation }
+                    )
                 }
             }
             Spacer(modifier = Modifier.height(verticalSpacing))
@@ -646,7 +688,21 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
             Spacer(modifier = Modifier.height(verticalSpacing))
 
             // Controls
-            AppControls(state = timerState, context = context)
+            AppControls(
+                state = timerState, 
+                context = context,
+                onStartAttempt = {
+                    if (protectionStates.needsAttention) {
+                        try {
+                            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS) 
+                        } catch(e: Exception) {}
+                        showJustInTimeSetup = true
+                    } else {
+                        val intent = android.content.Intent(context, com.example.service.TimerService::class.java).apply { action = com.example.service.TimerService.ACTION_START }
+                        context.startService(intent)
+                    }
+                }
+            )
 
             Spacer(modifier = Modifier.height(verticalSpacing))
 
@@ -746,9 +802,62 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
             exit = slideOutVertically(targetOffsetY = { it }, animationSpec = spring(stiffness = Spring.StiffnessMedium)) + fadeOut(),
             modifier = Modifier.fillMaxSize().background(currentTheme.background)
         ) {
-            SettingsOverlay(onDismiss = { viewModel.setSettingsOpen(false) })
+            SettingsOverlay(onDismiss = { viewModel.setSettingsOpen(false) }, initialTab = settingsInitialTab)
         }
     } // closes the Box Wrapping the Scaffold
+
+    if (showJustInTimeSetup) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showJustInTimeSetup = false }) {
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(currentTheme.surface)
+                    .padding(24.dp)
+            ) {
+                Column {
+                    com.example.ui.ContextualSetupMessage(
+                        state = protectionStates,
+                        onSetup = { actionId ->
+                            try {
+                                when (actionId) {
+                                    "NOTIFICATIONS" -> {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                            putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                        }
+                                        context.startActivity(intent)
+                                    }
+                                    "DND" -> {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                                        context.startActivity(intent)
+                                    }
+                                    "BATTERY" -> {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                        context.startActivity(intent)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                viewModel.setSettingsOpen(true, 3)
+                            }
+                            showJustInTimeSetup = false
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            showJustInTimeSetup = false
+                            // Allow them to continue anyway if they really want to ignore it
+                            val intent = android.content.Intent(context, com.example.service.TimerService::class.java).apply { action = com.example.service.TimerService.ACTION_START }
+                            context.startService(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Continue without protection", color = currentTheme.textSecondary)
+                    }
+                }
+            }
+        }
+    }
 
     if (isAddingTask) {
         AddTaskCard(
@@ -763,16 +872,28 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
 }
 
 @Composable
-fun SettingsOverlay(onDismiss: () -> Unit) {
+fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var showBlockedApps by remember { mutableStateOf(false) }
+    val view = androidx.compose.ui.platform.LocalView.current
+    val tabs = remember { listOf("Timer & Sound", "Theme & Font", "App Blocker", "System", "About") }
+
+    var selectedTabIndex by androidx.compose.runtime.saveable.rememberSaveable { 
+        mutableIntStateOf(initialTab.coerceIn(0, tabs.size - 1)) 
+    }
+    val tabBackStack = remember { mutableStateListOf<Int>() }
+    var showBlockedApps by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(initialTab) {
+        if (initialTab in tabs.indices && initialTab != selectedTabIndex) {
+            selectedTabIndex = initialTab
+        }
+    }
 
     if (showBlockedApps) {
         com.example.ui.BlockedAppsScreen(onBack = { showBlockedApps = false })
         return
     }
 
-    val view = androidx.compose.ui.platform.LocalView.current
     var localFocus by remember { mutableStateOf(SettingsManager.getFocusTimeMins().toFloat()) }
     var localBreak by remember { mutableStateOf(SettingsManager.getBreakTimeMins().toFloat()) }
     var localCompletion by remember { mutableStateOf(SettingsManager.getCompletionSound()) }
@@ -803,54 +924,26 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
     }
     
     androidx.activity.compose.BackHandler(enabled = true) {
-        com.example.service.SoundPlayer.stop()
-        onDismiss()
-    }
-
-    // Dynamic state trackers for system permissions
-    val notificationManagerCompat = remember { androidx.core.app.NotificationManagerCompat.from(context) }
-    var areNotificationsEnabled by remember { mutableStateOf(notificationManagerCompat.areNotificationsEnabled()) }
-    
-    val powerManager = remember { context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager }
-    var isIgnoringBattery by remember {
-        mutableStateOf(
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                powerManager.isIgnoringBatteryOptimizations(context.packageName)
-            } else {
-                true
-            }
-        )
-    }
-    
-    val systemNotificationManager = remember { context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager }
-    var isDNDGranted by remember {
-        mutableStateOf(
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                systemNotificationManager.isNotificationPolicyAccessGranted
-            } else {
-                true
-            }
-        )
-    }
-    
-    // Live polling to refresh permission statuses instantly of background setting changes
-    LaunchedEffect(Unit) {
-        while (true) {
-            areNotificationsEnabled = notificationManagerCompat.areNotificationsEnabled()
-            isIgnoringBattery = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                powerManager.isIgnoringBatteryOptimizations(context.packageName)
-            } else {
-                true
-            }
-            isDNDGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                systemNotificationManager.isNotificationPolicyAccessGranted
-            } else {
-                true
-            }
-            kotlinx.coroutines.delay(1000)
+        if (tabBackStack.isNotEmpty()) {
+            val prevTab = tabBackStack.removeLast()
+            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+            selectedTabIndex = prevTab
+        } else {
+            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+            com.example.service.SoundPlayer.stop()
+            onDismiss()
         }
     }
-    
+
+    val tabListState = androidx.compose.foundation.lazy.rememberLazyListState(
+        initialFirstVisibleItemIndex = selectedTabIndex
+    )
+
+    LaunchedEffect(selectedTabIndex) {
+        kotlinx.coroutines.delay(60)
+        tabListState.animateScrollToItem(selectedTabIndex)
+    }
+
     val scope = rememberCoroutineScope()
     val currentTheme = LocalAppTheme.current
     Scaffold(
@@ -891,9 +984,6 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
             }
         }
     ) { paddingValues ->
-        var selectedTabIndex by remember { mutableStateOf(0) }
-        val tabs = listOf("Timer & Sound", "Theme & Font", "App Blocker", "System", "About")
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -901,6 +991,7 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
         ) {
             val currentTheme = LocalAppTheme.current
             androidx.compose.foundation.lazy.LazyRow(
+                state = tabListState,
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
@@ -936,7 +1027,10 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                             )
                             .clickable { 
                                 try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-                                selectedTabIndex = index 
+                                if (selectedTabIndex != index) {
+                                    tabBackStack.add(selectedTabIndex)
+                                    selectedTabIndex = index 
+                                }
                             }
                     ) {
                         Text(
@@ -1057,7 +1151,7 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                         colors = SliderDefaults.colors(thumbColor = Color(0xFF81D4FA), activeTrackColor = Color(0xFFB3E5FC))
                     )
                     
-                    Divider(modifier = Modifier.padding(vertical = 16.dp), color = currentTheme.textPrimary.copy(alpha = 0.1f))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = currentTheme.textPrimary.copy(alpha = 0.1f))
                     
                     Text("Volume", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
                     Slider(
@@ -1167,190 +1261,11 @@ fun SettingsOverlay(onDismiss: () -> Unit) {
                 }
             }
             } // Close if (selectedTabIndex == 2)
-
             if (tabIndex == 3) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = null,
-                            tint = Color(0xFFFF8A80),
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "System Alarm & Lock Screen Settings",
-                            fontSize = 14.scaledSp,
-                            fontWeight = FontWeight.Bold,
-                            color = currentTheme.textPrimary
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "To make sure completion alarms show on the lock screen immediately and bypass battery saving background limits, configure these parameters:",
-                        fontSize = 11.scaledSp,
-                        color = currentTheme.textSecondary
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                try {
-                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                } catch (e: Exception) {}
-                                val intent = Intent().apply {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                        action = android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS
-                                        putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                    } else {
-                                        action = "android.settings.APP_NOTIFICATION_SETTINGS"
-                                        putExtra("app_package", context.packageName)
-                                        putExtra("app_uid", context.applicationInfo.uid)
-                                    }
-                                }
-                                try { context.startActivity(intent) } catch (e: Exception) {}
-                            },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (areNotificationsEnabled) Color(0xFF81C784) else Color(0xFFFF8A80)
-                             ),
-                            contentPadding = PaddingValues(horizontal = 8.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                if (areNotificationsEnabled) {
-                                    Icon(Icons.Filled.Settings, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Notifications Status: ENABLED ✅", fontSize = 11.scaledSp, color = Color.White, fontWeight = FontWeight.Bold)
-                                } else {
-                                    Text("Configure Notifications 🚨", fontSize = 11.scaledSp, color = Color.White)
-                                }
-                            }
-                        }
-                        Button(
-                            onClick = {
-                                try {
-                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                } catch (e: Exception) {}
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                    val intent = Intent().apply {
-                                        val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
-                                        if (pm.isIgnoringBatteryOptimizations(context.packageName)) {
-                                            action = android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS
-                                        } else {
-                                            action = android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-                                            data = android.net.Uri.parse("package:${context.packageName}")
-                                        }
-                                    }
-                                    try { context.startActivity(intent) } catch (e: Exception) {}
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isIgnoringBattery) Color(0xFF81C784) else Color(0xFF81D4FA)
-                            ),
-                            contentPadding = PaddingValues(horizontal = 8.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                if (isIgnoringBattery) {
-                                    Icon(Icons.Filled.Settings, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Battery Optimizations: BYPASSED ✅", fontSize = 11.scaledSp, color = Color.White, fontWeight = FontWeight.Bold)
-                                } else {
-                                    Text("Configure Battery Exceptions Limit", fontSize = 11.scaledSp, color = Color.White)
-                                }
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = {
-                            try {
-                                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                            } catch (e: Exception) {}
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                val intent = Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-                                try { context.startActivity(intent) } catch (e: Exception) {}
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isDNDGranted) Color(0xFF81C784) else Color(0xFFCE93D8)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            if (isDNDGranted) {
-                                Icon(Icons.Filled.Settings, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("DND Access Granted ✅", fontSize = 11.scaledSp, color = Color.White, fontWeight = FontWeight.Bold)
-                            } else {
-                                Text("Grant DND (Blocks Other Apps' Notifications)", fontSize = 11.scaledSp, color = Color.White)
-                            }
-                        }
-                    }
-                    
-                    // Live Side-loaded App restricted setting guidelines for users on Android 13+
-                    if (!isDNDGranted) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFFFFF9C4), RoundedCornerShape(8.dp))
-                                .border(1.dp, Color(0xFFFBC02D).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                                .padding(12.dp)
-                        ) {
-                            Text(
-                                text = "💡 Side-loaded App Tip:\nIf PomoPal is not listed on the DND screen, please go to your phone's Settings > Apps > PomoPal > click the (⋮) menu in the top-right corner > select 'Allow restricted settings'. Then return here to grant access.",
-                                fontSize = 11.scaledSp,
-                                color = currentTheme.textPrimary,
-                                fontWeight = FontWeight.Medium,
-                                lineHeight = 16.scaledSp
-                            )
-                        }
-                    }
-                }
-            }
-            } // Close if (selectedTabIndex == 3)
-            
+                com.example.ui.SystemProtectionScreen()
+            } // Close if (selectedTabIndex == 3)            
             if (tabIndex == 4) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "PomoPal v2.0",
-                    fontSize = 13.scaledSp,
-                    color = currentTheme.textPrimary.copy(alpha = 0.8f),
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "Designed & Developed by Abhinav Yaduvanshi",
-                    fontSize = 11.scaledSp,
-                    color = currentTheme.textPrimary.copy(alpha = 0.6f),
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
+                com.example.ui.components.InteractiveAboutScreen()
             }
             
             Spacer(modifier = Modifier.height(100.dp))
@@ -1442,6 +1357,7 @@ fun TaskItemRow(task: com.example.data.TaskItem, onSelect: (com.example.data.Tas
 fun PremiumJumpingTextPreview(text: String) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val currentTheme = com.example.ui.theme.LocalAppTheme.current
+    val protectionStates = com.example.ui.rememberSystemProtectionStates()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1704,7 +1620,11 @@ fun AnimatedScaleBox(
     
     Box(
         modifier = modifier
-            .scale(scale)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                alpha = if (enabled) 1f else 0.5f
+            }
             .shadow(
                 elevation = currentElevation,
                 shape = shape,
@@ -1713,7 +1633,6 @@ fun AnimatedScaleBox(
                 ambientColor = shadowColor.copy(alpha = shadowColor.alpha * 0.4f)
             )
             .clip(shape)
-            .alpha(if (enabled) 1f else 0.5f)
             .clickable(
                 enabled = enabled,
                 interactionSource = interactionSource,
@@ -1732,7 +1651,7 @@ fun AnimatedScaleBox(
 }
 
 @Composable
-fun AppControls(state: TimerManager.TimerState, context: android.content.Context) {
+fun AppControls(state: TimerManager.TimerState, context: android.content.Context, onStartAttempt: () -> Unit = {}) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val currentTheme = LocalAppTheme.current
     Row(
@@ -1769,9 +1688,12 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
             elevation = 8.dp,
             shadowColor = currentTheme.shadowColor,
             onClick = {
-                val action = if (isRunning) TimerService.ACTION_PAUSE else TimerService.ACTION_START
-                val intent = Intent(context, TimerService::class.java).apply { this.action = action }
-                context.startService(intent)
+                if (isRunning) {
+                    val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_PAUSE }
+                    context.startService(intent)
+                } else {
+                    onStartAttempt()
+                }
             }
         ) {
             Box(

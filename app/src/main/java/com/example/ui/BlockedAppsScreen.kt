@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -134,7 +135,11 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
 
     androidx.activity.compose.BackHandler {
         try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-        onBack()
+        if (searchQuery.isNotEmpty()) {
+            searchQuery = ""
+        } else {
+            onBack()
+        }
     }
 
     // Check accessibility permission
@@ -191,9 +196,13 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                 navigationIcon = {
                     IconButton(onClick = {
                         try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-                        onBack()
+                        if (searchQuery.isNotEmpty()) {
+                            searchQuery = ""
+                        } else {
+                            onBack()
+                        }
                     }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = currentTheme.textPrimary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = currentTheme.textPrimary)
                     }
                 },
                 actions = {
