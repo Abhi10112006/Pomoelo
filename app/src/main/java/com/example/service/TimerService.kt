@@ -147,7 +147,8 @@ class TimerService : Service() {
                         isBreak = data.isBreak,
                         durationMinutes = data.durationMinutes,
                         startTime = data.startTime,
-                        endTime = data.endTime
+                        endTime = data.endTime,
+                        taskColor = data.taskColor
                     )
                 )
 
@@ -284,7 +285,8 @@ class TimerService : Service() {
             isBreak = isBreak,
             durationMinutes = totalMins,
             startTime = if (sessionStartTime > 0) sessionStartTime else (endTime - totalMins * 60 * 1000),
-            endTime = endTime
+            endTime = endTime,
+            taskColor = TimerManager.currentTaskColor.value
         )
         sessionStartTime = 0L
         

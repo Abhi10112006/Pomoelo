@@ -85,8 +85,8 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
         // Handled via Intent to Service in Activity, but update name first
     }
 
-    fun setTask(id: Int, name: String) {
-        TimerManager.setTask(id, name)
+    fun setTask(id: Int, name: String, color: Long? = null) {
+        TimerManager.setTask(id, name, color)
     }
     
     fun saveTask(taskName: String, categoryName: String, categoryColor: Long) {

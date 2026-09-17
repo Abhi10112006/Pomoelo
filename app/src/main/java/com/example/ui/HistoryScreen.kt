@@ -32,6 +32,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.draw.drawBehind
 import com.example.ui.theme.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -68,16 +72,45 @@ fun getDayLabel(startTime: Long, todayStart: Long, dayInMillis: Long): String {
     }
 }
 
-fun resolveTaskColor(taskName: String, allTasks: List<TaskItem>, currentTheme: ThemeOption): Color {
+fun Modifier.historyCardShadow(
+    cornerRadius: androidx.compose.ui.unit.Dp = 24.dp,
+    shadowColor: Color
+): Modifier = this.drawBehind {
+    drawIntoCanvas { canvas ->
+        val paint = Paint()
+        val frameworkPaint = paint.asFrameworkPaint()
+        frameworkPaint.color = shadowColor.toArgb()
+        frameworkPaint.maskFilter = android.graphics.BlurMaskFilter(
+            8.dp.toPx(),
+            android.graphics.BlurMaskFilter.Blur.NORMAL
+        )
+        canvas.drawRoundRect(
+            left = 0f,
+            top = 4.dp.toPx(),
+            right = size.width,
+            bottom = size.height + 4.dp.toPx(),
+            radiusX = cornerRadius.toPx(),
+            radiusY = cornerRadius.toPx(),
+            paint = paint
+        )
+    }
+}
+
+fun resolveTaskColor(taskName: String, sessions: List<TimerSession>, allTasks: List<TaskItem>, currentTheme: ThemeOption): Color {
     val isDefaultTask = taskName.isBlank() || taskName == "Focus Time!" || taskName == "Deep Focus Session"
     if (isDefaultTask) return currentTheme.primary
     
     val isDefaultBreak = taskName == "Break Time!" || taskName == "Break" || taskName == "Long Break"
     if (isDefaultBreak) return currentTheme.secondary
     
+    val savedColor = sessions.firstOrNull { it.taskColor != null }?.taskColor
+    if (savedColor != null) {
+        return Color(savedColor.toULong())
+    }
+    
     val task = allTasks.find { it.name == taskName }
     return if (task != null) {
-        Color(task.categoryColor)
+        Color(task.categoryColor.toULong())
     } else {
         currentTheme.textSecondary // Fallback for unknown/deleted historical task
     }
@@ -190,9 +223,8 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                 border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .pomoShadow(
-                        shape = RoundedCornerShape(24.dp),
-                        elevation = 6.dp,
+                    .historyCardShadow(
+                        cornerRadius = 24.dp,
                         shadowColor = currentTheme.shadowColor
                     )
             ) {
@@ -593,7 +625,12 @@ fun MicroSummaryPill(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
         border = BorderStroke(1.dp, currentTheme.cardBorder),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .historyCardShadow(
+                cornerRadius = 20.dp,
+                shadowColor = currentTheme.shadowColor
+            ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -687,7 +724,12 @@ fun MonthSummaryCard(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
         border = BorderStroke(1.dp, currentTheme.cardBorder),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .historyCardShadow(
+                cornerRadius = 20.dp,
+                shadowColor = currentTheme.shadowColor
+            ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
@@ -746,7 +788,7 @@ fun MonthSummaryCard(
                     groupedTasks.entries.sortedByDescending { it.value.sumOf { s -> s.durationMinutes } }.forEach { (task, list) ->
                         val taskMins = list.sumOf { it.durationMinutes }
                         val hasFocus = list.any { !it.isBreak }
-                        val baseColor = resolveTaskColor(task, allTasks, currentTheme)
+                        val baseColor = resolveTaskColor(task, list, allTasks, currentTheme)
                         val taskColor = if (hasFocus) baseColor else baseColor.copy(alpha = 0.6f)
                         
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -783,13 +825,12 @@ fun HistorySessionPill(
         colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(24.dp))
-            .pomoShadow(
-                shape = RoundedCornerShape(24.dp),
-                elevation = 4.dp,
+            .historyCardShadow(
+                cornerRadius = 24.dp,
                 shadowColor = currentTheme.shadowColor
             )
+            .clip(RoundedCornerShape(24.dp))
+            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(24.dp))
             .clickable {
                 try {
                     view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -801,7 +842,7 @@ fun HistorySessionPill(
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             val totalMins = sessions.sumOf { it.durationMinutes }
             val hasFocus = sessions.any { !it.isBreak }
-            val baseColor = resolveTaskColor(taskName, allTasks, currentTheme)
+            val baseColor = resolveTaskColor(taskName, sessions, allTasks, currentTheme)
             val tintColor = if (hasFocus) baseColor else baseColor.copy(alpha = 0.6f)
             
             Row(verticalAlignment = Alignment.CenterVertically) {

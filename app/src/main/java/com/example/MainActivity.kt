@@ -742,7 +742,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                             items(allTasks, key = { it.id }) { task ->
                                 TaskItemRow(
                                     task = task,
-                                    onSelect = { viewModel.setTask(task.id, task.name) },
+                                    onSelect = { viewModel.setTask(task.id, task.name, task.categoryColor) },
                                     onDelete = { viewModel.deleteTask(task) }
                                 )
                             }
@@ -866,7 +866,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
             onSave = { name, cat, color ->
                 viewModel.saveTask(name, cat, color)
                 viewModel.setAddingTask(false)
-                viewModel.setTask(-1, name)
+                viewModel.setTask(-1, name, color)
             },
             onCancel = { viewModel.setAddingTask(false) }
         )

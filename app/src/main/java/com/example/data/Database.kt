@@ -22,7 +22,8 @@ data class TimerSession(
     val isBreak: Boolean,
     val durationMinutes: Int,
     val startTime: Long,
-    val endTime: Long
+    val endTime: Long,
+    val taskColor: Long? = null
 )
 
 @Dao
@@ -99,7 +100,7 @@ interface AlarmDao {
     suspend fun getAlarmById(id: Int): AlarmItem?
 }
 
-@Database(entities = [TaskItem::class, TimerSession::class, AlarmItem::class], version = 3, exportSchema = false)
+@Database(entities = [TaskItem::class, TimerSession::class, AlarmItem::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun sessionDao(): SessionDao
@@ -126,6 +127,12 @@ object DatabaseProvider {
         }
     }
 
+    private val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE sessions ADD COLUMN taskColor INTEGER DEFAULT NULL")
+        }
+    }
+
     fun getDatabase(context: android.content.Context): AppDatabase {
         return INSTANCE ?: synchronized(this) {
             val instance = Room.databaseBuilder(
@@ -133,7 +140,7 @@ object DatabaseProvider {
                 AppDatabase::class.java,
                 "pomelo_db_v3_stable"
             )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .fallbackToDestructiveMigration()
             .fallbackToDestructiveMigrationOnDowngrade()
             .build()

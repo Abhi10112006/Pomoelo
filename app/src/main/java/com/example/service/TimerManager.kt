@@ -12,7 +12,8 @@ data class SessionCompletedData(
     val isBreak: Boolean,
     val durationMinutes: Int,
     val startTime: Long,
-    val endTime: Long
+    val endTime: Long,
+    val taskColor: Long? = null
 )
 
 object TimerManager {
@@ -31,6 +32,9 @@ object TimerManager {
     
     private val _currentTaskName = MutableStateFlow("Focus Time!")
     val currentTaskName: StateFlow<String> = _currentTaskName.asStateFlow()
+    
+    private val _currentTaskColor = MutableStateFlow<Long?>(null)
+    val currentTaskColor: StateFlow<Long?> = _currentTaskColor.asStateFlow()
 
     private val _currentQuote = MutableStateFlow("")
     val currentQuote: StateFlow<String> = _currentQuote.asStateFlow()
@@ -66,9 +70,10 @@ object TimerManager {
         _timeRemainingSeconds.value = seconds
     }
     
-    fun setTask(id: Int, name: String) {
+    fun setTask(id: Int, name: String, color: Long? = null) {
         _currentTaskId.value = id
         _currentTaskName.value = name
+        _currentTaskColor.value = color
     }
 
     fun setFocusTimeMins(mins: Int) {
@@ -92,7 +97,7 @@ object TimerManager {
         }
     }
 
-    fun notifySessionCompleted(taskName: String, isBreak: Boolean, durationMinutes: Int, startTime: Long, endTime: Long) {
-        _sessionCompletedEvent.tryEmit(SessionCompletedData(taskName, isBreak, durationMinutes, startTime, endTime))
+    fun notifySessionCompleted(taskName: String, isBreak: Boolean, durationMinutes: Int, startTime: Long, endTime: Long, taskColor: Long? = null) {
+        _sessionCompletedEvent.tryEmit(SessionCompletedData(taskName, isBreak, durationMinutes, startTime, endTime, taskColor))
     }
 }
