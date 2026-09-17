@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.components.scaledSp
 import androidx.navigation.NavController
 import com.example.data.TimerSession
+import com.example.data.TaskItem
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.window.DialogProperties
@@ -67,11 +68,27 @@ fun getDayLabel(startTime: Long, todayStart: Long, dayInMillis: Long): String {
     }
 }
 
+fun resolveTaskColor(taskName: String, allTasks: List<TaskItem>, currentTheme: ThemeOption): Color {
+    val isDefaultTask = taskName.isBlank() || taskName == "Focus Time!" || taskName == "Deep Focus Session"
+    if (isDefaultTask) return currentTheme.primary
+    
+    val isDefaultBreak = taskName == "Break Time!" || taskName == "Break" || taskName == "Long Break"
+    if (isDefaultBreak) return currentTheme.secondary
+    
+    val task = allTasks.find { it.name == taskName }
+    return if (task != null) {
+        Color(task.categoryColor)
+    } else {
+        currentTheme.textSecondary // Fallback for unknown/deleted historical task
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, bottomPadding: androidx.compose.ui.unit.Dp = 0.dp) {
     val view = androidx.compose.ui.platform.LocalView.current
     val allSessions by viewModel.allSessions.collectAsState()
+    val allTasks by viewModel.allTasks.collectAsState()
     
     val todayStart = getStartOfDay(System.currentTimeMillis())
     val dayInMillis = 24 * 60 * 60 * 1000L
@@ -156,7 +173,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "A summary of your study sessions",
+                    "Your progress for today",
                     fontSize = 15.scaledSp,
                     fontFamily = currentFont,
                     color = currentTheme.textSecondary
@@ -298,7 +315,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                     Icon(
                                         imageVector = Icons.Default.Delete,
                                         contentDescription = "Delete Day",
-                                        tint = currentTheme.textSecondary,
+                                        tint = currentTheme.textSecondary.copy(alpha = 0.4f),
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -313,6 +330,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                 taskName = taskName,
                                 sessions = sessions,
                                 viewModel = viewModel,
+                                allTasks = allTasks,
                                 onDeleteGroupClick = {
                                     showTier2Dialog = true
                                     tier2Title = "Delete Task Group?"
@@ -334,6 +352,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                 dateMillis = dateMillis,
                                 sessions = dateSessions,
                                 viewModel = viewModel,
+                                allTasks = allTasks,
                                 dayInMillis = dayInMillis,
                                 onDeleteDayClick = {
                                     showTier2Dialog = true
@@ -360,6 +379,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                 monthStr = monthStr,
                                 sessions = sessions,
                                 viewModel = viewModel,
+                                allTasks = allTasks,
                                 onDeleteMonthClick = {
                                     showTier3Dialog = true
                                     tier3MonthStr = monthStr
@@ -549,6 +569,7 @@ fun MicroSummaryPill(
     dateMillis: Long,
     sessions: List<TimerSession>,
     viewModel: TimerViewModel,
+    allTasks: List<TaskItem>,
     dayInMillis: Long,
     onDeleteDayClick: () -> Unit,
     onDeleteGroupClick: (List<TimerSession>) -> Unit
@@ -615,7 +636,7 @@ fun MicroSummaryPill(
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete Day",
-                        tint = currentTheme.textSecondary,
+                        tint = currentTheme.textSecondary.copy(alpha = 0.4f),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -629,6 +650,7 @@ fun MicroSummaryPill(
                             taskName = task,
                             sessions = list,
                             viewModel = viewModel,
+                            allTasks = allTasks,
                             onDeleteGroupClick = { onDeleteGroupClick(list) }
                         )
                     }
@@ -643,6 +665,7 @@ fun MonthSummaryCard(
     monthStr: String,
     sessions: List<TimerSession>,
     viewModel: TimerViewModel,
+    allTasks: List<TaskItem>,
     onDeleteMonthClick: () -> Unit
 ) {
     val view = androidx.compose.ui.platform.LocalView.current
@@ -707,7 +730,7 @@ fun MonthSummaryCard(
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete Month",
-                        tint = currentTheme.textSecondary,
+                        tint = currentTheme.textSecondary.copy(alpha = 0.4f),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -722,9 +745,13 @@ fun MonthSummaryCard(
                     val groupedTasks = sessions.groupBy { it.taskName }
                     groupedTasks.entries.sortedByDescending { it.value.sumOf { s -> s.durationMinutes } }.forEach { (task, list) ->
                         val taskMins = list.sumOf { it.durationMinutes }
-                        val taskColor = if (task.contains("Break")) currentTheme.accent else currentTheme.textPrimary
+                        val hasFocus = list.any { !it.isBreak }
+                        val baseColor = resolveTaskColor(task, allTasks, currentTheme)
+                        val taskColor = if (hasFocus) baseColor else baseColor.copy(alpha = 0.6f)
+                        
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(task, color = taskColor, fontSize = 13.scaledSp, fontFamily = currentFont)
+                            Text(task, color = taskColor, fontSize = 13.scaledSp, fontFamily = currentFont, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("${taskMins / 60}h ${taskMins % 60}m", color = taskColor, fontWeight = FontWeight.Bold, fontSize = 13.scaledSp, fontFamily = MonospaceFontFamily)
                             }
@@ -741,6 +768,7 @@ fun HistorySessionPill(
     taskName: String,
     sessions: List<TimerSession>,
     viewModel: TimerViewModel,
+    allTasks: List<TaskItem>,
     onDeleteGroupClick: () -> Unit
 ) {
     val view = androidx.compose.ui.platform.LocalView.current
@@ -773,14 +801,16 @@ fun HistorySessionPill(
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             val totalMins = sessions.sumOf { it.durationMinutes }
             val hasFocus = sessions.any { !it.isBreak }
-            val tintColor = if (!hasFocus) currentTheme.accent else currentTheme.primary
+            val baseColor = resolveTaskColor(taskName, allTasks, currentTheme)
+            val tintColor = if (hasFocus) baseColor else baseColor.copy(alpha = 0.6f)
             
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
                         .size(48.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(tintColor.copy(alpha = 0.15f)),
+                        .background(if (hasFocus) tintColor.copy(alpha = 0.15f) else Color.Transparent)
+                        .border(if (!hasFocus) 2.dp else 0.dp, tintColor.copy(alpha = 0.3f), RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -797,7 +827,9 @@ fun HistorySessionPill(
                         fontWeight = FontWeight.Bold,
                         fontFamily = currentFont,
                         fontSize = 16.scaledSp,
-                        color = currentTheme.textPrimary
+                        color = currentTheme.textPrimary,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -821,7 +853,7 @@ fun HistorySessionPill(
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete Task Sessions",
-                        tint = currentTheme.textSecondary,
+                        tint = currentTheme.textSecondary.copy(alpha = 0.4f),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -891,7 +923,9 @@ fun HistorySessionPill(
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Box(
-                                            modifier = Modifier.size(8.dp).clip(CircleShape).background(if (session.isBreak) currentTheme.accent else currentTheme.primary)
+                                            modifier = Modifier.size(8.dp).clip(CircleShape)
+                                                .background(if (session.isBreak) Color.Transparent else baseColor)
+                                                .border(if (session.isBreak) 2.dp else 0.dp, baseColor, CircleShape)
                                         )
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Text(
