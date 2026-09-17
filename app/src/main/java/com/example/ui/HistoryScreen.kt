@@ -19,6 +19,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material3.*
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.*
@@ -142,13 +146,22 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                 .padding(horizontal = 24.dp)
         ) {
             Spacer(modifier = Modifier.height(32.dp))
-            Text(
-                "Your Focus Dashboard",
-                fontSize = 28.scaledSp,
-                fontFamily = currentFont,
-                fontWeight = FontWeight.Bold,
-                color = currentTheme.textPrimary
-            )
+            Column(modifier = Modifier.padding(horizontal = 8.dp)) {
+                Text(
+                    "Your Focus Dashboard",
+                    fontSize = 28.scaledSp,
+                    fontFamily = currentFont,
+                    fontWeight = FontWeight.Bold,
+                    color = currentTheme.textPrimary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "A summary of your study sessions",
+                    fontSize = 15.scaledSp,
+                    fontFamily = currentFont,
+                    color = currentTheme.textSecondary
+                )
+            }
             
             Spacer(modifier = Modifier.height(24.dp))
             
@@ -169,29 +182,30 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                        .padding(horizontal = 16.dp, vertical = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("$displayPomodoros", fontSize = 32.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.primary, fontFamily = MonospaceFontFamily)
-                        Text("Sessions", fontSize = 14.scaledSp, color = currentTheme.textSecondary, fontFamily = currentFont)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                        Text("$displayPomodoros", fontSize = 32.scaledSp, fontWeight = FontWeight.Black, color = currentTheme.primary, fontFamily = MonospaceFontFamily)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("SESSIONS", fontSize = 11.scaledSp, color = currentTheme.textSecondary, fontFamily = currentFont, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     }
-                    Box(modifier = Modifier.width(1.dp).height(50.dp).background(currentTheme.cardBorder))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("${displayFocus / 60}h ${displayFocus % 60}m", fontSize = 24.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.secondary, fontFamily = MonospaceFontFamily)
-                        Text("Focus", fontSize = 14.scaledSp, color = currentTheme.textSecondary, fontFamily = currentFont)
+                    Box(modifier = Modifier.width(1.dp).height(40.dp).background(currentTheme.cardBorder))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                        Text("${displayFocus / 60}h ${displayFocus % 60}m", fontSize = 22.scaledSp, fontWeight = FontWeight.Black, color = currentTheme.secondary, fontFamily = MonospaceFontFamily)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("FOCUS", fontSize = 11.scaledSp, color = currentTheme.textSecondary, fontFamily = currentFont, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     }
-                    Box(modifier = Modifier.width(1.dp).height(50.dp).background(currentTheme.cardBorder))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("${displayBreak / 60}h ${displayBreak % 60}m", fontSize = 24.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.accent, fontFamily = MonospaceFontFamily)
-                        Text("Rest", fontSize = 14.scaledSp, color = currentTheme.textSecondary, fontFamily = currentFont)
+                    Box(modifier = Modifier.width(1.dp).height(40.dp).background(currentTheme.cardBorder))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                        Text("${displayBreak / 60}h ${displayBreak % 60}m", fontSize = 22.scaledSp, fontWeight = FontWeight.Black, color = currentTheme.accent, fontFamily = MonospaceFontFamily)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("REST", fontSize = 11.scaledSp, color = currentTheme.textSecondary, fontFamily = currentFont, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     }
                 }
             }
             Spacer(modifier = Modifier.height(32.dp))
-
-            Text("Task History", fontSize = 20.scaledSp, fontWeight = FontWeight.SemiBold, color = currentTheme.textPrimary, fontFamily = currentFont)
-            Spacer(modifier = Modifier.height(16.dp))
 
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -220,7 +234,34 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
 
                 if (sessionsByDay.isEmpty()) {
                     item {
-                        Text("No completed focus sessions yet. Time to start working!", color = currentTheme.textSecondary, modifier = Modifier.padding(16.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 48.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DateRange,
+                                contentDescription = "Empty",
+                                tint = currentTheme.textSecondary.copy(alpha = 0.3f),
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                "No focus sessions yet",
+                                color = currentTheme.textPrimary,
+                                fontSize = 18.scaledSp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = currentFont
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "Your first study session will appear here.",
+                                color = currentTheme.textSecondary,
+                                fontSize = 14.scaledSp,
+                                fontFamily = currentFont
+                            )
+                        }
                     }
                 } else {
                     // 1. Recent Days (0-7 days ago) - Fully expanded Daily Headers
@@ -230,16 +271,18 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(currentTheme.backgroundSecondary)
-                                    .padding(vertical = 8.dp),
+                                    .background(currentTheme.background)
+                                    .padding(vertical = 16.dp, horizontal = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    getDayLabel(dateMillis, todayStart, dayInMillis),
+                                    getDayLabel(dateMillis, todayStart, dayInMillis).uppercase(),
                                     color = currentTheme.textSecondary,
                                     fontWeight = FontWeight.Bold,
-                                    fontFamily = MonospaceFontFamily
+                                    fontSize = 12.scaledSp,
+                                    letterSpacing = 1.sp,
+                                    fontFamily = currentFont
                                 )
                                 IconButton(
                                     onClick = {
@@ -282,8 +325,8 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                     // 2. Past Month Days (7-30 days) - Collapsed Micro Summaries
                     if (pastMonthDays.isNotEmpty()) {
                         item {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("Previous Days", fontSize = 16.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.textSecondary, modifier = Modifier.padding(vertical = 8.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("PREVIOUS DAYS", fontSize = 12.scaledSp, letterSpacing = 1.sp, fontWeight = FontWeight.Bold, color = currentTheme.textSecondary, modifier = Modifier.padding(vertical = 8.dp, horizontal = 8.dp), fontFamily = currentFont)
                         }
                         items(pastMonthDays, key = { it }) { dateMillis ->
                             val dateSessions = sessionsByDay[dateMillis]!!
@@ -309,8 +352,8 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                     // 3. Archive (30+ days or past years) - Monthly Collapsed Summaries
                     if (archiveMonths.isNotEmpty()) {
                         item {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("Archives", fontSize = 16.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.textSecondary, modifier = Modifier.padding(vertical = 8.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("ARCHIVES", fontSize = 12.scaledSp, letterSpacing = 1.sp, fontWeight = FontWeight.Bold, color = currentTheme.textSecondary, modifier = Modifier.padding(vertical = 8.dp, horizontal = 8.dp), fontFamily = currentFont)
                         }
                         items(archiveMonths.entries.toList(), key = { it.key }) { (monthStr, sessions) ->
                             MonthSummaryCard(
@@ -526,8 +569,8 @@ fun MicroSummaryPill(
             } catch (e: Exception) {}
             expanded = !expanded
         },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = currentTheme.surface.copy(alpha = 0.6f)),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
         border = BorderStroke(1.dp, currentTheme.cardBorder),
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -535,24 +578,28 @@ fun MicroSummaryPill(
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier.size(44.dp).clip(CircleShape).background(currentTheme.primary.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center
                 ) {
+                    Icon(Icons.Default.DateRange, contentDescription = null, tint = currentTheme.primary, modifier = Modifier.size(20.dp))
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "$dateStr • ",
-                        fontFamily = MonospaceFontFamily,
+                        text = dateStr,
+                        fontFamily = currentFont,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.scaledSp,
+                        fontSize = 15.scaledSp,
                         color = currentTheme.textPrimary
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "${totalFocusMins / 60}h ${totalFocusMins % 60}m Focus | $sessionsCount Sessions",
+                        text = "${totalFocusMins / 60}h ${totalFocusMins % 60}m focus • $sessionsCount sessions",
                         fontFamily = currentFont,
-                        fontSize = 12.scaledSp,
+                        fontSize = 13.scaledSp,
                         color = currentTheme.textSecondary
                     )
                 }
@@ -614,8 +661,8 @@ fun MonthSummaryCard(
             } catch (e: Exception) {}
             expanded = !expanded
         },
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
         border = BorderStroke(1.dp, currentTheme.cardBorder),
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -623,16 +670,31 @@ fun MonthSummaryCard(
         Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "📁 $monthStr Summary",
-                    fontSize = 16.scaledSp,
-                    fontWeight = FontWeight.Bold,
-                    color = currentTheme.textPrimary,
-                    modifier = Modifier.weight(1f)
-                )
+                Box(
+                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(currentTheme.secondary.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.List, contentDescription = null, tint = currentTheme.secondary, modifier = Modifier.size(24.dp))
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = monthStr,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.scaledSp,
+                        fontFamily = currentFont,
+                        color = currentTheme.textPrimary
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${totalFocusMins / 60}h ${totalFocusMins % 60}m • ${dailyAvg / 60}h ${dailyAvg % 60}m / day avg",
+                        fontSize = 13.scaledSp,
+                        fontFamily = currentFont,
+                        color = currentTheme.textSecondary
+                    )
+                }
                 IconButton(
                     onClick = {
                         try {
@@ -645,13 +707,11 @@ fun MonthSummaryCard(
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete Month",
-                        tint = currentTheme.textPrimary,
+                        tint = currentTheme.textSecondary,
                         modifier = Modifier.size(20.dp)
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Total Focus: ${totalFocusMins / 60}h ${totalFocusMins % 60}m | Daily Avg: ${dailyAvg / 60}h ${dailyAvg % 60}m", fontSize = 13.scaledSp, color = currentTheme.textSecondary, fontFamily = MonospaceFontFamily)
             
             AnimatedVisibility(visible = expanded) {
                 Column(modifier = Modifier.padding(top = 16.dp)) {
@@ -713,31 +773,39 @@ fun HistorySessionPill(
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             val totalMins = sessions.sumOf { it.durationMinutes }
             val hasFocus = sessions.any { !it.isBreak }
-            val tintColor = if (!hasFocus) currentTheme.secondary else currentTheme.primary
+            val tintColor = if (!hasFocus) currentTheme.accent else currentTheme.primary
             
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(tintColor)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(tintColor.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
                 ) {
+                    Icon(
+                        imageVector = if (hasFocus) Icons.Default.CheckCircle else Icons.Default.Pause,
+                        contentDescription = null,
+                        tint = tintColor,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "$taskName • ",
+                        text = taskName,
                         fontWeight = FontWeight.Bold,
                         fontFamily = currentFont,
+                        fontSize = 16.scaledSp,
                         color = currentTheme.textPrimary
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "${totalMins}m",
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = MonospaceFontFamily,
-                        color = tintColor
+                        text = "${sessions.size} sessions • ${totalMins}m total",
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 13.scaledSp,
+                        fontFamily = currentFont,
+                        color = currentTheme.textSecondary
                     )
                 }
                 
@@ -814,16 +882,31 @@ fun HistorySessionPill(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .background(currentTheme.surface)
-                                        .padding(start = 28.dp, top = 8.dp, bottom = 8.dp, end = 16.dp),
+                                        .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 16.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "⚡ $type ($start - $end)", 
-                                        color = currentTheme.textSecondary, 
-                                        fontSize = 12.scaledSp, 
-                                        fontFamily = MonospaceFontFamily,
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier.size(8.dp).clip(CircleShape).background(if (session.isBreak) currentTheme.accent else currentTheme.primary)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            text = type,
+                                            color = currentTheme.textPrimary,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 14.scaledSp,
+                                            fontFamily = currentFont
+                                        )
+                                    }
+                                    Text(
+                                        text = "$start - $end",
+                                        color = currentTheme.textSecondary,
+                                        fontSize = 13.scaledSp,
+                                        fontFamily = MonospaceFontFamily
                                     )
                                 }
                             },
