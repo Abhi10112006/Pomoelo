@@ -3,9 +3,19 @@ import re
 with open('./app/src/main/java/com/example/MainActivity.kt', 'r') as f:
     content = f.read()
 
-pattern = re.compile(r"val lifecycleOwner = androidx\.lifecycle\.compose\.LocalLifecycleOwner\.current.*?if \(!hasAccessibilityPermission\) \{.*?\} else \{.*?\}", re.DOTALL)
+# Let's target the exact if (tabIndex == 2) block
+pattern = re.compile(r"(if \(tabIndex == 2\) \{)(.*?)(\} // Close if \(selectedTabIndex == 2\))", re.DOTALL)
 
-new_content = """val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+new_block = """if (tabIndex == 2) {
+                val blockedInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                val isBlockedPressed by blockedInteraction.collectIsPressedAsState()
+                val blockedScale by androidx.compose.animation.core.animateFloatAsState(
+                    targetValue = if (isBlockedPressed) 0.96f else 1f,
+                    animationSpec = androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy, stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
+                    label = "blockedScale"
+                )
+
+                val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
                 var accessibilityStatus by remember { mutableStateOf(com.example.service.AppBlockerManager.getAccessibilityStatus(context)) }
                 
                 DisposableEffect(lifecycleOwner) {
@@ -81,7 +91,7 @@ new_content = """val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleO
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.ErrorOutline, contentDescription = null, tint = Color(0xFFF57C00), modifier = Modifier.size(20.dp))
+                                Icon(androidx.compose.material.icons.Icons.Filled.ErrorOutline, contentDescription = null, tint = Color(0xFFF57C00), modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(if (isUnknown) "Unable to verify Focus Shield" else "Focus Shield needs attention", fontWeight = FontWeight.Bold, color = Color(0xFFF57C00), fontSize = 14.scaledSp)
                             }
@@ -115,9 +125,38 @@ new_content = """val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleO
                             }
                         }
                     }
-                }"""
+                }
 
-content = pattern.sub(new_content, content)
+                Card(
+                    onClick = { 
+                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                        showBlockedApps = true 
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scale(blockedScale),
+                    shape = RoundedCornerShape(16.dp),
+                    interactionSource = blockedInteraction,
+                    colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp, pressedElevation = 0.dp)
+                ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("App Blocker", fontWeight = FontWeight.Bold, color = currentTheme.textPrimary)
+                        Text("Select distracting apps to block during focus sessions.", fontSize = 12.scaledSp, color = currentTheme.textSecondary)
+                    }
+                    Icon(androidx.compose.material.icons.Icons.Filled.Settings, contentDescription = "Manage", tint = currentTheme.textPrimary)
+                }
+            }
+            """
+
+content = pattern.sub(new_block, content)
 
 with open('./app/src/main/java/com/example/MainActivity.kt', 'w') as f:
     f.write(content)
+

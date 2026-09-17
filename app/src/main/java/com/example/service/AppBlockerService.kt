@@ -16,7 +16,6 @@ class AppBlockerService : AccessibilityService() {
     private var lastInterceptTimeMs = 0L
     private var lastInterceptedPackage: String? = null
     private var lastWatchdogCheckMs = 0L
-
     companion object {
         private val SYSTEM_EXCLUSIONS = setOf(
             "com.android.systemui",
@@ -26,6 +25,14 @@ class AppBlockerService : AccessibilityService() {
             "com.android.phone",
             "com.android.server.telecom"
         )
+        
+        @Volatile
+        var isServiceConnected: Boolean = false
+            private set
+            
+        @Volatile
+        var isServiceInterrupted: Boolean = false
+            private set
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -124,10 +131,12 @@ class AppBlockerService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
-        // No action needed
+        isServiceInterrupted = true
     }
 
     override fun onServiceConnected() {
+        isServiceConnected = true
+        isServiceInterrupted = false
         val info = AccessibilityServiceInfo().apply {
             eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
@@ -135,5 +144,10 @@ class AppBlockerService : AccessibilityService() {
         }
         serviceInfo = info
     }
-}
 
+    override fun onUnbind(intent: Intent?): Boolean {
+        isServiceConnected = false
+        isServiceInterrupted = false
+        return super.onUnbind(intent)
+    }
+}

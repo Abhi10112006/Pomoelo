@@ -80,6 +80,31 @@ object AppBlockerManager {
         "Be proud of your ambition, and honor it by giving your studies your finest effort."
     )
 
+    enum class AccessibilityServiceStatus {
+        DISABLED,
+        READY,
+        STALE,
+        UNKNOWN
+    }
+
+    fun getAccessibilityStatus(context: Context): AccessibilityServiceStatus {
+        try {
+            val isEnabled = com.example.ui.isAccessibilityServiceEnabled(context)
+            if (!isEnabled) {
+                return AccessibilityServiceStatus.DISABLED
+            }
+            if (AppBlockerService.isServiceInterrupted) {
+                return AccessibilityServiceStatus.STALE
+            }
+            if (AppBlockerService.isServiceConnected) {
+                return AccessibilityServiceStatus.READY
+            }
+            return AccessibilityServiceStatus.STALE
+        } catch (e: Exception) {
+            return AccessibilityServiceStatus.UNKNOWN
+        }
+    }
+
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }

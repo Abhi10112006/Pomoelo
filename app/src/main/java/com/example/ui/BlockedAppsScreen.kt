@@ -142,11 +142,23 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
         }
     }
 
-    // Check accessibility permission
-    var hasAccessibilityPermission by remember { mutableStateOf(isAccessibilityServiceEnabled(context)) }
+    // Check accessibility status
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var accessibilityStatus by remember { mutableStateOf(AppBlockerManager.getAccessibilityStatus(context)) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME || event == androidx.lifecycle.Lifecycle.Event.ON_START) {
+                accessibilityStatus = AppBlockerManager.getAccessibilityStatus(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     LaunchedEffect(Unit) {
-        hasAccessibilityPermission = isAccessibilityServiceEnabled(context)
         blockedAttemptsToday = AppBlockerManager.getBlockAttemptsToday(context)
         withContext(Dispatchers.IO) {
             val pm = context.packageManager
@@ -236,74 +248,20 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 32.dp)
             ) {
-                // 1. Accessibility Service Warning Banner (if disabled)
-                if (!hasAccessibilityPermission) {
-                    item {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                                .pomoShadow(
-                                    shape = RoundedCornerShape(20.dp),
-                                    elevation = 3.dp,
-                                    shadowColor = currentTheme.shadowColor
-                                ),
-                            colors = CardDefaults.cardColors(containerColor = currentTheme.accent.copy(alpha = 0.9f)),
-                            shape = RoundedCornerShape(20.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.5.dp, currentTheme.cardBorder)
-                        ) {
-                            Column(modifier = Modifier.padding(18.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Filled.Warning,
-                                        contentDescription = null,
-                                        tint = currentTheme.textPrimary,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        "Accessibility Permission Required",
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = currentFont,
-                                        color = currentTheme.textPrimary,
-                                        fontSize = 16.sp
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    "To intercept blocked apps and display the mindful 5-second pause while your focus timer is running, enable 'PomoPal' under Accessibility Settings.",
-                                    fontFamily = currentFont,
-                                    color = currentTheme.textPrimary,
-                                    fontSize = 13.sp,
-                                    lineHeight = 18.sp
-                                )
-                                Spacer(modifier = Modifier.height(14.dp))
-                                PomoButton(
-                                    onClick = {
-                                        try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-                                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                                    },
-                                    containerColor = currentTheme.surface,
-                                    contentColor = currentTheme.textPrimary,
-                                    modifier = Modifier.fillMaxWidth().height(48.dp)
-                                ) {
-                                    Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Enable in Settings", fontWeight = FontWeight.Bold, fontFamily = currentFont)
-                                }
-                            }
-                        }
-                    }
-                }
 
                 // 2. Real-Time Status & Daily Stats Dashboard
                 item {
                     val statusText: String
                     val statusColor: Color
                     val statusIcon = when {
-                        !hasAccessibilityPermission -> {
+                        accessibilityStatus == AppBlockerManager.AccessibilityServiceStatus.DISABLED -> {
                             statusText = "Permission Needed"
                             statusColor = Color(0xFFE53935)
+                            Icons.Filled.ErrorOutline
+                        }
+                        accessibilityStatus == AppBlockerManager.AccessibilityServiceStatus.STALE || accessibilityStatus == AppBlockerManager.AccessibilityServiceStatus.UNKNOWN -> {
+                            statusText = "Service Interrupted"
+                            statusColor = Color(0xFFF57C00)
                             Icons.Filled.ErrorOutline
                         }
                         isBreakMode -> {
