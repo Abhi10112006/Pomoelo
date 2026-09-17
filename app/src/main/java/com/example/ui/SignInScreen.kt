@@ -53,6 +53,8 @@ import com.example.ui.theme.LocalAppTheme
 import com.example.ui.theme.LocalAppFont
 import com.example.ui.theme.luminance
 import com.example.ui.theme.blend
+import com.example.ui.components.PomoPalMascot
+import com.example.ui.components.MascotExpression
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -611,9 +613,9 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                 }
 
                 // Core Mascot with crisp 3D styling
-                Text(
-                    text = "🍅",
-                    fontSize = 54.sp
+                PomoPalMascot(
+                    expression = MascotExpression.HAPPY,
+                    modifier = Modifier.size(76.dp)
                 )
             }
 

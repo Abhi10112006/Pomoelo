@@ -1044,14 +1044,9 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp)
-                    .verticalScroll(rememberScrollState())
+            Box(
+                modifier = Modifier.fillMaxSize()
             ) {
-                Spacer(modifier = Modifier.height(16.dp))
-                
                 androidx.compose.animation.AnimatedContent(
                     targetState = selectedTabIndex,
                     transitionSpec = {
@@ -1069,7 +1064,16 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
                     },
                     label = "SettingsTabTransition"
                 ) { tabIndex ->
-                    Column {
+                    if (tabIndex == 4) {
+                        com.example.ui.components.InteractiveAboutScreen()
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 24.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Spacer(modifier = Modifier.height(16.dp))
                         if (tabIndex == 0) {
                     var focusInput by remember(localFocus) { mutableStateOf(localFocus.toInt().toString()) }
             var breakInput by remember(localBreak) { mutableStateOf(localBreak.toInt().toString()) }
@@ -1264,14 +1268,11 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
             if (tabIndex == 3) {
                 com.example.ui.SystemProtectionScreen()
             } // Close if (selectedTabIndex == 3)            
-            if (tabIndex == 4) {
-                com.example.ui.components.InteractiveAboutScreen()
-            }
-            
             Spacer(modifier = Modifier.height(100.dp))
-        }
-                    } // closes Column
+                        } // closes Column
+                    } // closes else
                 } // closes AnimatedContent
+            }
     }
 }
 }

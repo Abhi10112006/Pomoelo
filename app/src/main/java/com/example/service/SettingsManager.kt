@@ -24,6 +24,7 @@ object SettingsManager {
     private const val KEY_SQUAT_VALLEY_THRESHOLD = "user_squat_valley_threshold"
     private const val KEY_SQUAT_PEAK_THRESHOLD = "user_squat_peak_threshold"
 
+    private const val KEY_PROTECTION_ONBOARDING_DONE = "protection_onboarding_done"
     private const val KEY_THEME_ID = "selected_app_theme"
     private const val KEY_FONT_ID = "selected_app_font"
 
@@ -225,4 +226,15 @@ object SettingsManager {
         _appearanceState.value = AppearanceMode.SYSTEM
         updateThemeState()
     }
+
+    fun setHasAchievedFullProtection(context: Context, achieved: Boolean) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putBoolean(KEY_PROTECTION_ONBOARDING_DONE, achieved).apply()
+    }
+
+    fun hasAchievedFullProtection(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_PROTECTION_ONBOARDING_DONE, false)
+    }
 }
+
