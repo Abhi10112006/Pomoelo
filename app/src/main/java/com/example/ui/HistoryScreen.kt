@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -75,26 +76,13 @@ fun getDayLabel(startTime: Long, todayStart: Long, dayInMillis: Long): String {
 fun Modifier.historyCardShadow(
     cornerRadius: androidx.compose.ui.unit.Dp = 24.dp,
     shadowColor: Color
-): Modifier = this.drawBehind {
-    drawIntoCanvas { canvas ->
-        val paint = Paint()
-        val frameworkPaint = paint.asFrameworkPaint()
-        frameworkPaint.color = shadowColor.toArgb()
-        frameworkPaint.maskFilter = android.graphics.BlurMaskFilter(
-            8.dp.toPx(),
-            android.graphics.BlurMaskFilter.Blur.NORMAL
-        )
-        canvas.drawRoundRect(
-            left = 0f,
-            top = 4.dp.toPx(),
-            right = size.width,
-            bottom = size.height + 4.dp.toPx(),
-            radiusX = cornerRadius.toPx(),
-            radiusY = cornerRadius.toPx(),
-            paint = paint
-        )
-    }
-}
+): Modifier = this.shadow(
+    elevation = 12.dp,
+    shape = RoundedCornerShape(cornerRadius),
+    ambientColor = shadowColor,
+    spotColor = shadowColor,
+    clip = false
+)
 
 fun resolveTaskColor(taskName: String, sessions: List<TimerSession>, allTasks: List<TaskItem>, currentTheme: ThemeOption): Color {
     val isDefaultTask = taskName.isBlank() || taskName == "Focus Time!" || taskName == "Deep Focus Session"
@@ -103,9 +91,12 @@ fun resolveTaskColor(taskName: String, sessions: List<TimerSession>, allTasks: L
     val isDefaultBreak = taskName == "Break Time!" || taskName == "Break" || taskName == "Long Break"
     if (isDefaultBreak) return currentTheme.secondary
     
-    val savedColor = sessions.firstOrNull { it.taskColor != null }?.taskColor
-    if (savedColor != null) {
-        return Color(savedColor.toULong())
+    val targetSession = sessions
+        .filter { it.taskName == taskName && it.taskColor != null }
+        .maxByOrNull { it.startTime }
+        
+    if (targetSession?.taskColor != null) {
+        return Color(targetSession.taskColor.toULong())
     }
     
     val task = allTasks.find { it.name == taskName }
@@ -915,6 +906,7 @@ fun HistorySessionPill(
                         val type = if (session.isBreak) "Rest" else "Focus"
                         val start = timeFormat.format(Date(session.startTime))
                         val end = timeFormat.format(Date(session.endTime))
+                        val sessionColor = resolveTaskColor(taskName, listOf(session), allTasks, currentTheme)
                         
                         val dismissState = rememberSwipeToDismissBoxState(
                             confirmValueChange = { value ->
@@ -929,7 +921,6 @@ fun HistorySessionPill(
                                 }
                             }
                         )
-
                         SwipeToDismissBox(
                             state = dismissState,
                             enableDismissFromStartToEnd = false,
@@ -965,8 +956,8 @@ fun HistorySessionPill(
                                     ) {
                                         Box(
                                             modifier = Modifier.size(8.dp).clip(CircleShape)
-                                                .background(if (session.isBreak) Color.Transparent else baseColor)
-                                                .border(if (session.isBreak) 2.dp else 0.dp, baseColor, CircleShape)
+                                                .background(if (session.isBreak) Color.Transparent else sessionColor)
+                                                .border(if (session.isBreak) 2.dp else 0.dp, sessionColor, CircleShape)
                                         )
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Text(
