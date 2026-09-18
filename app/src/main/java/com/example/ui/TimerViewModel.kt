@@ -89,21 +89,25 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
         TimerManager.setTask(id, name, color)
     }
     
-    fun saveTask(taskName: String, categoryName: String, categoryColor: Long) {
+    fun saveTask(taskName: String, categoryName: String, categoryColor: Long, onSaved: ((Int) -> Unit)? = null) {
         viewModelScope.launch {
-            database.taskDao().insertTask(
+            val id = database.taskDao().insertTask(
                 TaskItem(
                     name = taskName,
                     categoryName = categoryName,
                     categoryColor = categoryColor
                 )
             )
+            onSaved?.invoke(id.toInt())
         }
     }
     
     fun deleteTask(timerItem: TaskItem) {
         viewModelScope.launch {
             database.taskDao().deleteTaskById(timerItem.id)
+            if (TimerManager.currentTaskId.value == timerItem.id && TimerManager.timerState.value == TimerManager.TimerState.STOPPED) {
+                TimerManager.setTask(-1, "Focus Time!")
+            }
         }
     }
 

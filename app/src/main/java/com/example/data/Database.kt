@@ -32,7 +32,7 @@ interface TaskDao {
     fun getAllTasks(): Flow<List<TaskItem>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTask(task: TaskItem)
+    suspend fun insertTask(task: TaskItem): Long
 
     @Query("UPDATE tasks SET completedPomodoros = completedPomodoros + 1 WHERE id = :id")
     suspend fun incrementPomodoroCount(id: Int)

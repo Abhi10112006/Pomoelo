@@ -55,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -688,7 +689,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .wrapContentHeight()
+                    .weight(1f, fill = false)
             ) {
                 AnimatedContent(
                     targetState = timerState == TimerManager.TimerState.STOPPED,
@@ -722,7 +723,18 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                                 }
                             }
                             
-                            val previewTasks = allTasks.take(3)
+                            val isCompact = availableHeight < 740.dp
+                            val isVeryCompact = availableHeight < 640.dp
+                            val hasBanner = protectionStates.needsAttention && timerState == TimerManager.TimerState.STOPPED
+                            
+                            val maxPreviewTasks = when {
+                                isVeryCompact -> if (hasBanner) 1 else 2
+                                isCompact -> if (hasBanner) 2 else 3
+                                hasBanner -> 3
+                                else -> 3
+                            }
+                            
+                            val previewTasks = allTasks.take(maxPreviewTasks)
                             previewTasks.forEach { task ->
                                 TaskItemRow(
                                     task = task,
@@ -732,7 +744,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                                 )
                             }
                             
-                            if (allTasks.size > 3) {
+                            if (allTasks.size > maxPreviewTasks) {
                                 TextButton(
                                     onClick = { showAllTasksSheet = true },
                                     modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp)
@@ -858,9 +870,10 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
     if (isAddingTask) {
         AddTaskCard(
             onSave = { name, cat, color ->
-                viewModel.saveTask(name, cat, color)
+                viewModel.saveTask(name, cat, color) { newId ->
+                    viewModel.setTask(newId, name, color)
+                }
                 viewModel.setAddingTask(false)
-                viewModel.setTask(-1, name, color)
             },
             onCancel = { viewModel.setAddingTask(false) }
         )
@@ -1435,27 +1448,27 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
     val currentTheme = LocalAppTheme.current
     val currentFont = LocalAppFont.current
     
-    val scale by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (isSelected) 1.02f else 1f,
-        animationSpec = androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy, stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
-        label = "scale"
-    )
     val borderColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (isSelected) Color(task.categoryColor.toULong()) else currentTheme.cardBorder,
         label = "borderColor"
     )
     val borderWidth by androidx.compose.animation.core.animateDpAsState(
-        targetValue = if (isSelected) 2.dp else 1.dp,
+        targetValue = if (isSelected) 1.5.dp else 1.dp,
         label = "borderWidth"
     )
     
+    val containerColor = if (isSelected) {
+        androidx.compose.ui.graphics.Color(task.categoryColor.toULong()).copy(alpha = 0.05f).compositeOver(currentTheme.surface)
+    } else {
+        currentTheme.surface
+    }
+    
     Card(
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isSelected) Color(task.categoryColor.toULong()).copy(alpha = 0.05f) else currentTheme.surface),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         modifier = modifier
             .fillMaxWidth()
-            .scale(scale)
-            .shadow(elevation = if (isSelected) 8.dp else 3.dp, shape = RoundedCornerShape(24.dp), spotColor = if (isSelected) Color(task.categoryColor.toULong()) else currentTheme.shadowColor)
+            .shadow(elevation = 3.dp, shape = RoundedCornerShape(24.dp), spotColor = currentTheme.shadowColor)
             .border(borderWidth, borderColor, RoundedCornerShape(24.dp))
             .clip(RoundedCornerShape(24.dp))
             .clickable {
