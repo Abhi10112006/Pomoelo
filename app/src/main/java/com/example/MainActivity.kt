@@ -67,6 +67,7 @@ import com.example.ui.theme.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.scaledSp
+import com.example.ui.components.scaledDp
 import androidx.core.app.ActivityCompat
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -533,17 +534,25 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
         if (currentTheme.id == "premium" && !isBreakMode) {
             com.example.ui.components.PremiumBackgroundOverlays()
         }
-        val availableHeight = maxHeight
-        val circleSize = when {
-            availableHeight < 640.dp -> 180.dp
-            availableHeight < 740.dp -> 220.dp
-            else -> 260.dp
-        }
-        val verticalSpacing = when {
-            availableHeight < 640.dp -> 12.dp
-            availableHeight < 740.dp -> 16.dp
-            else -> 24.dp
-        }
+        val hasBanner = protectionStates.needsAttention && timerState == TimerManager.TimerState.STOPPED
+        com.example.ui.components.ProvideAdaptiveDimensions(
+            availableWidth = maxWidth,
+            availableHeight = maxHeight,
+            hasBanner = hasBanner
+        ) {
+            val adaptiveDimensions = com.example.ui.components.LocalAdaptiveDimensions.current
+            
+            val circleSize = when {
+                adaptiveDimensions.isVeryCompact -> 180.dp
+                adaptiveDimensions.isCompact -> 220.dp
+                else -> 260.dp
+            } * adaptiveDimensions.scale
+            
+            val verticalSpacing = when {
+                adaptiveDimensions.isVeryCompact -> 12.dp
+                adaptiveDimensions.isCompact -> 16.dp
+                else -> 24.dp
+            } * adaptiveDimensions.scale
 
         Scaffold(
             modifier = Modifier.fillMaxSize().pointerInput(Unit) {
@@ -557,10 +566,10 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                 .fillMaxSize()
                 .padding(innerPadding)
                 .statusBarsPadding()
-                .padding(horizontal = 24.dp),
+                .padding(horizontal = 24.scaledDp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.scaledDp))
             
             // Small Global Indicator
             androidx.compose.animation.AnimatedVisibility(
@@ -577,7 +586,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 16.scaledDp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -703,11 +712,11 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                 ) { stopped ->
                     if (stopped) {
                         Column(
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.scaledDp),
                             modifier = Modifier.fillMaxWidth().padding(bottom = bottomPadding + 88.dp)
                         ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 4.scaledDp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -723,13 +732,9 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                                 }
                             }
                             
-                            val isCompact = availableHeight < 740.dp
-                            val isVeryCompact = availableHeight < 640.dp
-                            val hasBanner = protectionStates.needsAttention && timerState == TimerManager.TimerState.STOPPED
-                            
                             val maxPreviewTasks = when {
-                                isVeryCompact -> if (hasBanner) 1 else 2
-                                isCompact -> if (hasBanner) 2 else 3
+                                adaptiveDimensions.isVeryCompact -> if (hasBanner) 1 else 2
+                                adaptiveDimensions.isCompact -> if (hasBanner) 2 else 3
                                 hasBanner -> 3
                                 else -> 3
                             }
@@ -812,6 +817,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
         ) {
             SettingsOverlay(onDismiss = { viewModel.setSettingsOpen(false) }, initialTab = settingsInitialTab)
         }
+        } // closes ProvideAdaptiveDimensions
     } // closes the Box Wrapping the Scaffold
 
     if (showJustInTimeSetup) {
@@ -1482,16 +1488,16 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(16.scaledDp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(16.dp)
+                    .size(16.scaledDp)
                     .clip(CircleShape)
                     .background(Color(task.categoryColor.toULong()))
             )
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(12.scaledDp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = task.name, 
@@ -1520,7 +1526,7 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
                         Text(text = "x${task.completedPomodoros}", fontWeight = FontWeight.Bold, color = currentTheme.textPrimary, fontFamily = currentFont)
                     }
                 }
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(16.scaledDp))
             }
             
             androidx.compose.animation.AnimatedVisibility(
