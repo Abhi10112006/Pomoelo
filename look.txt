@@ -1,0 +1,121 @@
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                            .clickable { 
+                                try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                                if (selectedTabIndex != index) {
+                                    tabBackStack.add(selectedTabIndex)
+                                    selectedTabIndex = index 
+                                }
+                            }
+                    ) {
+                        Text(
+                            text = tabs[index],
+                            color = tabTextColor,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.scaledSp
+                        )
+                    }
+                }
+            }
+
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = true)
+                    .padding(bottom = bottomPadding + 88.dp)
+            ) {
+                val viewportHeight = maxHeight
+                val reservedSpace = 110.dp
+                val availableForCards = viewportHeight - reservedSpace
+                val estimatedCardHeight = 84.dp
+                val calculatedCapacity = (availableForCards / estimatedCardHeight).toInt()
+                val dynamicPreviewLimit = calculatedCapacity.coerceIn(1, 3)
+                AnimatedContent(targetState = isRunning, label = "playPause") { running ->
+                    Icon(
+                        if (running) Icons.Filled.Pause else Icons.Filled.PlayArrow, 
+                        contentDescription = if (running) "Pause" else "Start", 
+                        tint = Color.White, 
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(26.dp))
+
+        val isBreakMode by TimerManager.isBreakMode.collectAsState()
+        AnimatedScaleBox(
+            enabled = !isRunning,
+            shape = CircleShape,
+            elevation = 5.dp,
+            shadowColor = Color.Black.copy(alpha = 0.15f),
+            onClick = {
+                val isServiceActive = state != TimerManager.TimerState.STOPPED
+                if (isServiceActive) {
+                    val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_TOGGLE_MODE }
+                    context.startService(intent)
+                } else {
+                    val newIsBreak = !isBreakMode
+                    TimerManager.setBreakMode(newIsBreak)
+                    TimerManager.updateState(TimerManager.TimerState.STOPPED)
+                    TimerManager.updateTime(if (newIsBreak) TimerManager.breakTimeSeconds.value else TimerManager.focusTimeSeconds.value)
+                    TimerManager.setTask(-1, if (newIsBreak) "Break Time!" else "Focus Time!")
+                }
+            }
+        ) {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = true)
+                    .padding(bottom = bottomPadding + 88.dp)
+            ) {
+                val viewportHeight = maxHeight
+                val reservedSpace = 110.dp
+                val availableForCards = viewportHeight - reservedSpace
+                val estimatedCardHeight = 84.dp
+                val calculatedCapacity = (availableForCards / estimatedCardHeight).toInt()
+                val dynamicPreviewLimit = calculatedCapacity.coerceIn(1, 3)
+                AnimatedContent(
+                    targetState = char,
+                    transitionSpec = {
+                        val enterSpring = spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                        val exitSpring = spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
+                        val alphaEnter = spring<Float>(stiffness = Spring.StiffnessLow)
+                        val alphaExit = spring<Float>(stiffness = Spring.StiffnessMedium)
+                        
+                        if (targetState < initialState || (initialState == '0' && targetState == '9') || (initialState == '0' && targetState == '5')) {
+                            // Counting down
+                            (slideInVertically(enterSpring) { height -> -height } + fadeIn(alphaEnter)) togetherWith
+                                    (slideOutVertically(exitSpring) { height -> height } + fadeOut(alphaExit))
+                        } else {
+                            // Counting up or reset
+                            (slideInVertically(enterSpring) { height -> height } + fadeIn(alphaEnter)) togetherWith
+                                    (slideOutVertically(exitSpring) { height -> -height } + fadeOut(alphaExit))
+                        }.using(SizeTransform(clip = false))
+                    },
+                    label = "digitAnimation_$index"
+                ) { targetDigit ->
+                    Text(
+                        text = targetDigit.toString(),
+                        fontSize = fontSize,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = LocalAppFont.current,
+                        color = LocalAppTheme.current.textPrimary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TimerDisplay(
+    timeRemaining: Int,
+    totalTime: Int,
+    state: TimerManager.TimerState,
+    isBreakMode: Boolean,
+    taskName: String,
+    currentTask: com.example.data.TaskItem? = null,
+    context: android.content.Context,
+    circleSize: androidx.compose.ui.unit.Dp = 260.dp
