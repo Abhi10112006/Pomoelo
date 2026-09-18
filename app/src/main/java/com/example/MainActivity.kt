@@ -695,18 +695,11 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
 
             Spacer(modifier = Modifier.height(verticalSpacing))
 
-            BoxWithConstraints(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f, fill = true)
-                    .padding(bottom = bottomPadding + 16.dp)
+                    .weight(1f, fill = false)
             ) {
-                val viewportHeight = maxHeight
-                val reservedSpace = 110.dp
-                val availableForCards = viewportHeight - reservedSpace
-                val estimatedCardHeight = 84.dp
-                val calculatedCapacity = (availableForCards / estimatedCardHeight).toInt()
-                val dynamicPreviewLimit = calculatedCapacity.coerceIn(1, 3)
                 AnimatedContent(
                     targetState = timerState == TimerManager.TimerState.STOPPED,
                     transitionSpec = {
@@ -720,7 +713,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                     if (stopped) {
                         Column(
                             verticalArrangement = Arrangement.spacedBy(12.scaledDp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().padding(bottom = bottomPadding + 88.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 4.scaledDp),
@@ -739,7 +732,14 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                                 }
                             }
                             
-                            val previewTasks = allTasks.take(dynamicPreviewLimit)
+                            val maxPreviewTasks = when {
+                                adaptiveDimensions.isVeryCompact -> if (hasBanner) 1 else 2
+                                adaptiveDimensions.isCompact -> if (hasBanner) 2 else 3
+                                hasBanner -> 3
+                                else -> 3
+                            }
+                            
+                            val previewTasks = allTasks.take(maxPreviewTasks)
                             previewTasks.forEach { task ->
                                 TaskItemRow(
                                     task = task,
@@ -749,7 +749,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                                 )
                             }
                             
-                            if (allTasks.size > dynamicPreviewLimit) {
+                            if (allTasks.size > maxPreviewTasks) {
                                 TextButton(
                                     onClick = { showAllTasksSheet = true },
                                     modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp)
@@ -789,6 +789,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                                     Text("Lock Screen in Serious Mode", fontSize = 14.scaledSp, fontWeight = FontWeight.Bold, color = Color.White)
                                 }
                             }
+                            Spacer(modifier = Modifier.height(bottomPadding + 88.dp))
                         }
                     }
                 }
@@ -1097,33 +1098,917 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
                     }
                 }
             }
+
             Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                modifier = Modifier.fillMaxSize()
             ) {
-                AnimatedContent(
+                androidx.compose.animation.AnimatedContent(
                     targetState = selectedTabIndex,
                     transitionSpec = {
-                        val isForward = targetState > initialState
-                        val enterSpring = spring<androidx.compose.ui.unit.IntOffset>(stiffness = Spring.StiffnessLow)
-                        val exitSpring = spring<androidx.compose.ui.unit.IntOffset>(stiffness = Spring.StiffnessMedium)
-                        
-                        if (isForward) {
-                            (slideInHorizontally(animationSpec = enterSpring) { it } + fadeIn()) togetherWith 
-                            (slideOutHorizontally(animationSpec = exitSpring) { -it } + fadeOut())
-                        } else {
-                            (slideInHorizontally(animationSpec = enterSpring) { -it } + fadeIn()) togetherWith 
-                            (slideOutHorizontally(animationSpec = exitSpring) { it } + fadeOut())
-                        }
+                        (androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(220, delayMillis = 90)) +
+                        androidx.compose.animation.slideInHorizontally(
+                            initialOffsetX = { fullWidth -> if (targetState > initialState) fullWidth else -fullWidth },
+                            animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 300f)
+                        )).togetherWith(
+                            androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(90)) +
+                            androidx.compose.animation.slideOutHorizontally(
+                                targetOffsetX = { fullWidth -> if (targetState > initialState) -fullWidth else fullWidth },
+                                animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 300f)
+                            )
+                        )
                     },
-                    label = "tabContent"
-                ) { targetTab ->
-                    when (targetTab) {
-                        0 -> com.example.ui.SettingsTabGeneral()
-                        1 -> com.example.ui.SettingsTabTheme()
-                        2 -> com.example.ui.SettingsTabAdvanced()
+                    label = "SettingsTabTransition"
+                ) { tabIndex ->
+                    if (tabIndex == 4) {
+                        com.example.ui.components.InteractiveAboutScreen()
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 24.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                        if (tabIndex == 0) {
+                    var focusInput by remember(localFocus) { mutableStateOf(localFocus.toInt().toString()) }
+            var breakInput by remember(localBreak) { mutableStateOf(localBreak.toInt().toString()) }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Timer & Sound", fontSize = 16.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.textPrimary)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Text("Focus Time (min):", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = focusInput,
+                            onValueChange = { newVal ->
+                                val filtered = newVal.filter { it.isDigit() }
+                                focusInput = filtered
+                                filtered.toFloatOrNull()?.let { 
+                                    localFocus = it.coerceIn(1f, 200f) 
+                                }
+                            },
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
+                            modifier = Modifier.width(60.dp).background(currentTheme.textPrimary.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                            singleLine = true
+                        )
                     }
+                    Slider(
+                        value = localFocus.coerceIn(1f, 60f),
+                        onValueChange = { 
+                            val oldVal = localFocus.toInt()
+                            val newVal = it.toInt()
+                            if (oldVal != newVal) {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                } catch (e: Exception) {}
+                            }
+                            localFocus = it 
+                        },
+                        valueRange = 1f..60f,
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFFFF8A80), activeTrackColor = Color(0xFFFFCC80))
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Text("Break Time (min):", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = breakInput,
+                            onValueChange = { newVal ->
+                                val filtered = newVal.filter { it.isDigit() }
+                                breakInput = filtered
+                                filtered.toFloatOrNull()?.let { 
+                                    localBreak = it.coerceIn(1f, 120f) 
+                                }
+                            },
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
+                            modifier = Modifier.width(60.dp).background(currentTheme.textPrimary.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                            singleLine = true
+                        )
+                    }
+                    Slider(
+                        value = localBreak.coerceIn(1f, 30f),
+                        onValueChange = { 
+                            val oldVal = localBreak.toInt()
+                            val newVal = it.toInt()
+                            if (oldVal != newVal) {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                } catch (e: Exception) {}
+                            }
+                            localBreak = it 
+                        },
+                        valueRange = 1f..30f,
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFF81D4FA), activeTrackColor = Color(0xFFB3E5FC))
+                    )
+                    
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = currentTheme.textPrimary.copy(alpha = 0.1f))
+                    
+                    Text("Volume", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
+                    Slider(
+                        value = localVolume,
+                        onValueChange = { 
+                            val oldVal = localVolume.toInt()
+                            val newVal = it.toInt()
+                            if (oldVal != newVal) {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                } catch (e: Exception) {}
+                            }
+                            localVolume = it
+                            audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, it.toInt(), 0)
+                        },
+                        valueRange = 0f..maxVolume,
+                        steps = (maxVolume.toInt() - 1).takeIf { it > 0 } ?: 0,
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFFCE93D8), activeTrackColor = Color(0xFFE1BEE7))
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text("Completion Sound", color = currentTheme.textPrimary, fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(currentTheme.textPrimary.copy(alpha=0.05f))) {
+                        val compOptions = listOf("Beep", "Alarm", "Ring", "Custom")
+                        compOptions.forEachIndexed { index, name ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (localCompletion == index) Color(0xFFFF8A80) else Color.Transparent)
+                                    .clickable { 
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                        } catch (e: Exception) {}
+                                        if (index == 3) {
+                                            completionLauncher.launch(arrayOf("audio/*"))
+                                        } else {
+                                            localCompletion = index
+                                            com.example.service.SoundPlayer.playCompletion(context, index)
+                                        }
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) { Text(name, color = if (localCompletion == index) Color.White else currentTheme.textPrimary, fontSize = 11.scaledSp, maxLines = 1) }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Completion Sound Duration: ${localCompletionDuration.toInt()} sec", color = currentTheme.textPrimary, fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
+                    Slider(
+                        value = localCompletionDuration,
+                        onValueChange = { 
+                            val oldVal = localCompletionDuration.toInt()
+                            val newVal = it.toInt()
+                            if (oldVal != newVal) {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                } catch (e: Exception) {}
+                            }
+                            localCompletionDuration = it 
+                        },
+                        valueRange = 2f..20f,
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFF81D4FA), activeTrackColor = Color(0xFFB3E5FC))
+                    )
+                }
+            }
+            
+            }
+            
+            if (tabIndex == 1) {
+                com.example.ui.components.ThemeFontCustomizer()
+            }
+            
+            if (tabIndex == 2) {
+                val blockedInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                val isBlockedPressed by blockedInteraction.collectIsPressedAsState()
+                val blockedScale by androidx.compose.animation.core.animateFloatAsState(
+                    targetValue = if (isBlockedPressed) 0.96f else 1f,
+                    animationSpec = androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy, stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
+                    label = "blockedScale"
+                )
+
+                val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+                var accessibilityStatus by remember { mutableStateOf(com.example.service.AppBlockerManager.getAccessibilityStatus(context)) }
+                
+                DisposableEffect(lifecycleOwner) {
+                    val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                        if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME || event == androidx.lifecycle.Lifecycle.Event.ON_START) {
+                            accessibilityStatus = com.example.service.AppBlockerManager.getAccessibilityStatus(context)
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose {
+                        lifecycleOwner.lifecycle.removeObserver(observer)
+                    }
+                }
+
+                if (accessibilityStatus == com.example.service.AppBlockerManager.AccessibilityServiceStatus.DISABLED) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = currentTheme.primary.copy(alpha = 0.1f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.primary.copy(alpha = 0.3f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(androidx.compose.material.icons.Icons.Rounded.Security, contentDescription = null, tint = currentTheme.primary, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Focus Shield needs one small permission", fontWeight = FontWeight.Bold, color = currentTheme.primary, fontSize = 14.scaledSp)
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "To stop selected distracting apps during a focus session, PomoPal uses Android's Accessibility Service. This lets PomoPal detect when a protected app is opened and show the mindful pause screen.",
+                                fontSize = 12.scaledSp,
+                                color = currentTheme.textPrimary,
+                                lineHeight = 16.scaledSp
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = { 
+                                    try {
+                                        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                    } catch (e: Exception) {}
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primary, contentColor = Color.White),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Set Up Focus Shield →", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else if (accessibilityStatus == com.example.service.AppBlockerManager.AccessibilityServiceStatus.READY) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF4CAF50).copy(alpha = 0.1f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.3f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(androidx.compose.material.icons.Icons.Rounded.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Focus Shield is Ready ✓", fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50), fontSize = 14.scaledSp)
+                        }
+                    }
+                } else if (accessibilityStatus == com.example.service.AppBlockerManager.AccessibilityServiceStatus.STALE || accessibilityStatus == com.example.service.AppBlockerManager.AccessibilityServiceStatus.UNKNOWN) {
+                    val isUnknown = accessibilityStatus == com.example.service.AppBlockerManager.AccessibilityServiceStatus.UNKNOWN
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF57C00).copy(alpha = 0.1f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF57C00).copy(alpha = 0.3f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Lock, contentDescription = null, tint = Color(0xFFF57C00), modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(if (isUnknown) "Unable to verify Focus Shield" else "Focus Shield needs attention", fontWeight = FontWeight.Bold, color = Color(0xFFF57C00), fontSize = 14.scaledSp)
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "The accessibility service appears to be interrupted. Please check its status in Android Settings to ensure blocking works.",
+                                fontSize = 12.scaledSp,
+                                color = currentTheme.textPrimary,
+                                lineHeight = 16.scaledSp
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = { accessibilityStatus = com.example.service.AppBlockerManager.getAccessibilityStatus(context) },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = currentTheme.textPrimary)
+                                ) {
+                                    Text("Check Again", fontWeight = FontWeight.Bold, fontSize = 12.scaledSp)
+                                }
+                                Button(
+                                    onClick = { 
+                                        try {
+                                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                        } catch (e: Exception) {}
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF57C00), contentColor = Color.White),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Open Settings", fontWeight = FontWeight.Bold, fontSize = 12.scaledSp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Card(
+                    onClick = { 
+                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                        showBlockedApps = true 
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scale(blockedScale),
+                    shape = RoundedCornerShape(16.dp),
+                    interactionSource = blockedInteraction,
+                    colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp, pressedElevation = 0.dp)
+                ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("App Blocker", fontWeight = FontWeight.Bold, color = currentTheme.textPrimary)
+                        Text("Select distracting apps to block during focus sessions.", fontSize = 12.scaledSp, color = currentTheme.textSecondary)
+                    }
+                    Icon(androidx.compose.material.icons.Icons.Filled.Settings, contentDescription = "Manage", tint = currentTheme.textPrimary)
+                }
+            }
+            } // Close if (tabIndex == 2)
+
+            
+            if (tabIndex == 3) {
+                com.example.ui.SystemProtectionScreen()
+            } // Close if (selectedTabIndex == 3)            
+            Spacer(modifier = Modifier.height(100.dp))
+                        } // closes Column
+                    } // closes else
+                } // closes AnimatedContent
+            }
+    }
+}
+}
+
+@Composable
+fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, onSelect: (com.example.data.TaskItem) -> Unit, onDelete: () -> Unit, modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
+    
+    val borderColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isSelected) Color(task.categoryColor.toULong()) else currentTheme.cardBorder,
+        label = "borderColor"
+    )
+    val borderWidth by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isSelected) 1.5.dp else 1.dp,
+        label = "borderWidth"
+    )
+    
+    val containerColor = if (isSelected) {
+        androidx.compose.ui.graphics.Color(task.categoryColor.toULong()).copy(alpha = 0.05f).compositeOver(currentTheme.surface)
+    } else {
+        currentTheme.surface
+    }
+    
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(elevation = 3.dp, shape = RoundedCornerShape(24.dp), spotColor = currentTheme.shadowColor)
+            .border(borderWidth, borderColor, RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(24.dp))
+            .clickable {
+                try {
+                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                } catch (e: Exception) {}
+                onSelect(task)
+            },
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.scaledDp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(16.scaledDp)
+                    .clip(CircleShape)
+                    .background(Color(task.categoryColor.toULong()))
+            )
+            Spacer(modifier = Modifier.width(12.scaledDp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = task.name, 
+                    fontWeight = FontWeight.Bold, 
+                    fontFamily = currentFont,
+                    color = currentTheme.textPrimary,
+                    fontSize = 15.scaledSp
+                )
+                Text(
+                    text = task.categoryName, 
+                    fontSize = 12.scaledSp, 
+                    color = currentTheme.textSecondary,
+                    fontFamily = currentFont
+                )
+            }
+            if (task.completedPomodoros > 0) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (task.completedPomodoros <= 5) {
+                        repeat(task.completedPomodoros) {
+                            Text("🍅", fontSize = 16.scaledSp)
+                            Spacer(modifier = Modifier.width(2.dp))
+                        }
+                    } else {
+                        Text("🍅", fontSize = 16.scaledSp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(text = "x${task.completedPomodoros}", fontWeight = FontWeight.Bold, color = currentTheme.textPrimary, fontFamily = currentFont)
+                    }
+                }
+                Spacer(modifier = Modifier.width(16.scaledDp))
+            }
+            
+            androidx.compose.animation.AnimatedVisibility(
+                visible = isSelected,
+                enter = androidx.compose.animation.scaleIn() + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.scaleOut() + androidx.compose.animation.fadeOut()
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = "Selected",
+                    tint = Color(task.categoryColor.toULong()),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            
+            if (!isSelected) {
+                IconButton(onClick = {
+                    try {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    } catch (e: Exception) {}
+                    onDelete()
+                }) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFFEF9A9A))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PremiumJumpingTextPreview(text: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val currentTheme = com.example.ui.theme.LocalAppTheme.current
+    val protectionStates = com.example.ui.rememberSystemProtectionStates()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp)
+            .height(44.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (text.isEmpty()) {
+            Text(
+                text = "Type task name...",
+                fontSize = 18.scaledSp,
+                color = currentTheme.textSecondary.copy(alpha = 0.5f),
+                fontFamily = AppFontFamily,
+                fontWeight = FontWeight.Medium
+            )
+        } else {
+            text.forEachIndexed { index, char ->
+                val animatedOffset = remember(index) { androidx.compose.animation.core.Animatable(-30f) }
+                val animatedScale = remember(index) { androidx.compose.animation.core.Animatable(0.4f) }
+                val animatedAlpha = remember(index) { androidx.compose.animation.core.Animatable(0f) }
+                
+                LaunchedEffect(key1 = index) {
+                    animatedOffset.animateTo(
+                        targetValue = 0f,
+                        animationSpec = spring(
+                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+                        )
+                    )
+                }
+                LaunchedEffect(key1 = index) {
+                    animatedScale.animateTo(
+                        targetValue = 1f,
+                        animationSpec = spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy)
+                    )
+                }
+                LaunchedEffect(key1 = index) {
+                    animatedAlpha.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(durationMillis = 250)
+                    )
+                }
+                
+                Text(
+                    text = if (char == ' ') " " else char.toString(),
+                    fontSize = 24.scaledSp,
+                    fontFamily = AppFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = currentTheme.textPrimary,
+                    modifier = Modifier
+                        .graphicsLayer {
+                            translationY = animatedOffset.value
+                            scaleX = animatedScale.value
+                            scaleY = animatedScale.value
+                            this.alpha = animatedAlpha.value
+                        }
+                        .padding(horizontal = 1.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onCancel, // Allow platform click outside and back press dismiss
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnClickOutside = false,
+            dismissOnBackPress = true // Support system back button for convenience
+        )
+    ) {
+        var animateIn by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+        animateIn = true
+    }
+        val scale by animateFloatAsState(
+            targetValue = if (animateIn) 1f else 0.8f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow
+            ),
+            label = "dialogScale"
+        )
+        val alpha by animateFloatAsState(
+            targetValue = if (animateIn) 1f else 0f,
+            animationSpec = tween(durationMillis = 250),
+            label = "dialogAlpha"
+        )
+
+        val view = androidx.compose.ui.platform.LocalView.current
+        val currentTheme = LocalAppTheme.current
+        val currentFont = LocalAppFont.current
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.4f * alpha))
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = { focusManager.clearFocus() })
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        this.alpha = alpha
+                    }
+                    .shadow(elevation = 12.dp, shape = RoundedCornerShape(28.dp), spotColor = currentTheme.shadowColor)
+                    .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(28.dp))
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = { focusManager.clearFocus() })
+                    },
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                var title by remember { mutableStateOf("") }
+                
+                val categories = listOf(
+                    Pair("Study", Color(0xFF81D4FA)),
+                    Pair("Work", Color(0xFFA5D6A7)),
+                    Pair("Read", Color(0xFFCE93D8)),
+                    Pair("Rest", Color(0xFFFFAB91))
+                )
+                var selectedCategory by remember { mutableStateOf(categories[0]) }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(Unit) {
+                            detectTapGestures(onTap = { focusManager.clearFocus() })
+                        }
+                        .padding(24.dp)
+                ) {
+                    Text(
+                        text = "New Task",
+                        fontFamily = CursiveFontFamily,
+                        fontSize = 28.scaledSp,
+                        fontWeight = FontWeight.Bold,
+                        color = currentTheme.textPrimary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    PremiumJumpingTextPreview(text = title)
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text("Task Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            cursorColor = Color.Black,
+                            focusedBorderColor = currentTheme.textPrimary,
+                            unfocusedBorderColor = Color.LightGray,
+                            focusedLabelColor = currentTheme.textPrimary
+                        ),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                        ),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                            onDone = {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                } catch (e: Exception) {}
+                                onSave(title.ifEmpty { "Do nothing" }, selectedCategory.first, selectedCategory.second.value.toLong())
+                            }
+                        ),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Category", fontSize = 14.scaledSp, color = currentTheme.textSecondary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        categories.forEach { cat ->
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(if (selectedCategory == cat) cat.second else cat.second.copy(alpha = 0.3f))
+                                    .border(if (selectedCategory == cat) 2.dp else 0.dp, Color.Black, CircleShape)
+                                    .clickable {
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                        } catch (e: Exception) {}
+                                        selectedCategory = cat
+                                    }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                        TextButton(
+                            onClick = {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                } catch (e: Exception) {}
+                                onCancel()
+                            }
+                        ) {
+                            Text("Cancel", color = currentTheme.textSecondary, fontWeight = FontWeight.Medium, fontFamily = currentFont)
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        com.example.ui.components.PomoButton(
+                            text = "Save Task",
+                            onClick = {
+                                onSave(title.ifEmpty { "Focus Task" }, selectedCategory.first, selectedCategory.second.value.toLong())
+                            },
+                            containerColor = currentTheme.primary,
+                            contentColor = Color.White,
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = 4.dp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AnimatedScaleBox(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    shape: androidx.compose.ui.graphics.Shape = CircleShape,
+    elevation: androidx.compose.ui.unit.Dp = 6.dp,
+    shadowColor: androidx.compose.ui.graphics.Color = Color.Black.copy(alpha = 0.2f),
+    content: @Composable () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed && enabled) 0.90f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "scale"
+    )
+    val currentElevation by animateDpAsState(
+        targetValue = if (isPressed && enabled) 1.5.dp else if (enabled) elevation else 0.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "elevation"
+    )
+    val view = androidx.compose.ui.platform.LocalView.current
+    
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                alpha = if (enabled) 1f else 0.5f
+            }
+            .shadow(
+                elevation = currentElevation,
+                shape = shape,
+                clip = false,
+                spotColor = shadowColor,
+                ambientColor = shadowColor.copy(alpha = shadowColor.alpha * 0.4f)
+            )
+            .clip(shape)
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = androidx.compose.material3.ripple(bounded = true),
+                onClick = {
+                    try {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    } catch (e: Exception) {}
+                    onClick()
+                }
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        content()
+    }
+}
+
+@Composable
+fun AppControls(state: TimerManager.TimerState, context: android.content.Context, onStartAttempt: () -> Unit = {}) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val currentTheme = LocalAppTheme.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AnimatedScaleBox(
+            shape = CircleShape,
+            elevation = 5.dp,
+            shadowColor = Color.Black.copy(alpha = 0.15f),
+            onClick = {
+                val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_STOP }
+                context.startService(intent)
+            }
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(currentTheme.surface)
+                    .border(1.5.dp, currentTheme.cardBorder, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.Stop, contentDescription = "Stop", tint = currentTheme.textPrimary, modifier = Modifier.size(28.dp))
+            }
+        }
+
+        Spacer(modifier = Modifier.width(26.dp))
+
+        val isRunning = state == TimerManager.TimerState.RUNNING
+        AnimatedScaleBox(
+            shape = CircleShape,
+            elevation = 8.dp,
+            shadowColor = currentTheme.shadowColor,
+            onClick = {
+                if (isRunning) {
+                    val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_PAUSE }
+                    context.startService(intent)
+                } else {
+                    onStartAttempt()
+                }
+            }
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                            colors = listOf(currentTheme.primaryLight, currentTheme.primary)
+                        )
+                    )
+                    .border(2.dp, Color.White.copy(alpha = 0.8f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                AnimatedContent(targetState = isRunning, label = "playPause") { running ->
+                    Icon(
+                        if (running) Icons.Filled.Pause else Icons.Filled.PlayArrow, 
+                        contentDescription = if (running) "Pause" else "Start", 
+                        tint = Color.White, 
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(26.dp))
+
+        val isBreakMode by TimerManager.isBreakMode.collectAsState()
+        AnimatedScaleBox(
+            enabled = !isRunning,
+            shape = CircleShape,
+            elevation = 5.dp,
+            shadowColor = Color.Black.copy(alpha = 0.15f),
+            onClick = {
+                val isServiceActive = state != TimerManager.TimerState.STOPPED
+                if (isServiceActive) {
+                    val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_TOGGLE_MODE }
+                    context.startService(intent)
+                } else {
+                    val newIsBreak = !isBreakMode
+                    TimerManager.setBreakMode(newIsBreak)
+                    TimerManager.updateState(TimerManager.TimerState.STOPPED)
+                    TimerManager.updateTime(if (newIsBreak) TimerManager.breakTimeSeconds.value else TimerManager.focusTimeSeconds.value)
+                    TimerManager.setTask(-1, if (newIsBreak) "Break Time!" else "Focus Time!")
+                }
+            }
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(currentTheme.surface)
+                    .border(1.5.dp, currentTheme.cardBorder, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Sync,
+                    contentDescription = "Switch Mode",
+                    tint = currentTheme.textPrimary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SlidingTimer(timeRemaining: Int, fontSize: androidx.compose.ui.unit.TextUnit = 64.scaledSp) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val timeString = "%02d:%02d".format(timeRemaining / 60, timeRemaining % 60)
+    Row(
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        timeString.forEachIndexed { index, char ->
+            if (char == ':') {
+                Text(
+                    text = ":",
+                    fontSize = fontSize,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = LocalAppFont.current,
+                    color = LocalAppTheme.current.textPrimary,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+            } else {
+                AnimatedContent(
+                    targetState = char,
+                    transitionSpec = {
+                        val enterSpring = spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                        val exitSpring = spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
+                        val alphaEnter = spring<Float>(stiffness = Spring.StiffnessLow)
+                        val alphaExit = spring<Float>(stiffness = Spring.StiffnessMedium)
+                        
+                        if (targetState < initialState || (initialState == '0' && targetState == '9') || (initialState == '0' && targetState == '5')) {
+                            // Counting down
+                            (slideInVertically(enterSpring) { height -> -height } + fadeIn(alphaEnter)) togetherWith
+                                    (slideOutVertically(exitSpring) { height -> height } + fadeOut(alphaExit))
+                        } else {
+                            // Counting up or reset
+                            (slideInVertically(enterSpring) { height -> height } + fadeIn(alphaEnter)) togetherWith
+                                    (slideOutVertically(exitSpring) { height -> -height } + fadeOut(alphaExit))
+                        }.using(SizeTransform(clip = false))
+                    },
+                    label = "digitAnimation_$index"
+                ) { targetDigit ->
+                    Text(
+                        text = targetDigit.toString(),
+                        fontSize = fontSize,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = LocalAppFont.current,
+                        color = LocalAppTheme.current.textPrimary
+                    )
                 }
             }
         }
@@ -2192,275 +3077,6 @@ fun AlarmRingingLockScreen(
                         modifier = Modifier.padding(horizontal = 24.dp)
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun TaskItemRow(
-    task: com.example.data.TaskItem,
-    isSelected: Boolean,
-    onSelect: () -> Unit,
-    onDelete: () -> Unit
-) {
-    val currentTheme = LocalAppTheme.current
-    Card(
-        onClick = onSelect,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) currentTheme.surface else currentTheme.surface.copy(alpha = 0.5f)
-        ),
-        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, Color(task.categoryColor).copy(alpha = 0.5f)) else null
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.scaledDp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color(task.categoryColor)))
-                    Text(task.name, fontSize = 15.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.textPrimary)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(task.categoryName, fontSize = 12.scaledSp, color = currentTheme.textSecondary)
-            }
-            if (isSelected) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = "Selected", tint = Color(task.categoryColor))
-            } else {
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = currentTheme.textSecondary)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun AddTaskCard(
-    onSave: (String, String, Long) -> Unit,
-    onCancel: () -> Unit
-) {
-    var name by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("") }
-    val currentTheme = LocalAppTheme.current
-    val colors = listOf(0xFF4CAF50, 0xFF2196F3, 0xFFFF9800, 0xFFE91E63, 0xFF9C27B0, 0xFF00BCD4)
-    var selectedColor by remember { mutableStateOf(colors[0]) }
-
-    androidx.compose.ui.window.Dialog(onDismissRequest = onCancel) {
-        Card(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = currentTheme.surface)
-        ) {
-            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("New Task", fontSize = 20.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.textPrimary)
-                
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Task Name") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = currentTheme.primary,
-                        focusedLabelColor = currentTheme.primary,
-                        unfocusedTextColor = currentTheme.textPrimary,
-                        focusedTextColor = currentTheme.textPrimary
-                    )
-                )
-                
-                OutlinedTextField(
-                    value = category,
-                    onValueChange = { category = it },
-                    label = { Text("Category") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = currentTheme.primary,
-                        focusedLabelColor = currentTheme.primary,
-                        unfocusedTextColor = currentTheme.textPrimary,
-                        focusedTextColor = currentTheme.textPrimary
-                    )
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    colors.forEach { colorVal ->
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(Color(colorVal))
-                                .clickable { selectedColor = colorVal }
-                                .border(
-                                    width = 2.dp,
-                                    color = if (selectedColor == colorVal) currentTheme.textPrimary else Color.Transparent,
-                                    shape = CircleShape
-                                )
-                        )
-                    }
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onCancel) { Text("Cancel", color = currentTheme.textSecondary) }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = { if (name.isNotBlank() && category.isNotBlank()) onSave(name, category, selectedColor) },
-                        colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primary)
-                    ) {
-                        Text("Save", color = Color.White)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun AppControls(
-    state: TimerManager.TimerState,
-    context: android.content.Context,
-    onStartAttempt: () -> Unit
-) {
-    val currentTheme = LocalAppTheme.current
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        val isRunning = state == TimerManager.TimerState.RUNNING
-        
-        if (state != TimerManager.TimerState.STOPPED) {
-            AnimatedScaleBox(
-                enabled = true,
-                shape = CircleShape,
-                elevation = 2.dp,
-                shadowColor = Color.Black.copy(alpha = 0.1f),
-                onClick = {
-                    val intent = android.content.Intent(context, com.example.service.TimerService::class.java).apply { action = com.example.service.TimerService.ACTION_STOP }
-                    context.startService(intent)
-                }
-            ) {
-                Box(
-                    modifier = Modifier.size(56.dp).background(currentTheme.surface, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Filled.Stop, contentDescription = "Stop", tint = currentTheme.textPrimary)
-                }
-            }
-            Spacer(modifier = Modifier.width(24.dp))
-        }
-
-        AnimatedScaleBox(
-            enabled = true,
-            shape = CircleShape,
-            elevation = 6.dp,
-            shadowColor = currentTheme.primary.copy(alpha = 0.4f),
-            onClick = {
-                if (state == TimerManager.TimerState.STOPPED) {
-                    onStartAttempt()
-                } else if (isRunning) {
-                    val intent = android.content.Intent(context, com.example.service.TimerService::class.java).apply { action = com.example.service.TimerService.ACTION_PAUSE }
-                    context.startService(intent)
-                } else {
-                    val intent = android.content.Intent(context, com.example.service.TimerService::class.java).apply { action = com.example.service.TimerService.ACTION_START }
-                    context.startService(intent)
-                }
-            }
-        ) {
-            Box(
-                modifier = Modifier.size(72.dp).background(currentTheme.primary, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                AnimatedContent(targetState = isRunning, label = "playPause") { running ->
-                    Icon(
-                        if (running) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (running) "Pause" else "Start",
-                        tint = Color.White,
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun AnimatedScaleBox(
-    enabled: Boolean = true,
-    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
-    elevation: androidx.compose.ui.unit.Dp = 0.dp,
-    shadowColor: Color = Color.Black.copy(alpha = 0.2f),
-    onClick: () -> Unit,
-    content: @Composable () -> Unit
-) {
-    var isPressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.92f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "scale"
-    )
-
-    Box(
-        modifier = Modifier
-            .scale(scale)
-            .shadow(elevation, shape, spotColor = shadowColor)
-            .clip(shape)
-            .pointerInput(enabled) {
-                if (enabled) {
-                    detectTapGestures(
-                        onPress = {
-                            isPressed = true
-                            try {
-                                awaitRelease()
-                            } finally {
-                                isPressed = false
-                            }
-                        },
-                        onTap = { onClick() }
-                    )
-                }
-            }
-    ) {
-        content()
-    }
-}
-
-@Composable
-fun SlidingTimer(timeRemaining: Int, fontSize: androidx.compose.ui.unit.TextUnit) {
-    val currentTheme = LocalAppTheme.current
-    val currentFont = LocalAppFont.current
-    val m = timeRemaining / 60
-    val s = timeRemaining % 60
-    val timeStr = String.format("%02d:%02d", m, s)
-    
-    Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        timeStr.forEachIndexed { index, char ->
-            AnimatedContent(
-                targetState = char,
-                transitionSpec = {
-                    val enterSpring = spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
-                    val exitSpring = spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
-                    
-                    if (targetState < initialState || (initialState == '0' && targetState == '9') || (initialState == '0' && targetState == '5')) {
-                        (slideInVertically(enterSpring) { h -> -h } + fadeIn()) togetherWith 
-                                (slideOutVertically(exitSpring) { h -> h } + fadeOut())
-                    } else {
-                        (slideInVertically(enterSpring) { h -> h } + fadeIn()) togetherWith 
-                                (slideOutVertically(exitSpring) { h -> -h } + fadeOut())
-                    }.using(SizeTransform(clip = false))
-                },
-                label = "digitAnimation"
-            ) { targetDigit ->
-                Text(
-                    text = targetDigit.toString(),
-                    fontSize = fontSize,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = currentFont,
-                    color = currentTheme.textPrimary
-                )
             }
         }
     }
