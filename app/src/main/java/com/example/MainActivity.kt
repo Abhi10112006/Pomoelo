@@ -616,13 +616,23 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                             color = currentTheme.textPrimary,
                             modifier = Modifier.padding(bottom = 0.dp)
                         )
-                        Text(
-                            text = "Hi, $userName",
-                            fontSize = 12.scaledSp,
-                            fontFamily = currentFont,
-                            color = currentTheme.textSecondary,
-                            modifier = Modifier.padding(top = 0.dp)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Hi, $userName",
+                                fontSize = 12.scaledSp,
+                                fontFamily = currentFont,
+                                color = currentTheme.textSecondary,
+                                modifier = Modifier.padding(top = 0.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "[TEST DATA]",
+                                fontSize = 10.scaledSp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Red,
+                                modifier = Modifier.clickable { viewModel.injectMockData() }
+                            )
+                        }
                     }
                 }
                 
@@ -698,7 +708,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f, fill = false)
+                    .weight(1f)
             ) {
                 AnimatedContent(
                     targetState = timerState == TimerManager.TimerState.STOPPED,
@@ -711,50 +721,58 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                     label = "bottomContent"
                 ) { stopped ->
                     if (stopped) {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(12.scaledDp),
-                            modifier = Modifier.fillMaxWidth().padding(bottom = bottomPadding + 88.dp)
+                        BoxWithConstraints(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = bottomPadding + 88.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 4.scaledDp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                            val availableHeight = maxHeight
+                            val headerSpace = 48.dp
+                            val buttonSpace = 56.dp
+                            val taskSpace = 84.dp
+                            
+                            val usableHeightForTasks = availableHeight - headerSpace - buttonSpace
+                            val calculatedFit = (usableHeightForTasks / taskSpace).toInt()
+                            val maxPreviewTasks = calculatedFit.coerceIn(1, 3)
+
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(12.scaledDp),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(
-                                    text = "Your Tasks",
-                                    fontSize = 20.scaledSp,
-                                    fontFamily = AppFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    color = currentTheme.textPrimary
-                                )
-                                IconButton(onClick = { viewModel.setAddingTask(true) }, modifier = Modifier.size(36.dp)) {
-                                    Icon(Icons.Filled.Add, contentDescription = "Add Task", tint = currentTheme.textPrimary)
-                                }
-                            }
-                            
-                            val maxPreviewTasks = when {
-                                adaptiveDimensions.isVeryCompact -> if (hasBanner) 1 else 2
-                                adaptiveDimensions.isCompact -> if (hasBanner) 2 else 3
-                                hasBanner -> 3
-                                else -> 3
-                            }
-                            
-                            val previewTasks = allTasks.take(maxPreviewTasks)
-                            previewTasks.forEach { task ->
-                                TaskItemRow(
-                                    task = task,
-                                    isSelected = currentTaskId == task.id,
-                                    onSelect = { viewModel.setTask(task.id, task.name, task.categoryColor) },
-                                    onDelete = { viewModel.deleteTask(task) }
-                                )
-                            }
-                            
-                            if (allTasks.size > maxPreviewTasks) {
-                                TextButton(
-                                    onClick = { showAllTasksSheet = true },
-                                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.scaledDp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("View all tasks →", color = currentTheme.textSecondary, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = "Your Tasks",
+                                        fontSize = 20.scaledSp,
+                                        fontFamily = AppFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        color = currentTheme.textPrimary
+                                    )
+                                    IconButton(onClick = { viewModel.setAddingTask(true) }, modifier = Modifier.size(36.dp)) {
+                                        Icon(Icons.Filled.Add, contentDescription = "Add Task", tint = currentTheme.textPrimary)
+                                    }
+                                }
+                                
+                                val previewTasks = allTasks.take(maxPreviewTasks)
+                                previewTasks.forEach { task ->
+                                    TaskItemRow(
+                                        task = task,
+                                        isSelected = currentTaskId == task.id,
+                                        onSelect = { viewModel.setTask(task.id, task.name, task.categoryColor) },
+                                        onDelete = { viewModel.deleteTask(task) }
+                                    )
+                                }
+                                
+                                if (allTasks.size > maxPreviewTasks) {
+                                    TextButton(
+                                        onClick = { showAllTasksSheet = true },
+                                        modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp)
+                                    ) {
+                                        Text("View all tasks →", color = currentTheme.textSecondary, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }

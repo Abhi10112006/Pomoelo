@@ -46,6 +46,29 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
         emptyList()
     )
 
+    fun injectMockData() {
+        viewModelScope.launch {
+            val baseTime = System.currentTimeMillis()
+            val tasks = listOf(
+                TaskItem(name = "Design Mockups", categoryName = "Work", categoryColor = 0xFF3F51B5, timestamp = baseTime),
+                TaskItem(name = "Fix Bug #142", categoryName = "Coding", categoryColor = 0xFFF44336, timestamp = baseTime),
+                TaskItem(name = "Design Mockups", categoryName = "Freelance", categoryColor = 0xFF4CAF50, timestamp = baseTime), // same name diff color
+                TaskItem(name = "Read Docs", categoryName = "Learning", categoryColor = 0xFFFFC107, timestamp = baseTime)
+            )
+            tasks.forEach { database.taskDao().insertTask(it) }
+            
+            val sessions = listOf(
+                TimerSession(taskName = "Legacy Task", isBreak = false, durationMinutes = 25, startTime = baseTime - 86400000 * 4, endTime = baseTime - 86400000 * 4 + 1500000, taskColor = null),
+                TimerSession(taskName = "Break", isBreak = true, durationMinutes = 5, startTime = baseTime - 86400000 * 4 + 1500000, endTime = baseTime - 86400000 * 4 + 1800000, taskColor = null),
+                TimerSession(taskName = "Design Mockups", isBreak = false, durationMinutes = 25, startTime = baseTime - 86400000 * 2, endTime = baseTime - 86400000 * 2 + 1500000, taskColor = 0xFF3F51B5),
+                TimerSession(taskName = "Fix Bug #142", isBreak = false, durationMinutes = 45, startTime = baseTime - 86400000 * 1, endTime = baseTime - 86400000 * 1 + 2700000, taskColor = 0xFFF44336),
+                TimerSession(taskName = "Design Mockups", isBreak = false, durationMinutes = 30, startTime = baseTime - 3600000, endTime = baseTime - 3600000 + 1800000, taskColor = 0xFF4CAF50),
+                TimerSession(taskName = "Break", isBreak = true, durationMinutes = 10, startTime = baseTime - 1800000, endTime = baseTime - 1800000 + 600000, taskColor = null)
+            )
+            sessions.forEach { database.sessionDao().insertSession(it) }
+        }
+    }
+
     fun clearAllData() {
         viewModelScope.launch {
             database.sessionDao().deleteAllSessions()
