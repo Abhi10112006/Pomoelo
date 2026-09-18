@@ -487,10 +487,13 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
     val currentQuote by viewModel.currentQuote.collectAsState()
     val timeRemaining by viewModel.timeRemainingSeconds.collectAsState()
     val currentTaskName by viewModel.currentTaskName.collectAsState()
+    val currentTaskId by com.example.service.TimerManager.currentTaskId.collectAsState()
+    val currentTaskColor by com.example.service.TimerManager.currentTaskColor.collectAsState()
     val allTasks by viewModel.allTasks.collectAsState()
     val isAddingTask by viewModel.isAddingTask.collectAsState()
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val view = androidx.compose.ui.platform.LocalView.current
+    var showAllTasksSheet by remember { mutableStateOf(false) }
 
     val showSettings by viewModel.isSettingsOpen.collectAsState()
     val settingsInitialTab by viewModel.settingsTab.collectAsState()
@@ -546,35 +549,8 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                 detectTapGestures(onTap = { focusManager.clearFocus() })
             }.imePadding(),
             containerColor = Color.Transparent,
-            contentWindowInsets = WindowInsets(0.dp),
-            floatingActionButton = {
-            AnimatedVisibility(
-                visible = !isAddingTask && timerState == TimerManager.TimerState.STOPPED,
-                enter = scaleIn() + fadeIn(),
-                exit = scaleOut() + fadeOut(),
-                modifier = Modifier.offset(y = -(bottomPadding + 16.dp))
-            ) {
-                FloatingActionButton(
-                    onClick = {
-                        try {
-                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                        } catch (e: Exception) {}
-                        viewModel.setAddingTask(true)
-                    },
-                    containerColor = currentTheme.primary,
-                    contentColor = Color.White,
-                    shape = CircleShape,
-                    modifier = Modifier.shadow(
-                        elevation = 6.dp,
-                        shape = CircleShape,
-                        spotColor = currentTheme.shadowColor
-                    )
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = "Add Task")
-                }
-            }
-        }
-    ) { innerPadding ->
+            contentWindowInsets = WindowInsets(0.dp)
+        ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -683,6 +659,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                 state = timerState,
                 isBreakMode = isBreakMode,
                 taskName = currentTaskName,
+                currentTask = allTasks.find { it.id == currentTaskId },
                 context = context,
                 circleSize = circleSize
             )
@@ -710,8 +687,8 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
 
             Box(
                 modifier = Modifier
-                    .weight(1f)
                     .fillMaxWidth()
+                    .wrapContentHeight()
             ) {
                 AnimatedContent(
                     targetState = timerState == TimerManager.TimerState.STOPPED,
@@ -724,27 +701,44 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                     label = "bottomContent"
                 ) { stopped ->
                     if (stopped) {
-                        LazyColumn(
+                        Column(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = bottomPadding + 88.dp)
+                            modifier = Modifier.fillMaxWidth().padding(bottom = bottomPadding + 88.dp)
                         ) {
-                            item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text(
                                     text = "Your Tasks",
                                     fontSize = 20.scaledSp,
                                     fontFamily = AppFontFamily,
                                     fontWeight = FontWeight.Bold,
-                                    color = currentTheme.textPrimary,
-                                    modifier = Modifier.padding(bottom = 16.dp)
+                                    color = currentTheme.textPrimary
                                 )
+                                IconButton(onClick = { viewModel.setAddingTask(true) }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Filled.Add, contentDescription = "Add Task", tint = currentTheme.textPrimary)
+                                }
                             }
-                            items(allTasks, key = { it.id }) { task ->
+                            
+                            val previewTasks = allTasks.take(3)
+                            previewTasks.forEach { task ->
                                 TaskItemRow(
                                     task = task,
+                                    isSelected = currentTaskId == task.id,
                                     onSelect = { viewModel.setTask(task.id, task.name, task.categoryColor) },
                                     onDelete = { viewModel.deleteTask(task) }
                                 )
+                            }
+                            
+                            if (allTasks.size > 3) {
+                                TextButton(
+                                    onClick = { showAllTasksSheet = true },
+                                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp)
+                                ) {
+                                    Text("View all tasks →", color = currentTheme.textSecondary, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     } else {
@@ -870,6 +864,46 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
             },
             onCancel = { viewModel.setAddingTask(false) }
         )
+    }
+
+    if (showAllTasksSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showAllTasksSheet = false },
+            containerColor = currentTheme.background,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+            ) {
+                Text(
+                    text = "All Tasks",
+                    fontSize = 24.scaledSp,
+                    fontFamily = AppFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = currentTheme.textPrimary,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(bottom = 32.dp)
+                ) {
+                    items(allTasks, key = { it.id }) { task ->
+                        TaskItemRow(
+                            task = task,
+                            isSelected = currentTaskId == task.id,
+                            onSelect = { 
+                                viewModel.setTask(task.id, task.name, task.categoryColor)
+                                showAllTasksSheet = false
+                            },
+                            onDelete = { viewModel.deleteTask(task) }
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1395,18 +1429,34 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
 }
 
 @Composable
-fun TaskItemRow(task: com.example.data.TaskItem, onSelect: (com.example.data.TaskItem) -> Unit, onDelete: () -> Unit, modifier: Modifier = Modifier) {
+fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, onSelect: (com.example.data.TaskItem) -> Unit, onDelete: () -> Unit, modifier: Modifier = Modifier) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val view = androidx.compose.ui.platform.LocalView.current
     val currentTheme = LocalAppTheme.current
     val currentFont = LocalAppFont.current
+    
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isSelected) 1.02f else 1f,
+        animationSpec = androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy, stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
+        label = "scale"
+    )
+    val borderColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isSelected) Color(task.categoryColor.toULong()) else currentTheme.cardBorder,
+        label = "borderColor"
+    )
+    val borderWidth by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isSelected) 2.dp else 1.dp,
+        label = "borderWidth"
+    )
+    
     Card(
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+        colors = CardDefaults.cardColors(containerColor = if (isSelected) Color(task.categoryColor.toULong()).copy(alpha = 0.05f) else currentTheme.surface),
         modifier = modifier
             .fillMaxWidth()
-            .shadow(elevation = 3.dp, shape = RoundedCornerShape(24.dp), spotColor = currentTheme.shadowColor)
-            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(24.dp))
+            .scale(scale)
+            .shadow(elevation = if (isSelected) 8.dp else 3.dp, shape = RoundedCornerShape(24.dp), spotColor = if (isSelected) Color(task.categoryColor.toULong()) else currentTheme.shadowColor)
+            .border(borderWidth, borderColor, RoundedCornerShape(24.dp))
             .clip(RoundedCornerShape(24.dp))
             .clickable {
                 try {
@@ -1459,13 +1509,29 @@ fun TaskItemRow(task: com.example.data.TaskItem, onSelect: (com.example.data.Tas
                 }
                 Spacer(modifier = Modifier.width(16.dp))
             }
-            IconButton(onClick = {
-                try {
-                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                } catch (e: Exception) {}
-                onDelete()
-            }) {
-                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFFEF9A9A))
+            
+            androidx.compose.animation.AnimatedVisibility(
+                visible = isSelected,
+                enter = androidx.compose.animation.scaleIn() + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.scaleOut() + androidx.compose.animation.fadeOut()
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = "Selected",
+                    tint = Color(task.categoryColor.toULong()),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            
+            if (!isSelected) {
+                IconButton(onClick = {
+                    try {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    } catch (e: Exception) {}
+                    onDelete()
+                }) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFFEF9A9A))
+                }
             }
         }
     }
@@ -1937,6 +2003,7 @@ fun TimerDisplay(
     state: TimerManager.TimerState,
     isBreakMode: Boolean,
     taskName: String,
+    currentTask: com.example.data.TaskItem? = null,
     context: android.content.Context,
     circleSize: androidx.compose.ui.unit.Dp = 260.dp
 ) {
@@ -2046,43 +2113,93 @@ fun TimerDisplay(
         
         Spacer(modifier = Modifier.height(if (circleSize < 200.dp) 16.dp else if (circleSize < 240.dp) 24.dp else 40.dp))
         
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
+        if (currentTask != null) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = currentTheme.surface.copy(alpha = 0.5f)),
                 modifier = Modifier
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(currentTheme.primary)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Current Task",
-                fontSize = 14.scaledSp,
-                color = currentTheme.textSecondary,
-                fontFamily = LocalAppFont.current
-            )
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = animatedText,
-                fontSize = 24.scaledSp,
-                fontFamily = LocalAppFont.current,
-                color = currentTheme.textPrimary,
-                fontWeight = FontWeight.Bold
-            )
-            val cursorAlpha = rememberInfiniteTransition(label = "cursor").animateFloat(
-                initialValue = 1f, targetValue = 0f, 
-                animationSpec = infiniteRepeatable(tween(500), RepeatMode.Reverse),
-                label = "cursorAlpha"
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Box(
-                modifier = Modifier
-                    .width(4.dp)
-                    .height(28.dp)
-                    .clip(CircleShape)
-                    .background(currentTheme.primary.copy(alpha = cursorAlpha.value))
-            )
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(16.dp))
+                    .clickable { 
+                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch(e: Exception){}
+                        TimerManager.setTask(-1, "Focus Time!")
+                    }
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .clip(CircleShape)
+                            .background(Color(currentTask.categoryColor.toULong()))
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = currentTask.name,
+                            fontSize = 15.scaledSp,
+                            color = currentTheme.textPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = LocalAppFont.current
+                        )
+                        Text(
+                            text = currentTask.categoryName,
+                            fontSize = 12.scaledSp,
+                            color = currentTheme.textSecondary,
+                            fontFamily = LocalAppFont.current
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Deselect Task",
+                        tint = currentTheme.textSecondary.copy(alpha = 0.5f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(currentTheme.primary)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (isBreakMode) "Break Time!" else "Focus Time!",
+                    fontSize = 16.scaledSp,
+                    color = currentTheme.textSecondary,
+                    fontFamily = LocalAppFont.current,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Choose a task",
+                    fontSize = 24.scaledSp,
+                    fontFamily = LocalAppFont.current,
+                    color = currentTheme.textPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+                val cursorAlpha = rememberInfiniteTransition(label = "cursor").animateFloat(
+                    initialValue = 1f, targetValue = 0f, 
+                    animationSpec = infiniteRepeatable(tween(500), RepeatMode.Reverse),
+                    label = "cursorAlpha"
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Box(
+                    modifier = Modifier
+                        .width(4.dp)
+                        .height(28.dp)
+                        .clip(CircleShape)
+                        .background(currentTheme.primary.copy(alpha = cursorAlpha.value))
+                )
+            }
         }
     }
 }
