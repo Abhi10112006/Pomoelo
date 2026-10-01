@@ -84,6 +84,28 @@ fun Modifier.historyCardShadow(
     clip = false
 )
 
+fun safeParseColor(colorLong: Long?, fallback: Color): Color {
+    if (colorLong == null || colorLong == 0L) return fallback
+    return try {
+        val upper32 = (colorLong ushr 32).toInt()
+        val lower32 = (colorLong and 0xFFFFFFFFL).toInt()
+        val rawArgb = if (upper32 != 0 && lower32 in 0..60) {
+            upper32
+        } else {
+            lower32
+        }
+        val safeArgb = if ((rawArgb and -0x1000000) == 0 && rawArgb != 0) {
+            rawArgb or -0x1000000
+        } else {
+            rawArgb
+        }
+        val c = Color(safeArgb)
+        if (c.alpha >= 0f) c else fallback
+    } catch (e: Throwable) {
+        fallback
+    }
+}
+
 fun resolveTaskColor(taskName: String, sessions: List<TimerSession>, allTasks: List<TaskItem>, currentTheme: ThemeOption): Color {
     val isDefaultTask = taskName.isBlank() || taskName == "Focus Time!" || taskName == "Deep Focus Session"
     if (isDefaultTask) return currentTheme.primary
@@ -96,20 +118,12 @@ fun resolveTaskColor(taskName: String, sessions: List<TimerSession>, allTasks: L
         .maxByOrNull { it.startTime }
         
     if (targetSession?.taskColor != null) {
-        return try {
-            Color(targetSession.taskColor.toULong())
-        } catch (e: Exception) {
-            currentTheme.primary
-        }
+        return safeParseColor(targetSession.taskColor, currentTheme.primary)
     }
     
     val task = allTasks.find { it.name == taskName }
     return if (task != null) {
-        try {
-            Color(task.categoryColor.toULong())
-        } catch (e: Exception) {
-            currentTheme.primary
-        }
+        safeParseColor(task.categoryColor, currentTheme.textSecondary)
     } else {
         currentTheme.textSecondary // Fallback for unknown/deleted historical task
     }
@@ -314,8 +328,8 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                 } else {
                     // 1. Recent Days (0-7 days ago) - Fully expanded Daily Headers
                     recentDays.forEach { dateMillis ->
-                        stickyHeader {
-                            val dateSessions = sessionsByDay[dateMillis]!!
+                        stickyHeader(key = "hdr_$dateMillis") {
+                            val dateSessions = sessionsByDay[dateMillis] ?: emptyList()
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -335,7 +349,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                 IconButton(
                                     onClick = {
                                         try {
-                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                             view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                                         } catch (e: Exception) {}
                                         showTier2Dialog = true
                                         tier2Title = "Delete Today's Progress?"
@@ -353,10 +367,10 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                             }
                         }
                         
-                        val dateSessions = sessionsByDay[dateMillis]!!
+                        val dateSessions = sessionsByDay[dateMillis] ?: emptyList()
                         val groupedByTask = dateSessions.groupBy { it.taskName }
                         
-                        items(groupedByTask.entries.toList(), key = { it.key + dateMillis.toString() }) { (taskName, sessions) ->
+                        items(groupedByTask.entries.toList(), key = { "item_${dateMillis}_${it.key}" }) { (taskName, sessions) ->
                             HistorySessionPill(
                                 taskName = taskName,
                                 sessions = sessions,
@@ -373,12 +387,12 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
 
                     // 2. Past Month Days (7-30 days) - Collapsed Micro Summaries
                     if (pastMonthDays.isNotEmpty()) {
-                        item {
+                        item(key = "prev_days_header") {
                             Spacer(modifier = Modifier.height(16.dp))
                             Text("PREVIOUS DAYS", fontSize = 12.scaledSp, letterSpacing = 1.sp, fontWeight = FontWeight.Bold, color = currentTheme.textSecondary, modifier = Modifier.padding(vertical = 8.dp, horizontal = 8.dp), fontFamily = currentFont)
                         }
-                        items(pastMonthDays, key = { it }) { dateMillis ->
-                            val dateSessions = sessionsByDay[dateMillis]!!
+                        items(pastMonthDays, key = { "past_$it" }) { dateMillis ->
+                            val dateSessions = sessionsByDay[dateMillis] ?: emptyList()
                             MicroSummaryPill(
                                 dateMillis = dateMillis,
                                 sessions = dateSessions,
@@ -401,11 +415,11 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
 
                     // 3. Archive (30+ days or past years) - Monthly Collapsed Summaries
                     if (archiveMonths.isNotEmpty()) {
-                        item {
+                        item(key = "archives_header") {
                             Spacer(modifier = Modifier.height(16.dp))
                             Text("ARCHIVES", fontSize = 12.scaledSp, letterSpacing = 1.sp, fontWeight = FontWeight.Bold, color = currentTheme.textSecondary, modifier = Modifier.padding(vertical = 8.dp, horizontal = 8.dp), fontFamily = currentFont)
                         }
-                        items(archiveMonths.entries.toList(), key = { it.key }) { (monthStr, sessions) ->
+                        items(archiveMonths.entries.toList(), key = { "arch_${it.key}" }) { (monthStr, sessions) ->
                             MonthSummaryCard(
                                 monthStr = monthStr,
                                 sessions = sessions,

@@ -31,11 +31,11 @@ data class StudyBlock(
 @Entity(tableName = "sessions")
 data class TimerSession(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val nameSnapshot: String,
+    val nameSnapshot: String = "",
     val colorSnapshot: Long? = null,
     val studyBlockId: Long? = null,
     val sessionType: String = "Focus",
-    val startTime: Long,
+    val startTime: Long = 0L,
     val duration: Int = 0,
     val endTime: Long = startTime + duration * 60000L
 ) {
@@ -59,14 +59,10 @@ data class TimerSession(
         endTime = endTime
     )
 
-    @Ignore
-    val taskName: String = nameSnapshot
-    @Ignore
-    val taskColor: Long? = colorSnapshot
-    @Ignore
-    val isBreak: Boolean = sessionType.equals("Break", ignoreCase = true)
-    @Ignore
-    val durationMinutes: Int = duration
+    val taskName: String get() = nameSnapshot.ifBlank { if (isBreak) "Break" else "Focus Session" }
+    val taskColor: Long? get() = colorSnapshot
+    val isBreak: Boolean get() = sessionType.equals("Break", ignoreCase = true)
+    val durationMinutes: Int get() = duration
 }
 
 @Dao
@@ -229,7 +225,7 @@ interface AlarmDao {
     suspend fun getAlarmById(id: Int): AlarmItem?
 }
 
-@Database(entities = [StudyBlock::class, TaskItem::class, TimerSession::class, AlarmItem::class], version = 5, exportSchema = false)
+@Database(entities = [StudyBlock::class, TaskItem::class, TimerSession::class, AlarmItem::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun studyBlockDao(): StudyBlockDao
     abstract fun taskDao(): TaskDao
@@ -263,6 +259,41 @@ object DatabaseProvider {
         }
     }
 
+    private val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            try {
+                database.execSQL("ALTER TABLE sessions ADD COLUMN nameSnapshot TEXT NOT NULL DEFAULT ''")
+            } catch (e: Exception) {}
+            try {
+                database.execSQL("ALTER TABLE sessions ADD COLUMN colorSnapshot INTEGER DEFAULT NULL")
+            } catch (e: Exception) {}
+            try {
+                database.execSQL("ALTER TABLE sessions ADD COLUMN studyBlockId INTEGER DEFAULT NULL")
+            } catch (e: Exception) {}
+            try {
+                database.execSQL("ALTER TABLE sessions ADD COLUMN sessionType TEXT NOT NULL DEFAULT 'Focus'")
+            } catch (e: Exception) {}
+            try {
+                database.execSQL("ALTER TABLE sessions ADD COLUMN duration INTEGER NOT NULL DEFAULT 0")
+            } catch (e: Exception) {}
+            try {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `study_blocks` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, " +
+                        "`description` TEXT NOT NULL DEFAULT '', " +
+                        "`color` INTEGER NOT NULL, " +
+                        "`startTime` INTEGER NOT NULL DEFAULT 0, " +
+                        "`duration` INTEGER NOT NULL DEFAULT 25, " +
+                        "`repeatRule` TEXT, " +
+                        "`reminderEnabled` INTEGER NOT NULL DEFAULT 0, " +
+                        "`createdAt` INTEGER NOT NULL DEFAULT 0" +
+                    ")"
+                )
+            } catch (e: Exception) {}
+        }
+    }
+
     fun getDatabase(context: android.content.Context): AppDatabase {
         return INSTANCE ?: synchronized(this) {
             val instance = Room.databaseBuilder(
@@ -270,7 +301,7 @@ object DatabaseProvider {
                 AppDatabase::class.java,
                 "pomelo_db_v3_stable"
             )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_5_6)
             .fallbackToDestructiveMigration()
             .fallbackToDestructiveMigrationOnDowngrade()
             .build()

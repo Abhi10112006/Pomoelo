@@ -1,5 +1,6 @@
 package com.example
 
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -1508,8 +1509,9 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
     val currentTheme = LocalAppTheme.current
     val currentFont = LocalAppFont.current
     
+    val taskArgb = (task.categoryColor and 0xFFFFFFFFL).toInt()
     val borderColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (isSelected) Color(task.categoryColor.toULong()) else currentTheme.cardBorder,
+        targetValue = if (isSelected) Color(taskArgb) else currentTheme.cardBorder,
         label = "borderColor"
     )
     val borderWidth by androidx.compose.animation.core.animateDpAsState(
@@ -1518,7 +1520,7 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
     )
     
     val containerColor = if (isSelected) {
-        androidx.compose.ui.graphics.Color(task.categoryColor.toULong()).copy(alpha = 0.05f).compositeOver(currentTheme.surface)
+        androidx.compose.ui.graphics.Color(taskArgb).copy(alpha = 0.05f).compositeOver(currentTheme.surface)
     } else {
         currentTheme.surface
     }
@@ -1549,7 +1551,7 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
                 modifier = Modifier
                     .size(16.scaledDp)
                     .clip(CircleShape)
-                    .background(Color(task.categoryColor.toULong()))
+                    .background(Color(taskArgb))
             )
             Spacer(modifier = Modifier.width(12.scaledDp))
             Column(modifier = Modifier.weight(1f)) {
@@ -1591,7 +1593,7 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
                 Icon(
                     imageVector = Icons.Filled.CheckCircle,
                     contentDescription = "Selected",
-                    tint = Color(task.categoryColor.toULong()),
+                    tint = Color((task.categoryColor and 0xFFFFFFFFL).toInt()),
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -1792,7 +1794,7 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                                 try {
                                     view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                                 } catch (e: Exception) {}
-                                onSave(title.ifEmpty { "Do nothing" }, selectedCategory.first, selectedCategory.second.value.toLong())
+                                onSave(title.ifEmpty { "Do nothing" }, selectedCategory.first, (selectedCategory.second.toArgb().toLong() and 0xFFFFFFFFL))
                             }
                         ),
                         singleLine = true
@@ -1836,7 +1838,7 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                         com.example.ui.components.PomoButton(
                             text = "Save Task",
                             onClick = {
-                                onSave(title.ifEmpty { "Focus Task" }, selectedCategory.first, selectedCategory.second.value.toLong())
+                                onSave(title.ifEmpty { "Focus Task" }, selectedCategory.first, (selectedCategory.second.toArgb().toLong() and 0xFFFFFFFFL))
                             },
                             containerColor = currentTheme.primary,
                             contentColor = Color.White,
@@ -2206,7 +2208,7 @@ fun TimerDisplay(
                         modifier = Modifier
                             .size(14.dp)
                             .clip(CircleShape)
-                            .background(Color(currentTask.categoryColor.toULong()))
+                            .background(Color((currentTask.categoryColor and 0xFFFFFFFFL).toInt()))
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {

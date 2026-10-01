@@ -21,15 +21,19 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
@@ -38,6 +42,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -50,10 +55,11 @@ import com.example.data.StudyBlock
 import com.example.ui.components.scaledSp
 import com.example.ui.theme.LocalAppFont
 import com.example.ui.theme.LocalAppTheme
+import com.example.ui.theme.MonospaceFontFamily
 import java.text.SimpleDateFormat
 import java.util.*
 
-// Safe color helper that avoids any Compose 64-bit color-space packing issues
+// Safe color helper avoiding Compose 64-bit color-space packing issues
 fun parseBlockColor(colorLong: Long): Color {
     val argb = (colorLong and 0xFFFFFFFFL).toInt()
     return Color(argb)
@@ -65,29 +71,23 @@ fun isColorLight(color: Color): Boolean {
 }
 
 private val STUDY_BLOCK_PALETTE = listOf(
-    Pair("Coral Sunrise", 0xFFF28F75L),
-    Pair("Sky Oasis", 0xFF8BB5CAL),
-    Pair("Sage Garden", 0xFF9EAC95L),
-    Pair("Soft Lilac", 0xFFB39DDBL),
+    Pair("Coral", 0xFFF28F75L),
+    Pair("Sky Blue", 0xFF8BB5CAL),
+    Pair("Sage Green", 0xFF9EAC95L),
+    Pair("Lilac", 0xFFB39DDBL),
     Pair("Honey Amber", 0xFFFFCA28L),
     Pair("Warm Peach", 0xFFFFAB91L),
     Pair("Mint Fresh", 0xFF80CBC4L),
     Pair("Wild Rose", 0xFFF48FB1L)
 )
 
-private val DURATION_PRESETS = listOf(
-    Pair("⚡ 15m", 15),
-    Pair("🍅 25m", 25),
-    Pair("🧠 45m", 45),
-    Pair("📚 60m", 60),
-    Pair("⏳ 90m", 90)
-)
+private val DURATION_PRESETS = listOf(15, 25, 45, 60, 90)
 
 private val REPEAT_OPTIONS = listOf(
     Pair("Once", "None"),
-    Pair("Daily ✨", "Daily"),
-    Pair("Weekdays 💼", "Weekdays"),
-    Pair("Weekly 📅", "Weekly")
+    Pair("Daily", "Daily"),
+    Pair("Weekdays", "Weekdays"),
+    Pair("Weekly", "Weekly")
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -132,26 +132,42 @@ fun StudyBlocksScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column(modifier = Modifier.padding(start = 4.dp, top = 6.dp)) {
+                    Column(modifier = Modifier.padding(start = 4.dp, top = 2.dp)) {
+                        Text(
+                            text = "POMOPAL SANCTUARY",
+                            fontFamily = currentFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.scaledSp,
+                            letterSpacing = 1.8.sp,
+                            color = currentTheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Study Sanctuary",
+                                text = "Study Blocks",
                                 fontFamily = currentFont,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 26.scaledSp,
-                                color = currentTheme.textPrimary,
-                                letterSpacing = (-0.5).sp
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 24.scaledSp,
+                                color = currentTheme.textPrimary
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "✨", fontSize = 20.sp)
+                            if (studyBlocks.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(currentTheme.pillActiveBg)
+                                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "${studyBlocks.size}",
+                                        fontFamily = currentFont,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.scaledSp,
+                                        color = currentTheme.primary
+                                    )
+                                }
+                            }
                         }
-                        Text(
-                            text = "Curate your deep work rituals & mindful study hours",
-                            fontFamily = currentFont,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 12.scaledSp,
-                            color = currentTheme.textSecondary
-                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -171,15 +187,16 @@ fun StudyBlocksScreen(
                 },
                 containerColor = currentTheme.primary,
                 contentColor = if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White,
-                shape = CircleShape,
+                shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
-                    .padding(bottom = bottomPadding + 16.dp, end = 16.dp)
+                    .padding(bottom = bottomPadding + 14.dp, end = 12.dp)
+                    .size(56.dp)
                     .testTag("add_study_block_fab")
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = "Create Study Block",
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(26.dp)
                 )
             }
         }
@@ -203,18 +220,18 @@ fun StudyBlocksScreen(
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    top = 10.dp,
+                    top = 4.dp,
                     bottom = bottomPadding + 88.dp
                 ),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Summary Metric Pill Card
+                // Sleek Overview Summary Card
                 item {
                     OverviewSummaryCard(
                         todayCount = todayBlocks.size,
                         totalMinutes = totalPlannedMinutesToday,
                         onQuickFocus = {
-                            viewModel.createQuickFocusSession(25, "Quick Focus", currentTheme.primary.value.toLong())
+                            viewModel.createQuickFocusSession(25, "Quick Focus", (currentTheme.primary.toArgb().toLong() and 0xFFFFFFFFL))
                             navController.navigate("home") {
                                 popUpTo("home") { inclusive = true }
                             }
@@ -225,9 +242,9 @@ fun StudyBlocksScreen(
                 if (todayBlocks.isNotEmpty()) {
                     item {
                         SectionHeader(
-                            title = "TODAY'S RITUALS",
+                            title = "TODAY'S SCHEDULE",
                             count = todayBlocks.size,
-                            icon = Icons.Default.Today
+                            icon = Icons.Outlined.CalendarToday
                         )
                     }
                     items(todayBlocks, key = { it.id }) { block ->
@@ -252,11 +269,11 @@ fun StudyBlocksScreen(
 
                 if (upcomingBlocks.isNotEmpty()) {
                     item {
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         SectionHeader(
-                            title = "UPCOMING HORIZONS",
+                            title = "UPCOMING SCHEDULE",
                             count = upcomingBlocks.size,
-                            icon = Icons.Default.Upcoming
+                            icon = Icons.Outlined.Upcoming
                         )
                     }
                     items(upcomingBlocks, key = { it.id }) { block ->
@@ -321,7 +338,7 @@ fun StudyBlocksScreen(
             onDismissRequest = { blockToDelete = null },
             title = {
                 Text(
-                    text = "Release this study ritual?",
+                    text = "Delete Study Block?",
                     fontFamily = currentFont,
                     fontWeight = FontWeight.Bold,
                     color = currentTheme.textPrimary
@@ -329,7 +346,7 @@ fun StudyBlocksScreen(
             },
             text = {
                 Text(
-                    text = "Are you sure you want to remove \"${block.name}\"? Past completed sessions in your History will remain safely preserved.",
+                    text = "Are you sure you want to remove \"${block.name}\"? Past completed sessions in your History remain preserved.",
                     fontFamily = currentFont,
                     color = currentTheme.textSecondary
                 )
@@ -343,16 +360,16 @@ fun StudyBlocksScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Delete Ritual", color = Color.White, fontWeight = FontWeight.Bold, fontFamily = currentFont)
+                    Text("Delete", color = Color.White, fontWeight = FontWeight.Bold, fontFamily = currentFont)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { blockToDelete = null }) {
-                    Text("Keep It", color = currentTheme.textSecondary, fontFamily = currentFont)
+                    Text("Cancel", color = currentTheme.textSecondary, fontFamily = currentFont)
                 }
             },
             containerColor = currentTheme.surface,
-            shape = RoundedCornerShape(22.dp)
+            shape = RoundedCornerShape(20.dp)
         )
     }
 }
@@ -370,48 +387,41 @@ private fun OverviewSummaryCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(elevation = 2.dp, shape = RoundedCornerShape(20.dp), spotColor = currentTheme.shadowColor)
-            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(20.dp)),
+            .border(1.dp, currentTheme.cardBorder.copy(alpha = 0.6f), RoundedCornerShape(18.dp)),
         colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
-        shape = RoundedCornerShape(20.dp)
+        shape = RoundedCornerShape(18.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Today's Focus Flow",
+                    text = "TODAY'S COMMITMENT",
                     fontFamily = currentFont,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.scaledSp,
-                    color = currentTheme.textPrimary
+                    fontSize = 11.scaledSp,
+                    letterSpacing = 1.sp,
+                    color = currentTheme.textSecondary
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                Row(verticalAlignment = Alignment.Bottom) {
                     Text(
-                        text = "🎯 $todayCount ${if (todayCount == 1) "ritual" else "rituals"}",
+                        text = "${totalMinutes}m",
+                        fontFamily = currentFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 24.scaledSp,
+                        color = currentTheme.textPrimary
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "planned across $todayCount ${if (todayCount == 1) "block" else "blocks"}",
                         fontFamily = currentFont,
                         fontSize = 12.scaledSp,
                         color = currentTheme.textSecondary
-                    )
-                    Text(
-                        text = "•",
-                        fontSize = 12.scaledSp,
-                        color = currentTheme.textSecondary.copy(alpha = 0.5f)
-                    )
-                    Text(
-                        text = "🍅 $totalMinutes min",
-                        fontFamily = currentFont,
-                        fontSize = 12.scaledSp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = currentTheme.primary
                     )
                 }
             }
@@ -423,15 +433,15 @@ private fun OverviewSummaryCard(
                     } catch (e: Exception) {}
                     onQuickFocus()
                 },
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = currentTheme.pillActiveBg,
+                    containerColor = currentTheme.primary.copy(alpha = 0.15f),
                     contentColor = currentTheme.primary
                 ),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Bolt,
+                    imageVector = Icons.Default.PlayArrow,
                     contentDescription = "Quick Focus",
                     modifier = Modifier.size(16.dp)
                 )
@@ -460,33 +470,33 @@ private fun SectionHeader(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp, horizontal = 4.dp)
+            .padding(vertical = 4.dp, horizontal = 2.dp)
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = currentTheme.primary,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(14.dp)
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = title,
             fontFamily = currentFont,
             fontWeight = FontWeight.Bold,
-            fontSize = 12.scaledSp,
+            fontSize = 11.scaledSp,
             letterSpacing = 1.2.sp,
             color = currentTheme.textSecondary
         )
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(6.dp))
         Box(
             modifier = Modifier
-                .clip(CircleShape)
+                .clip(RoundedCornerShape(4.dp))
                 .background(currentTheme.pillActiveBg)
-                .padding(horizontal = 8.dp, vertical = 2.dp)
+                .padding(horizontal = 6.dp, vertical = 1.dp)
         ) {
             Text(
                 text = count.toString(),
-                fontSize = 11.scaledSp,
+                fontSize = 10.scaledSp,
                 fontWeight = FontWeight.Bold,
                 color = currentTheme.primary
             )
@@ -509,173 +519,185 @@ private fun StudyBlockCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(elevation = 2.dp, shape = RoundedCornerShape(22.dp), spotColor = currentTheme.shadowColor)
-            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(22.dp))
-            .clip(RoundedCornerShape(22.dp))
+            .border(1.dp, currentTheme.cardBorder.copy(alpha = 0.7f), RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(18.dp))
             .clickable { onEdit() }
             .testTag("study_block_card_${block.id}"),
         colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
-        shape = RoundedCornerShape(22.dp)
+        shape = RoundedCornerShape(18.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(16.dp)
         ) {
-            // Elegant vertical accent pill
-            Box(
-                modifier = Modifier
-                    .width(5.dp)
-                    .height(60.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(blockColor)
-            )
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
+            // Header: Color strip + Name + Reminder Status + Quick Actions
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(blockColor)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = block.name,
-                        fontFamily = currentFont,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.scaledSp,
-                        color = currentTheme.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                // Colored dot accent
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(blockColor)
+                )
 
-                    if (block.reminderEnabled) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Icon(
-                            imageVector = Icons.Default.NotificationsActive,
-                            contentDescription = "Mindful reminder on",
-                            tint = currentTheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    text = block.name,
+                    fontFamily = currentFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.scaledSp,
+                    color = currentTheme.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                if (block.reminderEnabled) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                        color = currentTheme.primary.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier.height(22.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.NotificationsActive,
+                                contentDescription = "Reminder active",
+                                tint = currentTheme.primary,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "Alert",
+                                fontFamily = currentFont,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.scaledSp,
+                                color = currentTheme.primary
+                            )
+                        }
                     }
                 }
 
-                if (block.description.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Text(
-                        text = block.description,
-                        fontFamily = currentFont,
-                        fontSize = 12.scaledSp,
-                        color = currentTheme.textSecondary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                Spacer(modifier = Modifier.width(4.dp))
+
+                IconButton(
+                    onClick = onEdit,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Edit,
+                        contentDescription = "Edit Block",
+                        tint = currentTheme.textSecondary.copy(alpha = 0.6f),
+                        modifier = Modifier.size(15.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.DeleteOutline,
+                        contentDescription = "Delete Block",
+                        tint = Color(0xFFEF9A9A),
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
 
+            // Optional Note / Description
+            if (block.description.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = block.description,
+                    fontFamily = currentFont,
+                    fontSize = 12.scaledSp,
+                    color = currentTheme.textSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 16.scaledSp,
+                    modifier = Modifier.padding(start = 20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Footer Row: Metadata Chips + Prominent Focus Action Button
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Info badges
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.weight(1f)
                 ) {
                     InfoPill(
-                        icon = Icons.Default.Timer,
+                        icon = Icons.Outlined.Timer,
                         text = "${block.duration}m"
                     )
 
                     val timeLabel = formatStartTime(block.startTime)
                     InfoPill(
-                        icon = Icons.Default.Schedule,
+                        icon = Icons.Outlined.Schedule,
                         text = timeLabel
                     )
 
                     if (!block.repeatRule.isNullOrBlank() && block.repeatRule != "None") {
                         val displayRepeat = when (block.repeatRule) {
-                            "Daily" -> "Every Day"
+                            "Daily" -> "Daily"
                             "Weekdays" -> "Mon-Fri"
                             else -> block.repeatRule
                         }
                         InfoPill(
-                            icon = Icons.Default.Repeat,
+                            icon = Icons.Outlined.Repeat,
                             text = displayRepeat
                         )
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.Center
-            ) {
-                FilledTonalButton(
+                // Prominent primary "Focus" button
+                Button(
                     onClick = {
                         try {
                             view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                         } catch (e: Exception) {}
                         onStart()
                     },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = blockColor.copy(alpha = 0.16f),
-                        contentColor = blockColor
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = blockColor,
+                        contentColor = if (isColorLight(blockColor)) Color(0xFF1E1E1E) else Color.White
                     ),
                     shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    modifier = Modifier.testTag("start_block_button_${block.id}")
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
+                    modifier = Modifier
+                        .height(34.dp)
+                        .testTag("start_block_button_${block.id}")
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Start Session",
-                        modifier = Modifier.size(16.dp)
+                        contentDescription = "Start Focus",
+                        modifier = Modifier.size(15.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = "Focus",
                         fontFamily = currentFont,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.scaledSp
+                        fontSize = 12.scaledSp
                     )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = onEdit,
-                        modifier = Modifier.size(30.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit Block",
-                            tint = currentTheme.textSecondary.copy(alpha = 0.6f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(30.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = "Delete Block",
-                            tint = Color(0xFFEF9A9A),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
                 }
             }
         }
@@ -691,8 +713,8 @@ private fun InfoPill(
     val currentFont = LocalAppFont.current
 
     Surface(
-        color = currentTheme.pillActiveBg,
-        shape = RoundedCornerShape(8.dp),
+        color = currentTheme.pillActiveBg.copy(alpha = 0.7f),
+        shape = RoundedCornerShape(6.dp),
         modifier = Modifier.height(24.dp)
     ) {
         Row(
@@ -726,79 +748,82 @@ private fun EmptyStudyBlocksView(
     val currentFont = LocalAppFont.current
 
     Box(
-        modifier = modifier,
+        modifier = modifier.padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center
     ) {
         Card(
             modifier = Modifier
-                .fillMaxWidth(0.88f)
-                .shadow(elevation = 3.dp, shape = RoundedCornerShape(26.dp), spotColor = currentTheme.shadowColor)
-                .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(26.dp)),
+                .fillMaxWidth()
+                .border(1.dp, currentTheme.cardBorder.copy(alpha = 0.6f), RoundedCornerShape(22.dp)),
             colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
-            shape = RoundedCornerShape(26.dp)
+            shape = RoundedCornerShape(22.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(32.dp),
+                    .padding(vertical = 28.dp, horizontal = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(
                     modifier = Modifier
-                        .size(76.dp)
+                        .size(60.dp)
                         .clip(CircleShape)
-                        .background(currentTheme.pillActiveBg),
+                        .background(currentTheme.primary.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "📚",
-                        fontSize = 36.sp
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+                        contentDescription = null,
+                        tint = currentTheme.primary,
+                        modifier = Modifier.size(28.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Text(
-                    text = "Your Study Sanctuary",
+                    text = "No Study Blocks Yet",
                     fontFamily = currentFont,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 21.scaledSp,
+                    fontSize = 18.scaledSp,
                     color = currentTheme.textPrimary
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "No study blocks scheduled yet. Plan your deep focus rituals and conquer your courses one peaceful session at a time.",
+                    text = "Plan your deep work sessions, assign custom durations, and schedule mindful alerts for distraction-free study.",
                     fontFamily = currentFont,
-                    fontSize = 13.scaledSp,
+                    fontSize = 12.scaledSp,
                     color = currentTheme.textSecondary,
                     textAlign = TextAlign.Center,
-                    lineHeight = 18.scaledSp
+                    lineHeight = 17.scaledSp,
+                    modifier = Modifier.padding(horizontal = 12.dp)
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 Button(
                     onClick = onCreateFirst,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = currentTheme.primary,
                         contentColor = if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White
                     ),
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
                     modifier = Modifier.testTag("create_first_study_block_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Craft First Study Block",
+                        text = "Create First Block",
                         fontFamily = currentFont,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.scaledSp
+                        fontSize = 13.scaledSp
                     )
                 }
             }
@@ -831,6 +856,13 @@ fun AddEditStudyBlockDialog(
     var description by remember(initialBlock) { mutableStateOf(initialBlock?.description ?: "") }
     var selectedColor by remember(initialBlock) { mutableStateOf(initialBlock?.color ?: STUDY_BLOCK_PALETTE[0].second) }
     var selectedDuration by remember(initialBlock) { mutableIntStateOf(initialBlock?.duration ?: 25) }
+    var isCustomDuration by remember(initialBlock) {
+        mutableStateOf(initialBlock != null && initialBlock.duration !in DURATION_PRESETS)
+    }
+    var customDurationInput by remember(initialBlock) {
+        mutableStateOf(if (initialBlock != null && initialBlock.duration !in DURATION_PRESETS) initialBlock.duration.toString() else "50")
+    }
+
     var selectedRepeatRule by remember(initialBlock) { mutableStateOf(initialBlock?.repeatRule ?: "None") }
     var reminderEnabled by remember(initialBlock) { mutableStateOf(initialBlock?.reminderEnabled ?: false) }
 
@@ -884,59 +916,73 @@ fun AddEditStudyBlockDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.42f))
+                .background(Color.Black.copy(alpha = 0.55f))
                 .pointerInput(Unit) {
-                    detectTapGestures(onTap = { focusManager.clearFocus() })
+                    detectTapGestures(onTap = {
+                        focusManager.clearFocus()
+                        keyboardController?.hide()
+                    })
                 },
             contentAlignment = Alignment.Center
         ) {
             Card(
-                shape = RoundedCornerShape(26.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
                 modifier = Modifier
                     .fillMaxWidth(0.92f)
                     .fillMaxHeight(0.88f)
-                    .shadow(elevation = 16.dp, shape = RoundedCornerShape(26.dp), spotColor = currentTheme.shadowColor)
-                    .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(26.dp)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    .imePadding()
+                    .border(1.dp, currentTheme.cardBorder.copy(alpha = 0.8f), RoundedCornerShape(24.dp)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(24.dp)
+                        .padding(20.dp)
                 ) {
+                    // Header Bar
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column {
                             Text(
-                                text = if (initialBlock == null) "New Study Ritual" else "Edit Ritual",
+                                text = if (initialBlock == null) "New Study Block" else "Edit Study Block",
                                 fontFamily = currentFont,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 21.scaledSp,
+                                fontSize = 19.scaledSp,
                                 color = currentTheme.textPrimary
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "✍️", fontSize = 18.sp)
+                            Text(
+                                text = "Configure your focus session parameters",
+                                fontFamily = currentFont,
+                                fontSize = 11.scaledSp,
+                                color = currentTheme.textSecondary
+                            )
                         }
-                        IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(32.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Close",
-                                tint = currentTheme.textSecondary
+                                tint = currentTheme.textSecondary,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .verticalScroll(rememberScrollState())
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
+                        // Section 1: Inputs
                         OutlinedTextField(
                             value = name,
                             onValueChange = {
@@ -945,8 +991,8 @@ fun AddEditStudyBlockDialog(
                                     validationError = null
                                 }
                             },
-                            label = { Text("Ritual / Subject Name *", fontFamily = currentFont) },
-                            placeholder = { Text("e.g. Advanced Calculus, World History", fontFamily = currentFont) },
+                            label = { Text("Block Name *", fontFamily = currentFont) },
+                            placeholder = { Text("e.g. Linear Algebra, Thesis Chapter", fontFamily = currentFont) },
                             isError = validationError != null,
                             supportingText = {
                                 if (validationError != null) {
@@ -954,14 +1000,18 @@ fun AddEditStudyBlockDialog(
                                 }
                             },
                             singleLine = true,
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("study_block_name_input"),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(
+                                onDone = {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                }
+                            )
                         )
-
-                        Spacer(modifier = Modifier.height(8.dp))
 
                         OutlinedTextField(
                             value = description,
@@ -974,11 +1024,11 @@ fun AddEditStudyBlockDialog(
                                     description = newText
                                 }
                             },
-                            label = { Text("Intentions & Notes (Optional)", fontFamily = currentFont) },
-                            placeholder = { Text("e.g. Practice questions 1-15, review summary", fontFamily = currentFont) },
+                            label = { Text("Optional Notes or Intentions", fontFamily = currentFont) },
+                            placeholder = { Text("e.g. Solve problem set 3, review key terms", fontFamily = currentFont) },
                             maxLines = 2,
                             singleLine = true,
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("study_block_desc_input"),
@@ -991,213 +1041,389 @@ fun AddEditStudyBlockDialog(
                             )
                         )
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text(
-                            text = "Color Essence",
-                            fontFamily = currentFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.scaledSp,
-                            color = currentTheme.textPrimary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            STUDY_BLOCK_PALETTE.forEach { (colorName, colorValue) ->
-                                val isSelected = selectedColor == colorValue
-                                val composeColor = parseBlockColor(colorValue)
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(composeColor)
-                                        .border(
-                                            width = if (isSelected) 3.dp else 1.dp,
-                                            color = if (isSelected) currentTheme.textPrimary else Color.Transparent,
-                                            shape = CircleShape
-                                        )
-                                        .clickable {
-                                            selectedColor = colorValue
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = colorName,
-                                            tint = if (isColorLight(composeColor)) Color.Black else Color.White,
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                        // Section 2: Color Palette
+                        Column {
+                            Text(
+                                text = "COLOR ACCENT",
+                                fontFamily = currentFont,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.scaledSp,
+                                letterSpacing = 1.sp,
+                                color = currentTheme.textSecondary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                STUDY_BLOCK_PALETTE.forEach { (colorName, colorValue) ->
+                                    val isSelected = selectedColor == colorValue
+                                    val composeColor = parseBlockColor(colorValue)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(CircleShape)
+                                            .background(composeColor)
+                                            .border(
+                                                width = if (isSelected) 2.5.dp else 0.dp,
+                                                color = if (isSelected) currentTheme.textPrimary else Color.Transparent,
+                                                shape = CircleShape
+                                            )
+                                            .clickable { selectedColor = colorValue },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = colorName,
+                                                tint = if (isColorLight(composeColor)) Color.Black else Color.White,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        // Section 3: Focus Duration (Presets + Custom)
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "FOCUS DURATION",
+                                    fontFamily = currentFont,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.scaledSp,
+                                    letterSpacing = 1.sp,
+                                    color = currentTheme.textSecondary
+                                )
+                                Text(
+                                    text = "${selectedDuration} min total",
+                                    fontFamily = currentFont,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 11.scaledSp,
+                                    color = currentTheme.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                DURATION_PRESETS.forEach { mins ->
+                                    val isSelected = !isCustomDuration && selectedDuration == mins
+                                    Surface(
+                                        selected = isSelected,
+                                        onClick = {
+                                            try {
+                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                            } catch (e: Exception) {}
+                                            isCustomDuration = false
+                                            selectedDuration = mins
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isSelected) currentTheme.primary else currentTheme.pillActiveBg,
+                                        border = BorderStroke(
+                                            width = 1.dp,
+                                            color = if (isSelected) currentTheme.primary else currentTheme.cardBorder.copy(alpha = 0.5f)
+                                        ),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "${mins}m",
+                                                fontFamily = currentFont,
+                                                fontSize = 12.scaledSp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) (if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White) else currentTheme.textPrimary
+                                            )
+                                        }
+                                    }
+                                }
 
-                        Text(
-                            text = "Focus Duration",
-                            fontFamily = currentFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.scaledSp,
-                            color = currentTheme.textPrimary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            DURATION_PRESETS.forEach { (label, mins) ->
-                                val isSelected = selectedDuration == mins
+                                // Custom option pill
                                 Surface(
-                                    selected = isSelected,
+                                    selected = isCustomDuration,
                                     onClick = {
                                         try {
                                             view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                                         } catch (e: Exception) {}
-                                        selectedDuration = mins
+                                        isCustomDuration = true
+                                        val parsed = customDurationInput.toIntOrNull() ?: 50
+                                        selectedDuration = parsed.coerceIn(5, 360)
                                     },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isSelected) currentTheme.primary else currentTheme.pillActiveBg,
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isCustomDuration) currentTheme.primary else currentTheme.pillActiveBg,
                                     border = BorderStroke(
                                         width = 1.dp,
-                                        color = if (isSelected) currentTheme.primary else currentTheme.cardBorder
+                                        color = if (isCustomDuration) currentTheme.primary else currentTheme.cardBorder.copy(alpha = 0.5f)
                                     ),
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.weight(1.3f)
                                 ) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 9.dp),
+                                            .padding(vertical = 8.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = label,
+                                            text = if (isCustomDuration) "${selectedDuration}m ⚙" else "Custom",
                                             fontFamily = currentFont,
-                                            fontSize = 12.scaledSp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) {
-                                                if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White
-                                            } else currentTheme.textPrimary,
-                                            maxLines = 1
+                                            fontSize = 11.scaledSp,
+                                            fontWeight = if (isCustomDuration) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isCustomDuration) (if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White) else currentTheme.textPrimary
                                         )
+                                    }
+                                }
+                            }
+
+                            // If custom duration is selected, show smooth inline stepper
+                            if (isCustomDuration) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(currentTheme.pillActiveBg.copy(alpha = 0.6f))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "Custom minutes:",
+                                        fontFamily = currentFont,
+                                        fontSize = 11.scaledSp,
+                                        color = currentTheme.textSecondary
+                                    )
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            val newVal = (selectedDuration - 5).coerceAtLeast(5)
+                                            selectedDuration = newVal
+                                            customDurationInput = newVal.toString()
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Text("-5", fontSize = 11.scaledSp, fontFamily = currentFont)
+                                    }
+
+                                    OutlinedTextField(
+                                        value = customDurationInput,
+                                        onValueChange = { str ->
+                                            val filtered = str.filter { it.isDigit() }.take(3)
+                                            customDurationInput = filtered
+                                            val parsed = filtered.toIntOrNull()
+                                            if (parsed != null && parsed > 0) {
+                                                selectedDuration = parsed.coerceIn(5, 360)
+                                            }
+                                        },
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(8.dp),
+                                        keyboardOptions = KeyboardOptions(
+                                            keyboardType = KeyboardType.Number,
+                                            imeAction = ImeAction.Done
+                                        ),
+                                        keyboardActions = KeyboardActions(
+                                            onDone = {
+                                                keyboardController?.hide()
+                                                focusManager.clearFocus()
+                                            }
+                                        ),
+                                        modifier = Modifier
+                                            .width(72.dp)
+                                            .height(48.dp)
+                                    )
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            val newVal = (selectedDuration + 5).coerceAtMost(360)
+                                            selectedDuration = newVal
+                                            customDurationInput = newVal.toString()
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Text("+5", fontSize = 11.scaledSp, fontFamily = currentFont)
                                     }
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text(
-                            text = "Timing & Schedule",
-                            fontFamily = currentFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.scaledSp,
-                            color = currentTheme.textPrimary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            FilterChip(
-                                selected = isFlexibleTime,
-                                onClick = { isFlexibleTime = true },
-                                label = { Text("Flexible / Anytime 🌱", fontFamily = currentFont) },
-                                leadingIcon = {
-                                    Icon(Icons.Default.HourglassEmpty, contentDescription = null, modifier = Modifier.size(16.dp))
-                                },
-                                shape = RoundedCornerShape(10.dp)
+                        // Section 4: Schedule Timing
+                        Column {
+                            Text(
+                                text = "SCHEDULE TIMING",
+                                fontFamily = currentFont,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.scaledSp,
+                                letterSpacing = 1.sp,
+                                color = currentTheme.textSecondary
                             )
-                            FilterChip(
-                                selected = !isFlexibleTime,
-                                onClick = { isFlexibleTime = false },
-                                label = {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Surface(
+                                    selected = isFlexibleTime,
+                                    onClick = { isFlexibleTime = true },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isFlexibleTime) currentTheme.primary else currentTheme.pillActiveBg,
+                                    border = BorderStroke(
+                                        width = 1.dp,
+                                        color = if (isFlexibleTime) currentTheme.primary else currentTheme.cardBorder.copy(alpha = 0.5f)
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.HourglassEmpty,
+                                            contentDescription = null,
+                                            tint = if (isFlexibleTime) (if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White) else currentTheme.textSecondary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Flexible Time",
+                                            fontFamily = currentFont,
+                                            fontSize = 12.scaledSp,
+                                            fontWeight = if (isFlexibleTime) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isFlexibleTime) (if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White) else currentTheme.textPrimary
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    selected = !isFlexibleTime,
+                                    onClick = { isFlexibleTime = false },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (!isFlexibleTime) currentTheme.primary else currentTheme.pillActiveBg,
+                                    border = BorderStroke(
+                                        width = 1.dp,
+                                        color = if (!isFlexibleTime) currentTheme.primary else currentTheme.cardBorder.copy(alpha = 0.5f)
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                ) {
                                     val ampm = if (scheduledHour < 12) "AM" else "PM"
                                     val displayHour = when (val h = scheduledHour % 12) {
                                         0 -> 12
                                         else -> h
                                     }
                                     val displayMinute = String.format("%02d", scheduledMinute)
-                                    Text("$displayHour:$displayMinute $ampm ⏰", fontFamily = currentFont)
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(16.dp))
-                                },
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                        }
-
-                        if (!isFlexibleTime) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        scheduledHour = (scheduledHour + 1) % 24
-                                    },
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Text("Hour: ${String.format("%02d", scheduledHour)}", fontFamily = currentFont, fontSize = 12.scaledSp)
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        scheduledMinute = (scheduledMinute + 15) % 60
-                                    },
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Text("Minute: ${String.format("%02d", scheduledMinute)}", fontFamily = currentFont, fontSize = 12.scaledSp)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Schedule,
+                                            contentDescription = null,
+                                            tint = if (!isFlexibleTime) (if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White) else currentTheme.textSecondary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "$displayHour:$displayMinute $ampm",
+                                            fontFamily = currentFont,
+                                            fontSize = 12.scaledSp,
+                                            fontWeight = if (!isFlexibleTime) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (!isFlexibleTime) (if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White) else currentTheme.textPrimary
+                                        )
+                                    }
                                 }
                             }
-                        }
 
-                        Spacer(modifier = Modifier.height(18.dp))
-
-                        Text(
-                            text = "Recurrence Rhythm",
-                            fontFamily = currentFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.scaledSp,
-                            color = currentTheme.textPrimary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            REPEAT_OPTIONS.forEach { (label, value) ->
-                                val isSelected = selectedRepeatRule == value
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { selectedRepeatRule = value },
-                                    label = { Text(label, fontFamily = currentFont, fontSize = 12.scaledSp) },
-                                    shape = RoundedCornerShape(10.dp)
+                            if (!isFlexibleTime) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                PremiumTimeWheelPicker(
+                                    hour24 = scheduledHour,
+                                    minute = scheduledMinute,
+                                    onTimeChanged = { h, m ->
+                                        scheduledHour = h
+                                        scheduledMinute = m
+                                    }
                                 )
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(18.dp))
+                        // Section 5: Recurrence
+                        Column {
+                            Text(
+                                text = "RECURRENCE",
+                                fontFamily = currentFont,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.scaledSp,
+                                letterSpacing = 1.sp,
+                                color = currentTheme.textSecondary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                REPEAT_OPTIONS.forEach { (label, value) ->
+                                    val isSelected = selectedRepeatRule == value
+                                    Surface(
+                                        selected = isSelected,
+                                        onClick = { selectedRepeatRule = value },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isSelected) currentTheme.primary else currentTheme.pillActiveBg,
+                                        border = BorderStroke(
+                                            width = 1.dp,
+                                            color = if (isSelected) currentTheme.primary else currentTheme.cardBorder.copy(alpha = 0.5f)
+                                        ),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 7.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                fontFamily = currentFont,
+                                                fontSize = 11.scaledSp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) (if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White) else currentTheme.textPrimary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
+                        // Section 6: Mindful Alert Toggle
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(currentTheme.pillActiveBg)
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(currentTheme.pillActiveBg.copy(alpha = 0.7f))
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    imageVector = Icons.Default.Notifications,
+                                    imageVector = Icons.Outlined.Notifications,
                                     contentDescription = null,
                                     tint = currentTheme.primary,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column {
@@ -1205,13 +1431,13 @@ fun AddEditStudyBlockDialog(
                                         text = "Mindful Alert",
                                         fontFamily = currentFont,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 13.scaledSp,
+                                        fontSize = 12.scaledSp,
                                         color = currentTheme.textPrimary
                                     )
                                     Text(
-                                        text = "Gentle nudge when your focus session begins",
+                                        text = "Gentle notification at scheduled time",
                                         fontFamily = currentFont,
-                                        fontSize = 11.scaledSp,
+                                        fontSize = 10.scaledSp,
                                         color = currentTheme.textSecondary
                                     )
                                 }
@@ -1256,12 +1482,12 @@ fun AddEditStudyBlockDialog(
                                     imageVector = Icons.Default.NotificationsActive,
                                     contentDescription = null,
                                     tint = currentTheme.primary,
-                                    modifier = Modifier.size(32.dp)
+                                    modifier = Modifier.size(28.dp)
                                 )
                             },
                             title = {
                                 Text(
-                                    text = "Enable Focus Alerts 🔔",
+                                    text = "Enable Focus Alerts",
                                     fontFamily = currentFont,
                                     fontWeight = FontWeight.Bold,
                                     color = currentTheme.textPrimary
@@ -1269,10 +1495,10 @@ fun AddEditStudyBlockDialog(
                             },
                             text = {
                                 Text(
-                                    text = "PomoPal needs notification permission to gently alert you when it's time to begin your scheduled study rituals.",
+                                    text = "PomoPal needs notification permission to alert you when your scheduled study blocks begin.",
                                     fontFamily = currentFont,
                                     color = currentTheme.textSecondary,
-                                    fontSize = 13.scaledSp
+                                    fontSize = 12.scaledSp
                                 )
                             },
                             confirmButton = {
@@ -1284,7 +1510,7 @@ fun AddEditStudyBlockDialog(
                                         }
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primary),
-                                    shape = RoundedCornerShape(14.dp)
+                                    shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Text(
                                         "Allow Alerts",
@@ -1300,12 +1526,13 @@ fun AddEditStudyBlockDialog(
                                 }
                             },
                             containerColor = currentTheme.surface,
-                            shape = RoundedCornerShape(24.dp)
+                            shape = RoundedCornerShape(20.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
+                    // Dialog Actions
                     Row(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
@@ -1318,7 +1545,7 @@ fun AddEditStudyBlockDialog(
                         Button(
                             onClick = {
                                 if (name.trim().isEmpty()) {
-                                    validationError = "Please enter a ritual name"
+                                    validationError = "Please enter a block name"
                                     return@Button
                                 }
                                 try {
@@ -1346,7 +1573,7 @@ fun AddEditStudyBlockDialog(
                                     reminderEnabled
                                 )
                             },
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = currentTheme.primary,
                                 contentColor = if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White
@@ -1354,7 +1581,7 @@ fun AddEditStudyBlockDialog(
                             modifier = Modifier.testTag("save_study_block_button")
                         ) {
                             Text(
-                                text = if (initialBlock == null) "Create Ritual ✨" else "Save Ritual ✨",
+                                text = if (initialBlock == null) "Create Block" else "Save Block",
                                 fontFamily = currentFont,
                                 fontWeight = FontWeight.Bold
                             )
@@ -1371,4 +1598,392 @@ private fun formatStartTime(timeMillis: Long): String {
     val cal = Calendar.getInstance().apply { this.timeInMillis = timeMillis }
     val format = SimpleDateFormat("h:mm a", Locale.getDefault())
     return format.format(cal.time)
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun TimeWheelColumn(
+    value: Int,
+    range: List<Int>,
+    label: String,
+    format: String,
+    onValueChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val itemsCount = range.size
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
+    val coroutineScope = rememberCoroutineScope()
+    val itemHeight = 36.dp
+
+    val initialIndex = remember {
+        val middleBase = (Int.MAX_VALUE / 2 / itemsCount) * itemsCount
+        val offset = range.indexOf(value).coerceAtLeast(0)
+        middleBase + offset - 1
+    }
+
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
+    val flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(lazyListState = listState)
+
+    val centerIndex by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            if (layoutInfo.visibleItemsInfo.isEmpty()) {
+                listState.firstVisibleItemIndex + 1
+            } else {
+                val center = layoutInfo.viewportEndOffset / 2
+                val centerItem = layoutInfo.visibleItemsInfo.minByOrNull {
+                    kotlin.math.abs((it.offset + it.size / 2) - center)
+                }
+                centerItem?.index ?: (listState.firstVisibleItemIndex + 1)
+            }
+        }
+    }
+
+    LaunchedEffect(centerIndex) {
+        val itemVal = range[centerIndex % itemsCount]
+        if (itemVal != value) {
+            onValueChange(itemVal)
+            try {
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+            } catch (e: Exception) {}
+        }
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+    ) {
+        Text(
+            text = label,
+            fontSize = 11.scaledSp,
+            color = currentTheme.textSecondary,
+            fontWeight = FontWeight.Bold,
+            fontFamily = currentFont,
+            letterSpacing = 1.sp,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(currentTheme.pillActiveBg.copy(alpha = 0.5f))
+                .border(1.dp, currentTheme.cardBorder.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                .padding(vertical = 4.dp, horizontal = 4.dp)
+        ) {
+            IconButton(
+                onClick = {
+                    coroutineScope.launch {
+                        listState.animateScrollToItem(centerIndex)
+                    }
+                },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowUp,
+                    contentDescription = "Increase $label",
+                    tint = currentTheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .height(108.dp)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                // Center Selection Lens Highlight
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .height(itemHeight)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(currentTheme.primary.copy(alpha = 0.12f))
+                        .border(1.dp, currentTheme.primary.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                )
+
+                androidx.compose.foundation.lazy.LazyColumn(
+                    state = listState,
+                    flingBehavior = flingBehavior,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(Int.MAX_VALUE) { index ->
+                        val itemVal = range[index % itemsCount]
+                        val isCenter = index == centerIndex
+                        val alpha = if (isCenter) 1f else 0.3f
+                        val textSize = if (isCenter) 22 else 16
+                        val fontWeight = if (isCenter) FontWeight.ExtraBold else FontWeight.Medium
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(itemHeight)
+                                .clickable {
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem((index - 1).coerceAtLeast(0))
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = String.format(format, itemVal),
+                                fontSize = textSize.scaledSp,
+                                fontWeight = fontWeight,
+                                color = if (isCenter) currentTheme.primary else currentTheme.textSecondary.copy(alpha = alpha),
+                                fontFamily = MonospaceFontFamily,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+
+                // Top & Bottom gradient fade masks
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(26.dp)
+                        .align(Alignment.TopCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    currentTheme.surface,
+                                    currentTheme.surface.copy(alpha = 0f)
+                                )
+                            )
+                        )
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(26.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    currentTheme.surface.copy(alpha = 0f),
+                                    currentTheme.surface
+                                )
+                            )
+                        )
+                )
+            }
+
+            IconButton(
+                onClick = {
+                    coroutineScope.launch {
+                        val target = if (centerIndex - 2 < 0) 0 else centerIndex - 2
+                        listState.animateScrollToItem(target)
+                    }
+                },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Decrease $label",
+                    tint = currentTheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PremiumTimeWheelPicker(
+    hour24: Int,
+    minute: Int,
+    onTimeChanged: (hour: Int, minute: Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
+    val view = androidx.compose.ui.platform.LocalView.current
+
+    val isPm = hour24 >= 12
+    val hour12 = when {
+        hour24 == 0 -> 12
+        hour24 > 12 -> hour24 - 12
+        else -> hour24
+    }
+
+    val hoursList = remember { (1..12).toList() }
+    val minutesList = remember { (0..59).toList() }
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = currentTheme.backgroundSecondary.copy(alpha = 0.5f)),
+        border = BorderStroke(1.dp, currentTheme.cardBorder.copy(alpha = 0.7f)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Live formatted time showcase pill
+            val previewAmPm = if (isPm) "PM" else "AM"
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = currentTheme.primary.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, currentTheme.primary.copy(alpha = 0.3f)),
+                modifier = Modifier.padding(bottom = 12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.AccessTime,
+                        contentDescription = null,
+                        tint = currentTheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = String.format("Selected Time: %02d:%02d %s", hour12, minute, previewAmPm),
+                        fontFamily = MonospaceFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.scaledSp,
+                        color = currentTheme.primary
+                    )
+                }
+            }
+
+            // Wheel Row: Hour Wheel, Colon, Minute Wheel, AM/PM Segmented Box
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Hours Wheel
+                TimeWheelColumn(
+                    value = hour12,
+                    range = hoursList,
+                    label = "HOUR",
+                    format = "%02d",
+                    onValueChange = { newHour12 ->
+                        val newHour24 = if (isPm) {
+                            if (newHour12 == 12) 12 else newHour12 + 12
+                        } else {
+                            if (newHour12 == 12) 0 else newHour12
+                        }
+                        onTimeChanged(newHour24, minute)
+                    },
+                    modifier = Modifier.weight(1.2f)
+                )
+
+                // Colon Separator
+                Text(
+                    text = ":",
+                    fontSize = 24.scaledSp,
+                    fontWeight = FontWeight.Black,
+                    color = currentTheme.primary,
+                    fontFamily = MonospaceFontFamily,
+                    modifier = Modifier.padding(top = 18.dp)
+                )
+
+                // Minutes Wheel
+                TimeWheelColumn(
+                    value = minute,
+                    range = minutesList,
+                    label = "MINUTE",
+                    format = "%02d",
+                    onValueChange = { newMinute ->
+                        onTimeChanged(hour24, newMinute)
+                    },
+                    modifier = Modifier.weight(1.2f)
+                )
+
+                // Period (AM/PM) Segmented Box
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "PERIOD",
+                        fontSize = 11.scaledSp,
+                        color = currentTheme.textSecondary,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = currentFont,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .height(176.dp)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(currentTheme.pillActiveBg.copy(alpha = 0.5f))
+                            .border(1.dp, currentTheme.cardBorder.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                            .padding(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // AM Pill
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (!isPm) currentTheme.primary else Color.Transparent)
+                                .clickable {
+                                    try {
+                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                    } catch (e: Exception) {}
+                                    if (isPm) {
+                                        val newHour24 = if (hour12 == 12) 0 else hour12
+                                        onTimeChanged(newHour24, minute)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "AM",
+                                fontSize = 13.scaledSp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = currentFont,
+                                color = if (!isPm) {
+                                    if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White
+                                } else currentTheme.textSecondary
+                            )
+                        }
+
+                        // PM Pill
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isPm) currentTheme.primary else Color.Transparent)
+                                .clickable {
+                                    try {
+                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                    } catch (e: Exception) {}
+                                    if (!isPm) {
+                                        val newHour24 = if (hour12 == 12) 12 else hour12 + 12
+                                        onTimeChanged(newHour24, minute)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "PM",
+                                fontSize = 13.scaledSp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = currentFont,
+                                color = if (isPm) {
+                                    if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White
+                                } else currentTheme.textSecondary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
