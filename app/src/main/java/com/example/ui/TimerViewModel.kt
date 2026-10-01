@@ -3,6 +3,8 @@ package com.example.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
+import com.example.data.StudyBlock
+import com.example.data.StudyBlockRepository
 import com.example.data.TaskItem
 import com.example.data.TimerSession
 import com.example.service.TimerManager
@@ -14,6 +16,17 @@ import kotlinx.coroutines.launch
 
 class TimerViewModel(private val database: AppDatabase) : ViewModel() {
     
+    val studyBlockRepository = StudyBlockRepository(
+        studyBlockDao = database.studyBlockDao(),
+        sessionDao = database.sessionDao()
+    )
+
+    val allStudyBlocks: StateFlow<List<StudyBlock>> = studyBlockRepository.allStudyBlocks.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        emptyList()
+    )
+
     val timerState = TimerManager.timerState
     val timeRemainingSeconds = TimerManager.timeRemainingSeconds
     val currentTaskName = TimerManager.currentTaskName
@@ -45,29 +58,6 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
         SharingStarted.WhileSubscribed(5000),
         emptyList()
     )
-
-    fun injectMockData() {
-        viewModelScope.launch {
-            val baseTime = System.currentTimeMillis()
-            val tasks = listOf(
-                TaskItem(name = "Design Mockups", categoryName = "Work", categoryColor = 0xFF3F51B5, timestamp = baseTime),
-                TaskItem(name = "Fix Bug #142", categoryName = "Coding", categoryColor = 0xFFF44336, timestamp = baseTime),
-                TaskItem(name = "Design Mockups", categoryName = "Freelance", categoryColor = 0xFF4CAF50, timestamp = baseTime), // same name diff color
-                TaskItem(name = "Read Docs", categoryName = "Learning", categoryColor = 0xFFFFC107, timestamp = baseTime)
-            )
-            tasks.forEach { database.taskDao().insertTask(it) }
-            
-            val sessions = listOf(
-                TimerSession(taskName = "Legacy Task", isBreak = false, durationMinutes = 25, startTime = baseTime - 86400000 * 4, endTime = baseTime - 86400000 * 4 + 1500000, taskColor = null),
-                TimerSession(taskName = "Break", isBreak = true, durationMinutes = 5, startTime = baseTime - 86400000 * 4 + 1500000, endTime = baseTime - 86400000 * 4 + 1800000, taskColor = null),
-                TimerSession(taskName = "Design Mockups", isBreak = false, durationMinutes = 25, startTime = baseTime - 86400000 * 2, endTime = baseTime - 86400000 * 2 + 1500000, taskColor = 0xFF3F51B5),
-                TimerSession(taskName = "Fix Bug #142", isBreak = false, durationMinutes = 45, startTime = baseTime - 86400000 * 1, endTime = baseTime - 86400000 * 1 + 2700000, taskColor = 0xFFF44336),
-                TimerSession(taskName = "Design Mockups", isBreak = false, durationMinutes = 30, startTime = baseTime - 3600000, endTime = baseTime - 3600000 + 1800000, taskColor = 0xFF4CAF50),
-                TimerSession(taskName = "Break", isBreak = true, durationMinutes = 10, startTime = baseTime - 1800000, endTime = baseTime - 1800000 + 600000, taskColor = null)
-            )
-            sessions.forEach { database.sessionDao().insertSession(it) }
-        }
-    }
 
     fun clearAllData() {
         viewModelScope.launch {
@@ -145,6 +135,87 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
             sessions.forEach {
                 database.sessionDao().deleteSession(it)
             }
+        }
+    }
+
+    fun createStudyBlock(
+        name: String,
+        color: Long,
+        startTime: Long = 0L,
+        duration: Int = 25,
+        repeatRule: String? = null,
+        reminderEnabled: Boolean = false,
+        onCreated: ((Long) -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            val id = studyBlockRepository.create(
+                StudyBlock(
+                    name = name,
+                    color = color,
+                    startTime = startTime,
+                    duration = duration,
+                    repeatRule = repeatRule,
+                    reminderEnabled = reminderEnabled
+                )
+            )
+            onCreated?.invoke(id)
+        }
+    }
+
+    fun updateStudyBlock(studyBlock: StudyBlock) {
+        viewModelScope.launch {
+            studyBlockRepository.update(studyBlock)
+        }
+    }
+
+    fun deleteStudyBlock(studyBlock: StudyBlock) {
+        viewModelScope.launch {
+            studyBlockRepository.delete(studyBlock)
+        }
+    }
+
+    fun deleteStudyBlockById(id: Long) {
+        viewModelScope.launch {
+            studyBlockRepository.deleteById(id)
+        }
+    }
+
+    fun getStudyBlockById(id: Long, onResult: (StudyBlock?) -> Unit) {
+        viewModelScope.launch {
+            val block = studyBlockRepository.getById(id)
+            onResult(block)
+        }
+    }
+
+    fun startSessionFromStudyBlock(studyBlock: StudyBlock, sessionType: String = "Focus") {
+        viewModelScope.launch {
+            TimerManager.setFocusTimeMins(studyBlock.duration)
+            TimerManager.setTask(
+                id = studyBlock.id.toInt(),
+                name = studyBlock.name,
+                color = studyBlock.color
+            )
+            studyBlockRepository.startSessionFromStudyBlock(studyBlock, sessionType)
+        }
+    }
+
+    fun createQuickFocusSession(
+        durationMinutes: Int = 25,
+        name: String = "Quick Focus",
+        color: Long? = null
+    ) {
+        viewModelScope.launch {
+            TimerManager.setFocusTimeMins(durationMinutes)
+            TimerManager.setTask(
+                id = -1,
+                name = name,
+                color = color
+            )
+            studyBlockRepository.createQuickFocusSession(
+                name = name,
+                durationMinutes = durationMinutes,
+                color = color
+            )
         }
     }
 }

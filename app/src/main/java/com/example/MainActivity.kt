@@ -616,23 +616,13 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                             color = currentTheme.textPrimary,
                             modifier = Modifier.padding(bottom = 0.dp)
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Hi, $userName",
-                                fontSize = 12.scaledSp,
-                                fontFamily = currentFont,
-                                color = currentTheme.textSecondary,
-                                modifier = Modifier.padding(top = 0.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "[TEST DATA]",
-                                fontSize = 10.scaledSp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.Red,
-                                modifier = Modifier.clickable { viewModel.injectMockData() }
-                            )
-                        }
+                        Text(
+                            text = "Hi, $userName",
+                            fontSize = 12.scaledSp,
+                            fontFamily = currentFont,
+                            color = currentTheme.textSecondary,
+                            modifier = Modifier.padding(top = 0.dp)
+                        )
                     }
                 }
                 

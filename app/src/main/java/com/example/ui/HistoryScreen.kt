@@ -96,12 +96,20 @@ fun resolveTaskColor(taskName: String, sessions: List<TimerSession>, allTasks: L
         .maxByOrNull { it.startTime }
         
     if (targetSession?.taskColor != null) {
-        return Color(targetSession.taskColor.toULong())
+        return try {
+            Color(targetSession.taskColor.toULong())
+        } catch (e: Exception) {
+            currentTheme.primary
+        }
     }
     
     val task = allTasks.find { it.name == taskName }
     return if (task != null) {
-        Color(task.categoryColor.toULong())
+        try {
+            Color(task.categoryColor.toULong())
+        } catch (e: Exception) {
+            currentTheme.primary
+        }
     } else {
         currentTheme.textSecondary // Fallback for unknown/deleted historical task
     }

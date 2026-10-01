@@ -15,16 +15,138 @@ data class TaskItem(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+@Entity(tableName = "study_blocks")
+data class StudyBlock(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    val name: String,
+    val color: Long,
+    val startTime: Long = 0L,
+    val duration: Int = 25,
+    val repeatRule: String? = null,
+    val reminderEnabled: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 @Entity(tableName = "sessions")
 data class TimerSession(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val taskName: String,
-    val isBreak: Boolean,
-    val durationMinutes: Int,
+    val nameSnapshot: String,
+    val colorSnapshot: Long? = null,
+    val studyBlockId: Long? = null,
+    val sessionType: String = "Focus",
     val startTime: Long,
-    val endTime: Long,
-    val taskColor: Long? = null
-)
+    val duration: Int = 0,
+    val endTime: Long = startTime + duration * 60000L
+) {
+    @Ignore
+    constructor(
+        taskName: String,
+        isBreak: Boolean,
+        durationMinutes: Int,
+        startTime: Long,
+        endTime: Long,
+        taskColor: Long? = null,
+        studyBlockId: Long? = null
+    ) : this(
+        id = 0,
+        nameSnapshot = taskName,
+        colorSnapshot = taskColor,
+        studyBlockId = studyBlockId,
+        sessionType = if (isBreak) "Break" else "Focus",
+        startTime = startTime,
+        duration = durationMinutes,
+        endTime = endTime
+    )
+
+    @Ignore
+    val taskName: String = nameSnapshot
+    @Ignore
+    val taskColor: Long? = colorSnapshot
+    @Ignore
+    val isBreak: Boolean = sessionType.equals("Break", ignoreCase = true)
+    @Ignore
+    val durationMinutes: Int = duration
+}
+
+@Dao
+interface StudyBlockDao {
+    @Query("SELECT * FROM study_blocks ORDER BY createdAt DESC")
+    fun getAllStudyBlocks(): Flow<List<StudyBlock>>
+
+    @Query("SELECT * FROM study_blocks WHERE id = :id")
+    suspend fun getStudyBlockById(id: Long): StudyBlock?
+
+    @Query("SELECT * FROM study_blocks WHERE id = :id")
+    fun observeStudyBlockById(id: Long): Flow<StudyBlock?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStudyBlock(studyBlock: StudyBlock): Long
+
+    @Update
+    suspend fun updateStudyBlock(studyBlock: StudyBlock)
+
+    @Delete
+    suspend fun deleteStudyBlock(studyBlock: StudyBlock)
+
+    @Query("DELETE FROM study_blocks WHERE id = :id")
+    suspend fun deleteStudyBlockById(id: Long)
+}
+
+class StudyBlockRepository(
+    private val studyBlockDao: StudyBlockDao,
+    private val sessionDao: SessionDao
+) {
+    val allStudyBlocks: Flow<List<StudyBlock>> = studyBlockDao.getAllStudyBlocks()
+
+    suspend fun getById(id: Long): StudyBlock? = studyBlockDao.getStudyBlockById(id)
+
+    fun observeById(id: Long): Flow<StudyBlock?> = studyBlockDao.observeStudyBlockById(id)
+
+    suspend fun create(studyBlock: StudyBlock): Long = studyBlockDao.insertStudyBlock(studyBlock)
+
+    suspend fun update(studyBlock: StudyBlock) = studyBlockDao.updateStudyBlock(studyBlock)
+
+    suspend fun delete(studyBlock: StudyBlock) = studyBlockDao.deleteStudyBlock(studyBlock)
+
+    suspend fun deleteById(id: Long) = studyBlockDao.deleteStudyBlockById(id)
+
+    suspend fun createQuickFocusSession(
+        name: String = "Quick Focus",
+        durationMinutes: Int = 25,
+        color: Long? = null
+    ): TimerSession {
+        val now = System.currentTimeMillis()
+        val session = TimerSession(
+            nameSnapshot = name,
+            colorSnapshot = color,
+            studyBlockId = null,
+            sessionType = "Focus",
+            startTime = now,
+            duration = durationMinutes,
+            endTime = now + durationMinutes * 60000L
+        )
+        sessionDao.insertSession(session)
+        return session
+    }
+
+    suspend fun startSessionFromStudyBlock(
+        studyBlock: StudyBlock,
+        sessionType: String = "Focus"
+    ): TimerSession {
+        val now = System.currentTimeMillis()
+        val session = TimerSession(
+            nameSnapshot = studyBlock.name,
+            colorSnapshot = studyBlock.color,
+            studyBlockId = studyBlock.id,
+            sessionType = sessionType,
+            startTime = now,
+            duration = studyBlock.duration,
+            endTime = now + studyBlock.duration * 60000L
+        )
+        sessionDao.insertSession(session)
+        return session
+    }
+}
 
 @Dao
 interface TaskDao {
@@ -64,8 +186,11 @@ interface SessionDao {
     @Query("DELETE FROM sessions WHERE startTime >= :start AND startTime < :end")
     suspend fun deleteSessionsInRange(start: Long, end: Long)
 
-    @Query("DELETE FROM sessions WHERE taskName = :taskName")
+    @Query("DELETE FROM sessions WHERE nameSnapshot = :taskName")
     suspend fun deleteSessionsByTask(taskName: String)
+
+    @Query("SELECT * FROM sessions WHERE studyBlockId = :studyBlockId ORDER BY startTime DESC")
+    fun getSessionsForStudyBlock(studyBlockId: Long): Flow<List<TimerSession>>
 
     @Query("DELETE FROM sessions")
     suspend fun deleteAllSessions()
@@ -100,8 +225,9 @@ interface AlarmDao {
     suspend fun getAlarmById(id: Int): AlarmItem?
 }
 
-@Database(entities = [TaskItem::class, TimerSession::class, AlarmItem::class], version = 4, exportSchema = false)
+@Database(entities = [StudyBlock::class, TaskItem::class, TimerSession::class, AlarmItem::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun studyBlockDao(): StudyBlockDao
     abstract fun taskDao(): TaskDao
     abstract fun sessionDao(): SessionDao
     abstract fun alarmDao(): AlarmDao
