@@ -1,7 +1,11 @@
 package com.example.ui
 
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,14 +30,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -47,19 +53,42 @@ import com.example.ui.theme.LocalAppTheme
 import java.text.SimpleDateFormat
 import java.util.*
 
+// Safe color helper that avoids any Compose 64-bit color-space packing issues
+fun parseBlockColor(colorLong: Long): Color {
+    val argb = (colorLong and 0xFFFFFFFFL).toInt()
+    return Color(argb)
+}
+
+// Reliable RGB perceptual luminance check
+fun isColorLight(color: Color): Boolean {
+    return (color.red * 0.299f + color.green * 0.587f + color.blue * 0.114f) > 0.55f
+}
+
 private val STUDY_BLOCK_PALETTE = listOf(
-    Pair("Coral", 0xFFF28F75L),
-    Pair("Sky Blue", 0xFF8BB5CAL),
-    Pair("Sage", 0xFF9EAC95L),
-    Pair("Lavender", 0xFFB39DDBL),
-    Pair("Amber", 0xFFFFCA28L),
-    Pair("Peach", 0xFFFFAB91L),
-    Pair("Teal", 0xFF80CBC4L),
-    Pair("Rose", 0xFFF48FB1L)
+    Pair("Coral Sunrise", 0xFFF28F75L),
+    Pair("Sky Oasis", 0xFF8BB5CAL),
+    Pair("Sage Garden", 0xFF9EAC95L),
+    Pair("Soft Lilac", 0xFFB39DDBL),
+    Pair("Honey Amber", 0xFFFFCA28L),
+    Pair("Warm Peach", 0xFFFFAB91L),
+    Pair("Mint Fresh", 0xFF80CBC4L),
+    Pair("Wild Rose", 0xFFF48FB1L)
 )
 
-private val DURATION_PRESETS = listOf(15, 25, 45, 60, 90)
-private val REPEAT_RULES = listOf("None", "Daily", "Weekdays", "Weekly")
+private val DURATION_PRESETS = listOf(
+    Pair("⚡ 15m", 15),
+    Pair("🍅 25m", 25),
+    Pair("🧠 45m", 45),
+    Pair("📚 60m", 60),
+    Pair("⏳ 90m", 90)
+)
+
+private val REPEAT_OPTIONS = listOf(
+    Pair("Once", "None"),
+    Pair("Daily ✨", "Daily"),
+    Pair("Weekdays 💼", "Weekdays"),
+    Pair("Weekly 📅", "Weekly")
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,22 +123,30 @@ fun StudyBlocksScreen(
         Pair(today, upcoming)
     }
 
+    val totalPlannedMinutesToday = remember(todayBlocks) {
+        todayBlocks.sumOf { it.duration }
+    }
+
     Scaffold(
         containerColor = currentTheme.background,
         topBar = {
             TopAppBar(
                 title = {
                     Column(modifier = Modifier.padding(start = 4.dp, top = 6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Study Sanctuary",
+                                fontFamily = currentFont,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 26.scaledSp,
+                                color = currentTheme.textPrimary,
+                                letterSpacing = (-0.5).sp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = "✨", fontSize = 20.sp)
+                        }
                         Text(
-                            text = "Study Blocks 📚",
-                            fontFamily = currentFont,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 26.scaledSp,
-                            color = currentTheme.textPrimary,
-                            letterSpacing = (-0.5).sp
-                        )
-                        Text(
-                            text = "Structured focus blocks for deep work & learning",
+                            text = "Curate your deep work rituals & mindful study hours",
                             fontFamily = currentFont,
                             fontWeight = FontWeight.Medium,
                             fontSize = 12.scaledSp,
@@ -133,7 +170,7 @@ fun StudyBlocksScreen(
                     showAddEditDialog = true
                 },
                 containerColor = currentTheme.primary,
-                contentColor = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
+                contentColor = if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White,
                 shape = CircleShape,
                 modifier = Modifier
                     .padding(bottom = bottomPadding + 16.dp, end = 16.dp)
@@ -141,7 +178,7 @@ fun StudyBlocksScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "Add Study Block",
+                    contentDescription = "Create Study Block",
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -166,15 +203,29 @@ fun StudyBlocksScreen(
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    top = 12.dp,
+                    top = 10.dp,
                     bottom = bottomPadding + 88.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // Summary Metric Pill Card
+                item {
+                    OverviewSummaryCard(
+                        todayCount = todayBlocks.size,
+                        totalMinutes = totalPlannedMinutesToday,
+                        onQuickFocus = {
+                            viewModel.createQuickFocusSession(25, "Quick Focus", currentTheme.primary.value.toLong())
+                            navController.navigate("home") {
+                                popUpTo("home") { inclusive = true }
+                            }
+                        }
+                    )
+                }
+
                 if (todayBlocks.isNotEmpty()) {
                     item {
                         SectionHeader(
-                            title = "TODAY",
+                            title = "TODAY'S RITUALS",
                             count = todayBlocks.size,
                             icon = Icons.Default.Today
                         )
@@ -201,9 +252,9 @@ fun StudyBlocksScreen(
 
                 if (upcomingBlocks.isNotEmpty()) {
                     item {
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         SectionHeader(
-                            title = "UPCOMING",
+                            title = "UPCOMING HORIZONS",
                             count = upcomingBlocks.size,
                             icon = Icons.Default.Upcoming
                         )
@@ -270,7 +321,7 @@ fun StudyBlocksScreen(
             onDismissRequest = { blockToDelete = null },
             title = {
                 Text(
-                    text = "Delete Study Block?",
+                    text = "Release this study ritual?",
                     fontFamily = currentFont,
                     fontWeight = FontWeight.Bold,
                     color = currentTheme.textPrimary
@@ -278,29 +329,121 @@ fun StudyBlocksScreen(
             },
             text = {
                 Text(
-                    text = "Are you sure you want to delete \"${block.name}\"? Your existing session history will remain intact.",
+                    text = "Are you sure you want to remove \"${block.name}\"? Past completed sessions in your History will remain safely preserved.",
                     fontFamily = currentFont,
                     color = currentTheme.textSecondary
                 )
             },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         viewModel.deleteStudyBlock(block)
                         blockToDelete = null
-                    }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Delete", color = Color(0xFFE53935), fontWeight = FontWeight.Bold)
+                    Text("Delete Ritual", color = Color.White, fontWeight = FontWeight.Bold, fontFamily = currentFont)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { blockToDelete = null }) {
-                    Text("Cancel", color = currentTheme.textSecondary)
+                    Text("Keep It", color = currentTheme.textSecondary, fontFamily = currentFont)
                 }
             },
             containerColor = currentTheme.surface,
-            shape = RoundedCornerShape(20.dp)
+            shape = RoundedCornerShape(22.dp)
         )
+    }
+}
+
+@Composable
+private fun OverviewSummaryCard(
+    todayCount: Int,
+    totalMinutes: Int,
+    onQuickFocus: () -> Unit
+) {
+    val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
+    val view = LocalView.current
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = 2.dp, shape = RoundedCornerShape(20.dp), spotColor = currentTheme.shadowColor)
+            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(20.dp)),
+        colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Today's Focus Flow",
+                    fontFamily = currentFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.scaledSp,
+                    color = currentTheme.textPrimary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "🎯 $todayCount ${if (todayCount == 1) "ritual" else "rituals"}",
+                        fontFamily = currentFont,
+                        fontSize = 12.scaledSp,
+                        color = currentTheme.textSecondary
+                    )
+                    Text(
+                        text = "•",
+                        fontSize = 12.scaledSp,
+                        color = currentTheme.textSecondary.copy(alpha = 0.5f)
+                    )
+                    Text(
+                        text = "🍅 $totalMinutes min",
+                        fontFamily = currentFont,
+                        fontSize = 12.scaledSp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = currentTheme.primary
+                    )
+                }
+            }
+
+            FilledTonalButton(
+                onClick = {
+                    try {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    } catch (e: Exception) {}
+                    onQuickFocus()
+                },
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = currentTheme.pillActiveBg,
+                    contentColor = currentTheme.primary
+                ),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Bolt,
+                    contentDescription = "Quick Focus",
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "Quick Focus",
+                    fontFamily = currentFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.scaledSp
+                )
+            }
+        }
     }
 }
 
@@ -308,7 +451,7 @@ fun StudyBlocksScreen(
 private fun SectionHeader(
     title: String,
     count: Int,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
+    icon: ImageVector
 ) {
     val currentTheme = LocalAppTheme.current
     val currentFont = LocalAppFont.current
@@ -360,39 +503,40 @@ private fun StudyBlockCard(
 ) {
     val currentTheme = LocalAppTheme.current
     val currentFont = LocalAppFont.current
-    val blockColor = Color(block.color.toULong())
+    val blockColor = parseBlockColor(block.color)
     val view = LocalView.current
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(elevation = 3.dp, shape = RoundedCornerShape(20.dp), spotColor = currentTheme.shadowColor)
-            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(20.dp))
-            .clip(RoundedCornerShape(20.dp))
+            .shadow(elevation = 2.dp, shape = RoundedCornerShape(22.dp), spotColor = currentTheme.shadowColor)
+            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(22.dp))
             .clickable { onEdit() }
             .testTag("study_block_card_${block.id}"),
         colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
-        shape = RoundedCornerShape(20.dp)
+        shape = RoundedCornerShape(22.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            // Elegant vertical accent pill
             Box(
                 modifier = Modifier
-                    .width(6.dp)
-                    .height(64.dp)
+                    .width(5.dp)
+                    .height(60.dp)
                     .clip(RoundedCornerShape(3.dp))
                     .background(blockColor)
             )
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .align(Alignment.CenterVertically)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -420,7 +564,7 @@ private fun StudyBlockCard(
                         Spacer(modifier = Modifier.width(6.dp))
                         Icon(
                             imageVector = Icons.Default.NotificationsActive,
-                            contentDescription = "Reminder enabled",
+                            contentDescription = "Mindful reminder on",
                             tint = currentTheme.primary,
                             modifier = Modifier.size(16.dp)
                         )
@@ -428,7 +572,7 @@ private fun StudyBlockCard(
                 }
 
                 if (block.description.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = block.description,
                         fontFamily = currentFont,
@@ -443,35 +587,39 @@ private fun StudyBlockCard(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    InfoChip(
+                    InfoPill(
                         icon = Icons.Default.Timer,
-                        text = "${block.duration} min"
+                        text = "${block.duration}m"
                     )
 
                     val timeLabel = formatStartTime(block.startTime)
-                    InfoChip(
-                        icon = Icons.Default.AccessTime,
+                    InfoPill(
+                        icon = Icons.Default.Schedule,
                         text = timeLabel
                     )
 
                     if (!block.repeatRule.isNullOrBlank() && block.repeatRule != "None") {
-                        InfoChip(
+                        val displayRepeat = when (block.repeatRule) {
+                            "Daily" -> "Every Day"
+                            "Weekdays" -> "Mon-Fri"
+                            else -> block.repeatRule
+                        }
+                        InfoPill(
                             icon = Icons.Default.Repeat,
-                            text = block.repeatRule
+                            text = displayRepeat
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
             Column(
                 horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.align(Alignment.CenterVertically)
+                verticalArrangement = Arrangement.Center
             ) {
                 FilledTonalButton(
                     onClick = {
@@ -481,7 +629,7 @@ private fun StudyBlockCard(
                         onStart()
                     },
                     colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = blockColor.copy(alpha = 0.18f),
+                        containerColor = blockColor.copy(alpha = 0.16f),
                         contentColor = blockColor
                     ),
                     shape = RoundedCornerShape(12.dp),
@@ -490,36 +638,36 @@ private fun StudyBlockCard(
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Start",
+                        contentDescription = "Start Session",
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "Start",
+                        text = "Focus",
                         fontFamily = currentFont,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.scaledSp
                     )
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
                         onClick = onEdit,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(30.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = "Edit Block",
-                            tint = currentTheme.textSecondary.copy(alpha = 0.7f),
+                            tint = currentTheme.textSecondary.copy(alpha = 0.6f),
                             modifier = Modifier.size(16.dp)
                         )
                     }
 
                     IconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(30.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.DeleteOutline,
@@ -535,8 +683,8 @@ private fun StudyBlockCard(
 }
 
 @Composable
-private fun InfoChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+private fun InfoPill(
+    icon: ImageVector,
     text: String
 ) {
     val currentTheme = LocalAppTheme.current
@@ -549,13 +697,13 @@ private fun InfoChip(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 6.dp)
+            modifier = Modifier.padding(horizontal = 7.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = currentTheme.textSecondary,
-                modifier = Modifier.size(12.dp)
+                modifier = Modifier.size(11.dp)
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
@@ -584,10 +732,10 @@ private fun EmptyStudyBlocksView(
         Card(
             modifier = Modifier
                 .fillMaxWidth(0.88f)
-                .shadow(elevation = 4.dp, shape = RoundedCornerShape(24.dp), spotColor = currentTheme.shadowColor)
-                .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(24.dp)),
+                .shadow(elevation = 3.dp, shape = RoundedCornerShape(26.dp), spotColor = currentTheme.shadowColor)
+                .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(26.dp)),
             colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
-            shape = RoundedCornerShape(24.dp)
+            shape = RoundedCornerShape(26.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -597,45 +745,46 @@ private fun EmptyStudyBlocksView(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(72.dp)
+                        .size(76.dp)
                         .clip(CircleShape)
                         .background(currentTheme.pillActiveBg),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "📖",
-                        fontSize = 32.sp
+                        text = "📚",
+                        fontSize = 36.sp
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 Text(
-                    text = "No Study Blocks Yet",
+                    text = "Your Study Sanctuary",
                     fontFamily = currentFont,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 20.scaledSp,
+                    fontSize = 21.scaledSp,
                     color = currentTheme.textPrimary
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "Organize subjects, deep-work sessions, or reading routines with scheduled study blocks.",
+                    text = "No study blocks scheduled yet. Plan your deep focus rituals and conquer your courses one peaceful session at a time.",
                     fontFamily = currentFont,
                     fontSize = 13.scaledSp,
                     color = currentTheme.textSecondary,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    lineHeight = 18.scaledSp
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 Button(
                     onClick = onCreateFirst,
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = currentTheme.primary,
-                        contentColor = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
+                        contentColor = if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White
                     ),
                     modifier = Modifier.testTag("create_first_study_block_button")
                 ) {
@@ -646,7 +795,7 @@ private fun EmptyStudyBlocksView(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Create Study Block",
+                        text = "Craft First Study Block",
                         fontFamily = currentFont,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.scaledSp
@@ -674,35 +823,55 @@ fun AddEditStudyBlockDialog(
     val currentTheme = LocalAppTheme.current
     val currentFont = LocalAppFont.current
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val view = LocalView.current
+    val context = androidx.compose.ui.platform.LocalContext.current
 
-    var name by remember { mutableStateOf(initialBlock?.name ?: "") }
-    var description by remember { mutableStateOf(initialBlock?.description ?: "") }
-    var selectedColor by remember { mutableStateOf(initialBlock?.color ?: STUDY_BLOCK_PALETTE[0].second) }
-    var selectedDuration by remember { mutableStateOf(initialBlock?.duration ?: 25) }
-    var customDurationText by remember { mutableStateOf("") }
-    var selectedRepeatRule by remember { mutableStateOf(initialBlock?.repeatRule ?: "None") }
-    var reminderEnabled by remember { mutableStateOf(initialBlock?.reminderEnabled ?: false) }
-    var scheduledHour by remember {
+    var name by remember(initialBlock) { mutableStateOf(initialBlock?.name ?: "") }
+    var description by remember(initialBlock) { mutableStateOf(initialBlock?.description ?: "") }
+    var selectedColor by remember(initialBlock) { mutableStateOf(initialBlock?.color ?: STUDY_BLOCK_PALETTE[0].second) }
+    var selectedDuration by remember(initialBlock) { mutableIntStateOf(initialBlock?.duration ?: 25) }
+    var selectedRepeatRule by remember(initialBlock) { mutableStateOf(initialBlock?.repeatRule ?: "None") }
+    var reminderEnabled by remember(initialBlock) { mutableStateOf(initialBlock?.reminderEnabled ?: false) }
+
+    val initialHour = remember(initialBlock) {
         val cal = Calendar.getInstance()
         if (initialBlock != null && initialBlock.startTime > 0L) {
             cal.timeInMillis = initialBlock.startTime
-            mutableIntStateOf(cal.get(Calendar.HOUR_OF_DAY))
+            cal.get(Calendar.HOUR_OF_DAY)
         } else {
-            mutableIntStateOf(9)
+            9
         }
     }
-    var scheduledMinute by remember {
+    val initialMinute = remember(initialBlock) {
         val cal = Calendar.getInstance()
         if (initialBlock != null && initialBlock.startTime > 0L) {
             cal.timeInMillis = initialBlock.startTime
-            mutableIntStateOf(cal.get(Calendar.MINUTE))
+            cal.get(Calendar.MINUTE)
         } else {
-            mutableIntStateOf(0)
+            0
         }
     }
-    var isFlexibleTime by remember { mutableStateOf(initialBlock?.startTime == null || initialBlock.startTime == 0L) }
+
+    var scheduledHour by remember(initialBlock) { mutableIntStateOf(initialHour) }
+    var scheduledMinute by remember(initialBlock) { mutableIntStateOf(initialMinute) }
+    var isFlexibleTime by remember(initialBlock) { mutableStateOf(initialBlock?.startTime == null || initialBlock.startTime == 0L) }
     var validationError by remember { mutableStateOf<String?>(null) }
+
+    var showPermissionRationale by remember { mutableStateOf(false) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            reminderEnabled = true
+            if (isFlexibleTime) {
+                isFlexibleTime = false
+            }
+        } else {
+            reminderEnabled = false
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -715,20 +884,20 @@ fun AddEditStudyBlockDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.45f))
+                .background(Color.Black.copy(alpha = 0.42f))
                 .pointerInput(Unit) {
                     detectTapGestures(onTap = { focusManager.clearFocus() })
                 },
             contentAlignment = Alignment.Center
         ) {
             Card(
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(26.dp),
                 colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
                 modifier = Modifier
                     .fillMaxWidth(0.92f)
                     .fillMaxHeight(0.88f)
-                    .shadow(elevation = 16.dp, shape = RoundedCornerShape(28.dp), spotColor = currentTheme.shadowColor)
-                    .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(28.dp)),
+                    .shadow(elevation = 16.dp, shape = RoundedCornerShape(26.dp), spotColor = currentTheme.shadowColor)
+                    .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(26.dp)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(
@@ -741,13 +910,17 @@ fun AddEditStudyBlockDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = if (initialBlock == null) "New Study Block" else "Edit Study Block",
-                            fontFamily = currentFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 22.scaledSp,
-                            color = currentTheme.textPrimary
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = if (initialBlock == null) "New Study Ritual" else "Edit Ritual",
+                                fontFamily = currentFont,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 21.scaledSp,
+                                color = currentTheme.textPrimary
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = "✍️", fontSize = 18.sp)
+                        }
                         IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                             Icon(
                                 imageVector = Icons.Default.Close,
@@ -757,7 +930,7 @@ fun AddEditStudyBlockDialog(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     Column(
                         modifier = Modifier
@@ -772,12 +945,12 @@ fun AddEditStudyBlockDialog(
                                     validationError = null
                                 }
                             },
-                            label = { Text("Block Name *", fontFamily = currentFont) },
-                            placeholder = { Text("e.g. Linear Algebra, History Essay", fontFamily = currentFont) },
+                            label = { Text("Ritual / Subject Name *", fontFamily = currentFont) },
+                            placeholder = { Text("e.g. Advanced Calculus, World History", fontFamily = currentFont) },
                             isError = validationError != null,
                             supportingText = {
                                 if (validationError != null) {
-                                    Text(text = validationError ?: "", color = MaterialTheme.colorScheme.error)
+                                    Text(text = validationError ?: "", color = MaterialTheme.colorScheme.error, fontFamily = currentFont)
                                 }
                             },
                             singleLine = true,
@@ -792,22 +965,36 @@ fun AddEditStudyBlockDialog(
 
                         OutlinedTextField(
                             value = description,
-                            onValueChange = { description = it },
-                            label = { Text("Description (Optional)", fontFamily = currentFont) },
-                            placeholder = { Text("e.g. Chapter 3 exercises & revision", fontFamily = currentFont) },
-                            maxLines = 3,
+                            onValueChange = { newText ->
+                                if (newText.contains('\n')) {
+                                    description = newText.replace("\n", "").trim()
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                } else {
+                                    description = newText
+                                }
+                            },
+                            label = { Text("Intentions & Notes (Optional)", fontFamily = currentFont) },
+                            placeholder = { Text("e.g. Practice questions 1-15, review summary", fontFamily = currentFont) },
+                            maxLines = 2,
+                            singleLine = true,
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("study_block_desc_input"),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                            keyboardActions = KeyboardActions(
+                                onDone = {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                }
+                            )
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
                         Text(
-                            text = "Color Theme",
+                            text = "Color Essence",
                             fontFamily = currentFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.scaledSp,
@@ -820,7 +1007,7 @@ fun AddEditStudyBlockDialog(
                         ) {
                             STUDY_BLOCK_PALETTE.forEach { (colorName, colorValue) ->
                                 val isSelected = selectedColor == colorValue
-                                val composeColor = Color(colorValue.toULong())
+                                val composeColor = parseBlockColor(colorValue)
                                 Box(
                                     modifier = Modifier
                                         .size(36.dp)
@@ -840,7 +1027,7 @@ fun AddEditStudyBlockDialog(
                                         Icon(
                                             imageVector = Icons.Default.Check,
                                             contentDescription = colorName,
-                                            tint = if (composeColor.luminance() > 0.5f) Color.Black else Color.White,
+                                            tint = if (isColorLight(composeColor)) Color.Black else Color.White,
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
@@ -848,10 +1035,10 @@ fun AddEditStudyBlockDialog(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(18.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
                         Text(
-                            text = "Duration (Minutes)",
+                            text = "Focus Duration",
                             fontFamily = currentFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.scaledSp,
@@ -862,24 +1049,49 @@ fun AddEditStudyBlockDialog(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            DURATION_PRESETS.forEach { mins ->
+                            DURATION_PRESETS.forEach { (label, mins) ->
                                 val isSelected = selectedDuration == mins
-                                FilterChip(
+                                Surface(
                                     selected = isSelected,
                                     onClick = {
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                        } catch (e: Exception) {}
                                         selectedDuration = mins
-                                        customDurationText = ""
                                     },
-                                    label = { Text("$mins m", fontFamily = currentFont, fontSize = 12.scaledSp) },
-                                    shape = RoundedCornerShape(10.dp)
-                                )
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) currentTheme.primary else currentTheme.pillActiveBg,
+                                    border = BorderStroke(
+                                        width = 1.dp,
+                                        color = if (isSelected) currentTheme.primary else currentTheme.cardBorder
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 9.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            fontFamily = currentFont,
+                                            fontSize = 12.scaledSp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) {
+                                                if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White
+                                            } else currentTheme.textPrimary,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(18.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
                         Text(
-                            text = "Scheduled Time",
+                            text = "Timing & Schedule",
                             fontFamily = currentFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.scaledSp,
@@ -894,7 +1106,7 @@ fun AddEditStudyBlockDialog(
                             FilterChip(
                                 selected = isFlexibleTime,
                                 onClick = { isFlexibleTime = true },
-                                label = { Text("Flexible / Anytime", fontFamily = currentFont) },
+                                label = { Text("Flexible / Anytime 🌱", fontFamily = currentFont) },
                                 leadingIcon = {
                                     Icon(Icons.Default.HourglassEmpty, contentDescription = null, modifier = Modifier.size(16.dp))
                                 },
@@ -910,7 +1122,7 @@ fun AddEditStudyBlockDialog(
                                         else -> h
                                     }
                                     val displayMinute = String.format("%02d", scheduledMinute)
-                                    Text("$displayHour:$displayMinute $ampm", fontFamily = currentFont)
+                                    Text("$displayHour:$displayMinute $ampm ⏰", fontFamily = currentFont)
                                 },
                                 leadingIcon = {
                                     Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -947,7 +1159,7 @@ fun AddEditStudyBlockDialog(
                         Spacer(modifier = Modifier.height(18.dp))
 
                         Text(
-                            text = "Repeat Rule",
+                            text = "Recurrence Rhythm",
                             fontFamily = currentFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.scaledSp,
@@ -958,12 +1170,12 @@ fun AddEditStudyBlockDialog(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            REPEAT_RULES.forEach { rule ->
-                                val isSelected = selectedRepeatRule == rule
+                            REPEAT_OPTIONS.forEach { (label, value) ->
+                                val isSelected = selectedRepeatRule == value
                                 FilterChip(
                                     selected = isSelected,
-                                    onClick = { selectedRepeatRule = rule },
-                                    label = { Text(rule, fontFamily = currentFont, fontSize = 12.scaledSp) },
+                                    onClick = { selectedRepeatRule = value },
+                                    label = { Text(label, fontFamily = currentFont, fontSize = 12.scaledSp) },
                                     shape = RoundedCornerShape(10.dp)
                                 )
                             }
@@ -990,14 +1202,14 @@ fun AddEditStudyBlockDialog(
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column {
                                     Text(
-                                        text = "Reminder",
+                                        text = "Mindful Alert",
                                         fontFamily = currentFont,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 13.scaledSp,
                                         color = currentTheme.textPrimary
                                     )
                                     Text(
-                                        text = "Alert when it's time to study",
+                                        text = "Gentle nudge when your focus session begins",
                                         fontFamily = currentFont,
                                         fontSize = 11.scaledSp,
                                         color = currentTheme.textSecondary
@@ -1006,9 +1218,90 @@ fun AddEditStudyBlockDialog(
                             }
                             Switch(
                                 checked = reminderEnabled,
-                                onCheckedChange = { reminderEnabled = it }
+                                onCheckedChange = { enable ->
+                                    if (enable) {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                            val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                                                context,
+                                                android.Manifest.permission.POST_NOTIFICATIONS
+                                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                                            if (!hasPermission) {
+                                                showPermissionRationale = true
+                                            } else {
+                                                reminderEnabled = true
+                                                if (isFlexibleTime) {
+                                                    isFlexibleTime = false
+                                                }
+                                            }
+                                        } else {
+                                            reminderEnabled = true
+                                            if (isFlexibleTime) {
+                                                isFlexibleTime = false
+                                            }
+                                        }
+                                    } else {
+                                        reminderEnabled = false
+                                    }
+                                }
                             )
                         }
+                    }
+
+                    if (showPermissionRationale) {
+                        AlertDialog(
+                            onDismissRequest = { showPermissionRationale = false },
+                            icon = {
+                                Icon(
+                                    imageVector = Icons.Default.NotificationsActive,
+                                    contentDescription = null,
+                                    tint = currentTheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            },
+                            title = {
+                                Text(
+                                    text = "Enable Focus Alerts 🔔",
+                                    fontFamily = currentFont,
+                                    fontWeight = FontWeight.Bold,
+                                    color = currentTheme.textPrimary
+                                )
+                            },
+                            text = {
+                                Text(
+                                    text = "PomoPal needs notification permission to gently alert you when it's time to begin your scheduled study rituals.",
+                                    fontFamily = currentFont,
+                                    color = currentTheme.textSecondary,
+                                    fontSize = 13.scaledSp
+                                )
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        showPermissionRationale = false
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primary),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Text(
+                                        "Allow Alerts",
+                                        color = if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = currentFont
+                                    )
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showPermissionRationale = false }) {
+                                    Text("Not Now", color = currentTheme.textSecondary, fontFamily = currentFont)
+                                }
+                            },
+                            containerColor = currentTheme.surface,
+                            shape = RoundedCornerShape(24.dp)
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -1025,14 +1318,14 @@ fun AddEditStudyBlockDialog(
                         Button(
                             onClick = {
                                 if (name.trim().isEmpty()) {
-                                    validationError = "Please enter a block name"
+                                    validationError = "Please enter a ritual name"
                                     return@Button
                                 }
                                 try {
                                     view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                                 } catch (e: Exception) {}
 
-                                val targetStartTime = if (isFlexibleTime) {
+                                val targetStartTime = if (isFlexibleTime && !reminderEnabled) {
                                     0L
                                 } else {
                                     val c = Calendar.getInstance()
@@ -1056,12 +1349,12 @@ fun AddEditStudyBlockDialog(
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = currentTheme.primary,
-                                contentColor = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
+                                contentColor = if (isColorLight(currentTheme.primary)) Color(0xFF1E1E1E) else Color.White
                             ),
                             modifier = Modifier.testTag("save_study_block_button")
                         ) {
                             Text(
-                                text = if (initialBlock == null) "Create Block" else "Save Changes",
+                                text = if (initialBlock == null) "Create Ritual ✨" else "Save Ritual ✨",
                                 fontFamily = currentFont,
                                 fontWeight = FontWeight.Bold
                             )

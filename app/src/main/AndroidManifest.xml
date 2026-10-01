@@ -86,6 +86,15 @@
         </receiver>
 
         <receiver
+            android:name=".service.StudyBlockReminderReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.action.STUDY_BLOCK_REMINDER" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".service.AlarmReceiver"
             android:enabled="true"
             android:exported="true">

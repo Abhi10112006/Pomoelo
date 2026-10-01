@@ -113,6 +113,7 @@ class MainActivity : ComponentActivity() {
         database = DatabaseProvider.getDatabase(applicationContext)
 
         enableEdgeToEdge()
+        handleIntent(intent)
         setContent {
             val currentTheme by SettingsManager.themeState.collectAsState()
             val currentFont by SettingsManager.fontState.collectAsState()
@@ -156,15 +157,32 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleIntent(intent)
     }
 
     private fun handleIntent(intent: Intent?) {
-        if (intent != null && intent.getBooleanExtra("RETURNED_FROM_BLOCKER", false)) {
+        if (intent == null) return
+        if (intent.action == com.example.service.StudyBlockReminderScheduler.ACTION_START_STUDY || intent.hasExtra("STUDY_BLOCK_ID")) {
+            val blockId = intent.getLongExtra("STUDY_BLOCK_ID", -1L)
+            if (blockId != -1L) {
+                pendingStudyBlockId = blockId
+            }
+        }
+        val openTab = intent.getStringExtra("OPEN_TAB")
+        if (openTab != null) {
+            pendingOpenTab = openTab
+        }
+        if (intent.getBooleanExtra("RETURNED_FROM_BLOCKER", false)) {
             android.widget.Toast.makeText(this, "Focus session protected. Welcome back! 🌿", android.widget.Toast.LENGTH_SHORT).show()
-        } else if (intent != null && intent.hasExtra("BLOCKED_APP")) {
+        } else if (intent.hasExtra("BLOCKED_APP")) {
             android.widget.Toast.makeText(this, "Focus session protected. Welcome back! 🌿", android.widget.Toast.LENGTH_SHORT).show()
         }
+    }
+
+    companion object {
+        var pendingStudyBlockId by mutableStateOf<Long?>(null)
+        var pendingOpenTab by mutableStateOf<String?>(null)
     }
 }
 
@@ -173,6 +191,31 @@ fun PomoPalApp(viewModel: TimerViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val startDest = if (com.example.service.SettingsManager.getUserName() == null) "signin" else "home"
     val navController = rememberNavController()
+
+    LaunchedEffect(MainActivity.pendingStudyBlockId) {
+        val blockId = MainActivity.pendingStudyBlockId
+        if (blockId != null) {
+            viewModel.getStudyBlockById(blockId) { block ->
+                if (block != null) {
+                    viewModel.startSessionFromStudyBlock(block)
+                    navController.navigate("home") {
+                        popUpTo("home") { inclusive = true }
+                    }
+                }
+            }
+            MainActivity.pendingStudyBlockId = null
+        }
+    }
+
+    LaunchedEffect(MainActivity.pendingOpenTab) {
+        val tab = MainActivity.pendingOpenTab
+        if (tab != null) {
+            navController.navigate(tab) {
+                popUpTo("home")
+            }
+            MainActivity.pendingOpenTab = null
+        }
+    }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: startDest
     val isAddingTask by viewModel.isAddingTask.collectAsState()

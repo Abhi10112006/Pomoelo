@@ -14,6 +14,8 @@ class BootReceiver : BroadcastReceiver() {
             }
             // Reschedule all active alarms
             AlarmScheduler.rescheduleAll(context.applicationContext)
+            // Reschedule all active study block reminders
+            StudyBlockReminderScheduler.rescheduleAll(context.applicationContext)
         }
     }
 }

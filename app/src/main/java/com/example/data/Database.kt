@@ -74,6 +74,9 @@ interface StudyBlockDao {
     @Query("SELECT * FROM study_blocks ORDER BY createdAt DESC")
     fun getAllStudyBlocks(): Flow<List<StudyBlock>>
 
+    @Query("SELECT * FROM study_blocks")
+    suspend fun getAllStudyBlocksList(): List<StudyBlock>
+
     @Query("SELECT * FROM study_blocks WHERE id = :id")
     suspend fun getStudyBlockById(id: Long): StudyBlock?
 

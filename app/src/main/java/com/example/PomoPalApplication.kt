@@ -37,6 +37,19 @@ class PomoPalApplication : Application() {
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
+
+            // Initialize "Study Ritual Reminders" Notification Channel
+            val studyChannel = NotificationChannel(
+                com.example.service.StudyBlockReminderScheduler.CHANNEL_ID,
+                "Study Ritual Reminders",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Mindful notifications when your scheduled study blocks are ready to begin"
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                enableVibration(true)
+                setShowBadge(true)
+            }
+            manager?.createNotificationChannel(studyChannel)
         }
     }
 }

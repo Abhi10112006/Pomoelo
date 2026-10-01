@@ -149,17 +149,25 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
         onCreated: ((Long) -> Unit)? = null
     ) {
         viewModelScope.launch {
-            val id = studyBlockRepository.create(
-                StudyBlock(
-                    name = name,
-                    description = description,
-                    color = color,
-                    startTime = startTime,
-                    duration = duration,
-                    repeatRule = repeatRule,
-                    reminderEnabled = reminderEnabled
-                )
+            val block = StudyBlock(
+                name = name,
+                description = description,
+                color = color,
+                startTime = startTime,
+                duration = duration,
+                repeatRule = repeatRule,
+                reminderEnabled = reminderEnabled
             )
+            val id = studyBlockRepository.create(block)
+            val created = block.copy(id = id)
+            try {
+                com.example.service.StudyBlockReminderScheduler.schedule(
+                    com.example.PomoPalApplication.getContext(),
+                    created
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             onCreated?.invoke(id)
         }
     }
@@ -167,17 +175,41 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
     fun updateStudyBlock(studyBlock: StudyBlock) {
         viewModelScope.launch {
             studyBlockRepository.update(studyBlock)
+            try {
+                com.example.service.StudyBlockReminderScheduler.schedule(
+                    com.example.PomoPalApplication.getContext(),
+                    studyBlock
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
     fun deleteStudyBlock(studyBlock: StudyBlock) {
         viewModelScope.launch {
+            try {
+                com.example.service.StudyBlockReminderScheduler.cancel(
+                    com.example.PomoPalApplication.getContext(),
+                    studyBlock.id
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             studyBlockRepository.delete(studyBlock)
         }
     }
 
     fun deleteStudyBlockById(id: Long) {
         viewModelScope.launch {
+            try {
+                com.example.service.StudyBlockReminderScheduler.cancel(
+                    com.example.PomoPalApplication.getContext(),
+                    id
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             studyBlockRepository.deleteById(id)
         }
     }
