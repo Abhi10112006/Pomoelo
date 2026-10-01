@@ -19,6 +19,7 @@ data class TaskItem(
 data class StudyBlock(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
     val name: String,
+    val description: String = "",
     val color: Long,
     val startTime: Long = 0L,
     val duration: Int = 25,

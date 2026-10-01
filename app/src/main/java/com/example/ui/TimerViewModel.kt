@@ -140,6 +140,7 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
 
     fun createStudyBlock(
         name: String,
+        description: String = "",
         color: Long,
         startTime: Long = 0L,
         duration: Int = 25,
@@ -151,6 +152,7 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
             val id = studyBlockRepository.create(
                 StudyBlock(
                     name = name,
+                    description = description,
                     color = color,
                     startTime = startTime,
                     duration = duration,

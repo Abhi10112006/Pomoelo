@@ -31,7 +31,7 @@ class PomoPalApplication : Application() {
                 "Somatic Alarms",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Somatic physical workout alarms"
+                description = "Somatic physical squat alarms"
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 enableVibration(true)
             }

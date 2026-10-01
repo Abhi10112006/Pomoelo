@@ -40,9 +40,9 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudUpload
 import kotlinx.coroutines.*
@@ -328,6 +328,41 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                             }
                         }
 
+                        val isFocus = currentRoute == "focus" || currentRoute == "study_blocks"
+                        val focusWeight by animateFloatAsState(targetValue = if (isFocus) 1f else 0f, animationSpec = navSpring)
+
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(if (isFocus) currentTheme.pillActiveBg else Color.Transparent)
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                    try {
+                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                    } catch (e: Exception) {}
+                                    if (!isFocus) navController.navigate("focus") { popUpTo(0) }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MenuBook,
+                                contentDescription = "Focus",
+                                tint = if (isFocus) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.5f),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            if (focusWeight > 0.1f) {
+                                Spacer(modifier = Modifier.width(8.dp * focusWeight))
+                                Text(
+                                    text = "Focus",
+                                    color = currentTheme.primary,
+                                    fontSize = (14 * focusWeight).sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = currentFont,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+
                         val isAlarm = currentRoute == "alarm"
                         val alarmWeight by animateFloatAsState(targetValue = if (isAlarm) 1f else 0f, animationSpec = navSpring)
 
@@ -356,41 +391,6 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                                     text = "Alarm",
                                     color = currentTheme.primary,
                                     fontSize = (14 * alarmWeight).sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = currentFont,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-
-                        val isWorkout = currentRoute == "workout"
-                        val workoutWeight by animateFloatAsState(targetValue = if (isWorkout) 1f else 0f, animationSpec = navSpring)
-                        
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(if (isWorkout) currentTheme.pillActiveBg else Color.Transparent)
-                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                    try {
-                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                    } catch (e: Exception) {}
-                                    if (!isWorkout) navController.navigate("workout") { popUpTo(0) }
-                                }
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.DirectionsRun,
-                                contentDescription = "Workout",
-                                tint = if (isWorkout) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.5f),
-                                modifier = Modifier.size(24.dp)
-                            )
-                            if (workoutWeight > 0.1f) {
-                                Spacer(modifier = Modifier.width(8.dp * workoutWeight))
-                                Text(
-                                    text = "Workout",
-                                    color = currentTheme.primary,
-                                    fontSize = (14 * workoutWeight).sp,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = currentFont,
                                     maxLines = 1
@@ -457,11 +457,14 @@ fun PomoPalApp(viewModel: TimerViewModel) {
             composable("history") {
                 com.example.ui.HistoryScreen(viewModel, navController, bottomPadding)
             }
+            composable("focus") {
+                com.example.ui.StudyBlocksScreen(viewModel, navController, bottomPadding)
+            }
+            composable("study_blocks") {
+                com.example.ui.StudyBlocksScreen(viewModel, navController, bottomPadding)
+            }
             composable("alarm") {
                 com.example.ui.AlarmScreen(navController, bottomPadding)
-            }
-            composable("workout") {
-                com.example.ui.WorkoutScreen(bottomPadding)
             }
             composable("calibration") {
                 com.example.ui.SquatCalibrationScreen(onNavigateBack = { navController.popBackStack() })
