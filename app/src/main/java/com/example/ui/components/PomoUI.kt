@@ -80,24 +80,21 @@ fun Modifier.pomoBouncyClick(
     val view = LocalView.current
 
     val scale by animateFloatAsState(
-        targetValue = if (isPressed && enabled) 0.94f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
+        targetValue = if (isPressed && enabled) 0.96f else 1f,
+        animationSpec = com.example.ui.theme.PomoMotion.pressScaleSpec,
         label = "pomoScale"
     )
 
     val currentElevation by animateDpAsState(
         targetValue = if (isPressed && enabled) pressedElevation else if (enabled) elevation else 0.dp,
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        animationSpec = com.example.ui.theme.PomoMotion.elevationSpec,
         label = "pomoElevation"
     )
 
     return this
         .scale(scale)
         .shadow(
-            elevation = currentElevation,
+            elevation = currentElevation.coerceAtLeast(0.dp),
             shape = shape,
             clip = false,
             spotColor = shadowColor,

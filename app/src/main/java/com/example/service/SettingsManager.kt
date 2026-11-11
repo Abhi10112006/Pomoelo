@@ -9,8 +9,6 @@ object SettingsManager {
     private const val KEY_BREAK_TIME = "break_time_mins"
     private const val KEY_COMPLETION_SOUND = "completion_sound"
     private const val KEY_COMPLETION_DURATION = "completion_duration_secs"
-    private const val KEY_SQUAT_TARGET = "squat_target"
-    private const val KEY_SQUAT_ALARM_ENABLED = "squat_alarm_enabled"
     private const val KEY_BACKGROUND_SOUND = "bg_sound"
 
     private const val KEY_CUSTOM_COMPLETION = "custom_completion_uri"
@@ -20,9 +18,6 @@ object SettingsManager {
     private const val KEY_USER_NAME = "user_name"
     private const val KEY_LAST_BACKUP_TIME = "last_backup_time"
     private const val KEY_AUTO_BACKUP_FREQ = "auto_backup_freq"
-
-    private const val KEY_SQUAT_VALLEY_THRESHOLD = "user_squat_valley_threshold"
-    private const val KEY_SQUAT_PEAK_THRESHOLD = "user_squat_peak_threshold"
 
     private const val KEY_PROTECTION_ONBOARDING_DONE = "protection_onboarding_done"
     private const val KEY_THEME_ID = "selected_app_theme"
@@ -82,18 +77,6 @@ object SettingsManager {
         _fontState.value = com.example.ui.theme.FontOption.fromId(getFontId())
     }
 
-    fun getSquatValleyThreshold(): Float? = if (getPrefs().contains(KEY_SQUAT_VALLEY_THRESHOLD)) getPrefs().getFloat(KEY_SQUAT_VALLEY_THRESHOLD, -0.4f) else null
-    fun setSquatValleyThreshold(value: Float) = getPrefs().edit().putFloat(KEY_SQUAT_VALLEY_THRESHOLD, value).apply()
-
-    fun getSquatPeakThreshold(): Float? = if (getPrefs().contains(KEY_SQUAT_PEAK_THRESHOLD)) getPrefs().getFloat(KEY_SQUAT_PEAK_THRESHOLD, 0.4f) else null
-    fun setSquatPeakThreshold(value: Float) = getPrefs().edit().putFloat(KEY_SQUAT_PEAK_THRESHOLD, value).apply()
-
-    fun getSquatTarget(): Int = getPrefs().getInt(KEY_SQUAT_TARGET, 0)
-    fun setSquatTarget(count: Int) = getPrefs().edit().putInt(KEY_SQUAT_TARGET, count).apply()
-
-    fun isSquatAlarmEnabled(): Boolean = getPrefs().getBoolean(KEY_SQUAT_ALARM_ENABLED, false)
-    fun setSquatAlarmEnabled(enabled: Boolean) = getPrefs().edit().putBoolean(KEY_SQUAT_ALARM_ENABLED, enabled).apply()
-
     fun getCompletionSound(): Int = getPrefs().getInt(KEY_COMPLETION_SOUND, 0)
     fun setCompletionSound(type: Int) = getPrefs().edit().putInt(KEY_COMPLETION_SOUND, type).apply()
 
@@ -142,35 +125,52 @@ object SettingsManager {
         updateThemeState()
     }
 
-    fun getCustomBgColor(): Long? = if (getPrefs().contains(KEY_CUSTOM_BG_COLOR)) getPrefs().getLong(KEY_CUSTOM_BG_COLOR, 0L) else null
+    fun getCustomBgColor(): Long? = try {
+        if (getPrefs().contains(KEY_CUSTOM_BG_COLOR)) getPrefs().getLong(KEY_CUSTOM_BG_COLOR, 0L).takeIf { it != 0L } else null
+    } catch (e: Exception) { null }
+
     fun setCustomBgColor(color: Long?) {
         if (color == null) getPrefs().edit().remove(KEY_CUSTOM_BG_COLOR).apply()
         else getPrefs().edit().putLong(KEY_CUSTOM_BG_COLOR, color).apply()
         updateThemeState()
     }
 
-    fun getCustomPrimaryColor(): Long? = if (getPrefs().contains(KEY_CUSTOM_PRIMARY_COLOR)) getPrefs().getLong(KEY_CUSTOM_PRIMARY_COLOR, 0L) else null
+    fun getCustomPrimaryColor(): Long? = try {
+        if (getPrefs().contains(KEY_CUSTOM_PRIMARY_COLOR)) getPrefs().getLong(KEY_CUSTOM_PRIMARY_COLOR, 0L).takeIf { it != 0L } else null
+    } catch (e: Exception) { null }
+
     fun setCustomPrimaryColor(color: Long?) {
         if (color == null) getPrefs().edit().remove(KEY_CUSTOM_PRIMARY_COLOR).apply()
         else getPrefs().edit().putLong(KEY_CUSTOM_PRIMARY_COLOR, color).apply()
         updateThemeState()
     }
 
-    fun getCustomSecondaryColor(): Long? = if (getPrefs().contains(KEY_CUSTOM_SECONDARY_COLOR)) getPrefs().getLong(KEY_CUSTOM_SECONDARY_COLOR, 0L) else null
+    fun getCustomSecondaryColor(): Long? = try {
+        if (getPrefs().contains(KEY_CUSTOM_SECONDARY_COLOR)) getPrefs().getLong(KEY_CUSTOM_SECONDARY_COLOR, 0L).takeIf { it != 0L } else null
+    } catch (e: Exception) { null }
+
     fun setCustomSecondaryColor(color: Long?) {
         if (color == null) getPrefs().edit().remove(KEY_CUSTOM_SECONDARY_COLOR).apply()
         else getPrefs().edit().putLong(KEY_CUSTOM_SECONDARY_COLOR, color).apply()
         updateThemeState()
     }
 
-    fun getCustomAccentColor(): Long? = if (getPrefs().contains(KEY_CUSTOM_ACCENT_COLOR)) getPrefs().getLong(KEY_CUSTOM_ACCENT_COLOR, 0L) else null
+    fun getCustomAccentColor(): Long? = try {
+        if (getPrefs().contains(KEY_CUSTOM_ACCENT_COLOR)) getPrefs().getLong(KEY_CUSTOM_ACCENT_COLOR, 0L).takeIf { it != 0L } else null
+    } catch (e: Exception) { null }
+
     fun setCustomAccentColor(color: Long?) {
         if (color == null) getPrefs().edit().remove(KEY_CUSTOM_ACCENT_COLOR).apply()
         else getPrefs().edit().putLong(KEY_CUSTOM_ACCENT_COLOR, color).apply()
         updateThemeState()
     }
 
-    fun getAppearanceMode(): AppearanceMode = AppearanceMode.fromId(getPrefs().getString(KEY_APPEARANCE_MODE, AppearanceMode.SYSTEM.id))
+    fun getAppearanceMode(): AppearanceMode = try {
+        AppearanceMode.fromId(getPrefs().getString(KEY_APPEARANCE_MODE, AppearanceMode.SYSTEM.id))
+    } catch (e: Exception) {
+        AppearanceMode.SYSTEM
+    }
+
     fun setAppearanceMode(mode: AppearanceMode) {
         getPrefs().edit().putString(KEY_APPEARANCE_MODE, mode.id).apply()
         _appearanceState.value = mode
@@ -179,10 +179,10 @@ object SettingsManager {
 
     fun updateThemeState() {
         val baseTheme = com.example.ui.theme.ThemeOption.PREMIUM
-        val bg = getCustomBgColor()?.toColor()
-        val pri = getCustomPrimaryColor()?.toColor()
-        val sec = getCustomSecondaryColor()?.toColor()
-        val acc = getCustomAccentColor()?.toColor()
+        val bg = getCustomBgColor()?.toColor(baseTheme.background)
+        val pri = getCustomPrimaryColor()?.toColor(baseTheme.primary)
+        val sec = getCustomSecondaryColor()?.toColor(baseTheme.secondary)
+        val acc = getCustomAccentColor()?.toColor(baseTheme.accent)
 
         val activeBg = bg ?: baseTheme.background
         val activePri = pri ?: baseTheme.primary

@@ -48,6 +48,7 @@ import com.example.service.toColor
 import com.example.service.toLongValue
 import com.example.ui.theme.LocalAppFont
 import com.example.ui.theme.LocalAppTheme
+import com.example.ui.theme.PomoMotion
 import com.example.ui.theme.ThemeOption
 import com.example.ui.theme.luminance
 
@@ -124,7 +125,7 @@ fun AppCustomizerScreen(
                 val isBackPressed by backInteraction.collectIsPressedAsState()
                 val backScale by animateFloatAsState(
                     targetValue = if (isBackPressed) 0.92f else 1f,
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    animationSpec = PomoMotion.pressScaleSpec,
                     label = "backScale"
                 )
 
@@ -167,7 +168,7 @@ fun AppCustomizerScreen(
                 val isResetPressed by resetInteraction.collectIsPressedAsState()
                 val resetScale by animateFloatAsState(
                     targetValue = if (isResetPressed) 0.92f else 1f,
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    animationSpec = PomoMotion.pressScaleSpec,
                     label = "resetScale"
                 )
 
@@ -503,13 +504,13 @@ fun RowScope.AppearanceOption(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.95f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = PomoMotion.pressScaleSpec,
         label = "appearanceScale"
     )
     val elevation by animateDpAsState(
         targetValue = if (isPressed) 1.dp else (if (isSelected) 3.dp else 1.dp),
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        animationSpec = PomoMotion.elevationSpec,
         label = "appearanceElevation"
     )
 
@@ -525,7 +526,7 @@ fun RowScope.AppearanceOption(
         shape = RoundedCornerShape(12.dp),
         color = bgColor,
         border = BorderStroke(1.dp, borderColor),
-        shadowElevation = elevation,
+        shadowElevation = elevation.coerceAtLeast(0.dp),
         interactionSource = interactionSource
     ) {
         Box(
@@ -565,8 +566,8 @@ fun ColorPickerRow(
                 val itemInteraction = remember { MutableInteractionSource() }
                 val isItemPressed by itemInteraction.collectIsPressedAsState()
                 val scale by animateFloatAsState(
-                    targetValue = if (isItemPressed) 0.93f else (if (isSelected) 1.08f else 1f),
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    targetValue = if (isItemPressed) 0.94f else (if (isSelected) 1.06f else 1f),
+                    animationSpec = PomoMotion.floatSpec,
                     label = "scale"
                 )
                 val elevation by animateDpAsState(
@@ -588,7 +589,7 @@ fun ColorPickerRow(
                         }
                         .size(48.dp)
                         .shadow(
-                            elevation = elevation,
+                            elevation = elevation.coerceAtLeast(0.dp),
                             shape = CircleShape,
                             spotColor = if (isSelected) color else currentTheme.shadowColor
                         )

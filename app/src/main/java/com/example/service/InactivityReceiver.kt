@@ -8,158 +8,150 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.compose.ui.graphics.toArgb
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
-import java.util.Random
 
 class InactivityReceiver : BroadcastReceiver() {
 
-    override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == ACTION_INACTIVITY) {
-            // Check if timer is currently running - if so, do not bother the user!
-            if (TimerManager.timerState.value == TimerManager.TimerState.RUNNING) {
-                return
-            }
-
-            // Do not send notifications between 12 AM and 5 AM
-            val hourOfDay = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-            if (hourOfDay in 0..4) {
-                InactivityScheduler.schedule(context)
-                return
-            }
-
-            // Post notification
-            showInactivityNotification(context)
-            
-            // Auto schedule the next check for a fresh reminder (not repeated)
-            InactivityScheduler.schedule(context)
-        }
+    companion object {
+        const val CHANNEL_ID = "InactivityReminderChannel"
+        const val NOTIFICATION_ID = 404
+        const val ACTION_INACTIVITY_ALERT = "com.example.action.INACTIVITY_ALERT"
     }
 
-    private fun showInactivityNotification(context: Context) {
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        
-        // Ensure channel exists
-        val channelId = "inactivity_reminder_channel"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "Inactivity Reminders",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Friendly anti-scrolling and focus nudges"
-                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
-            }
-            manager.createNotificationChannel(channel)
+    override fun onReceive(context: Context, intent: Intent) {
+        SettingsManager.init(context.applicationContext)
+
+        if (TimerManager.timerState.value == TimerManager.TimerState.RUNNING) {
+            return
         }
 
-        // Get a fresh quote
-        val message = getFreshInactivityQuote(context)
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
 
-        val activityIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        ensureChannel(notificationManager)
+
+        val tapIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
-        val pendingIntent = PendingIntent.getActivity(
+        val tapPendingIntent = PendingIntent.getActivity(
             context,
-            101,
-            activityIntent,
+            404,
+            tapIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(context, channelId)
-            .setContentTitle("🎯 Focus Reminder")
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-            .setSmallIcon(R.drawable.ic_notification_timer)
-            .setColor(android.graphics.Color.parseColor("#FF8A80"))
-            .setContentIntent(pendingIntent)
+        val userName = SettingsManager.getUserName()?.takeIf { it.isNotBlank() }
+        val currentTask = TimerManager.currentTaskName.value.takeIf {
+            it.isNotBlank() && it != "Focus Time!" && it != "Break Time!"
+        }
+        val focusMins = SettingsManager.getFocusTimeMins()
+
+        val title = when {
+            currentTask != null -> "Ready to resume $currentTask?"
+            userName != null -> "A quiet moment for focus, $userName"
+            else -> "Ready for a mindful focus session?"
+        }
+
+        val body = when {
+            currentTask != null -> "Step into your focus sanctuary for a ${focusMins}-minute session on $currentTask."
+            else -> "Even one ${focusMins}-minute session builds calm, steady momentum for your day."
+        }
+
+        val accentColor = try {
+            SettingsManager.themeState.value.primary.toArgb()
+        } catch (_: Throwable) {
+            0xFFF28F75.toInt()
+        }
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher_round)
+            .setSubText("Mindful Check-In")
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .setBigContentTitle(title)
+                    .bigText(body)
+            )
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setColor(accentColor)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(tapPendingIntent)
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .addAction(0, "Open PomoPal", tapPendingIntent)
             .build()
 
-        manager.notify(NOTIFICATION_ID_INACTIVITY, notification)
+        try {
+            notificationManager.notify(NOTIFICATION_ID, notification)
+        } catch (_: SecurityException) {
+        } catch (_: Exception) {}
     }
 
-    companion object {
-        const val ACTION_INACTIVITY = "com.example.action.INACTIVITY_ALERT"
-        const val NOTIFICATION_ID_INACTIVITY = 4040
-
-        fun getFreshInactivityQuote(context: Context): String {
-            return QuoteManager.getFreshQuote(context, false, "inactivity_quote_index")
+    private fun ensureChannel(notificationManager: NotificationManager) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Mindful Focus Reminders",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Gentle check-ins to help you return to your focus sessions."
+                enableVibration(true)
+                setShowBadge(true)
+            }
+            notificationManager.createNotificationChannel(channel)
         }
     }
 }
 
 object InactivityScheduler {
-    
-    // Default threshold is 30 minutes
-    private const val INACTIVITY_DELAY_MS = 30 * 60 * 1000L
+    private const val REQUEST_CODE = 404
+    private const val INACTIVITY_DELAY_MS = 2 * 60 * 60 * 1000L // 2 hours
+    private const val WINDOW_LENGTH_MS = 15 * 60 * 1000L // 15-minute delivery window
 
     fun schedule(context: Context) {
         try {
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-            val intent = Intent(context, InactivityReceiver::class.java).apply {
-                action = InactivityReceiver.ACTION_INACTIVITY
+            val appContext = context.applicationContext
+            val alarmManager = appContext.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val intent = Intent(appContext, InactivityReceiver::class.java).apply {
+                action = InactivityReceiver.ACTION_INACTIVITY_ALERT
             }
             val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                202,
+                appContext,
+                REQUEST_CODE,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            val triggerAt = System.currentTimeMillis() + INACTIVITY_DELAY_MS
+            alarmManager.cancel(pendingIntent)
 
-            // Cancel previous if any
-            try {
-                alarmManager.cancel(pendingIntent)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        triggerAt,
-                        pendingIntent
-                    )
-                } else {
-                    alarmManager.setExact(
-                        AlarmManager.RTC_WAKEUP,
-                        triggerAt,
-                        pendingIntent
-                    )
-                }
-            } catch (e: SecurityException) {
-                // Fallback for missing exact alarm permission on Android 12+ / 14+
-                alarmManager.set(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerAt,
-                    pendingIntent
-                )
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+            val triggerTime = System.currentTimeMillis() + INACTIVITY_DELAY_MS
+            alarmManager.setWindow(
+                AlarmManager.RTC_WAKEUP,
+                triggerTime,
+                WINDOW_LENGTH_MS,
+                pendingIntent
+            )
+        } catch (_: Exception) {}
     }
 
     fun cancel(context: Context) {
         try {
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-            val intent = Intent(context, InactivityReceiver::class.java).apply {
-                action = InactivityReceiver.ACTION_INACTIVITY
+            val appContext = context.applicationContext
+            val alarmManager = appContext.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val intent = Intent(appContext, InactivityReceiver::class.java).apply {
+                action = InactivityReceiver.ACTION_INACTIVITY_ALERT
             }
             val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                202,
+                appContext,
+                REQUEST_CODE,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             alarmManager.cancel(pendingIntent)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (_: Exception) {}
     }
 }

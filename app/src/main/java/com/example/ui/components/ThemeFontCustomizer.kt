@@ -254,6 +254,7 @@ fun ThemeFontCustomizer(
                         val isSelected = currentFont.id == font.id
                         val borderColor by animateColorAsState(
                             targetValue = if (isSelected) currentTheme.primary else currentTheme.cardBorder,
+                            animationSpec = com.example.ui.theme.PomoMotion.colorSpec,
                             label = "fontBorder"
                         )
                         val targetBgColor = if (isSelected) {
@@ -267,26 +268,25 @@ fun ThemeFontCustomizer(
                         }
                         val cardBgColor by animateColorAsState(
                             targetValue = targetBgColor,
+                            animationSpec = com.example.ui.theme.PomoMotion.colorSpec,
                             label = "fontCardBg"
                         )
                         val cardElevation by animateDpAsState(
                             targetValue = if (isSelected) 4.dp else 1.dp,
+                            animationSpec = com.example.ui.theme.PomoMotion.elevationSpec,
                             label = "fontElevation"
                         )
 
                         val interactionSource = remember { MutableInteractionSource() }
                         val isPressed by interactionSource.collectIsPressedAsState()
                         val scale by animateFloatAsState(
-                            targetValue = if (isPressed) 0.96f else 1f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessLow
-                            ),
+                            targetValue = if (isPressed) 0.97f else 1f,
+                            animationSpec = com.example.ui.theme.PomoMotion.pressScaleSpec,
                             label = "fontScale"
                         )
                         val elevation by animateDpAsState(
                             targetValue = if (isPressed) 1.dp else cardElevation,
-                            animationSpec = spring(stiffness = Spring.StiffnessLow),
+                            animationSpec = com.example.ui.theme.PomoMotion.elevationSpec,
                             label = "fontElevation"
                         )
 
@@ -310,7 +310,7 @@ fun ThemeFontCustomizer(
                                 color = borderColor
                             ),
                             elevation = CardDefaults.cardElevation(
-                                defaultElevation = elevation,
+                                defaultElevation = elevation.coerceAtLeast(0.dp),
                                 pressedElevation = 1.dp
                             )
                         ) {

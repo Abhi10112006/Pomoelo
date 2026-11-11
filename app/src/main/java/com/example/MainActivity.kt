@@ -41,7 +41,6 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.CheckCircle
@@ -92,20 +91,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleIntent(intent)
-        
-        // Show over lockscreen and keep screen on even if locked
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-            )
-        }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         SettingsManager.init(applicationContext)
 
@@ -164,26 +149,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
-        if (intent.action == com.example.service.StudyBlockReminderScheduler.ACTION_START_STUDY || intent.hasExtra("STUDY_BLOCK_ID")) {
-            val blockId = intent.getLongExtra("STUDY_BLOCK_ID", -1L)
-            if (blockId != -1L) {
-                pendingStudyBlockId = blockId
-            }
-        }
-        val openTab = intent.getStringExtra("OPEN_TAB")
-        if (openTab != null) {
-            pendingOpenTab = openTab
-        }
         if (intent.getBooleanExtra("RETURNED_FROM_BLOCKER", false)) {
             android.widget.Toast.makeText(this, "Focus session protected. Welcome back! 🌿", android.widget.Toast.LENGTH_SHORT).show()
         } else if (intent.hasExtra("BLOCKED_APP")) {
             android.widget.Toast.makeText(this, "Focus session protected. Welcome back! 🌿", android.widget.Toast.LENGTH_SHORT).show()
         }
-    }
-
-    companion object {
-        var pendingStudyBlockId by mutableStateOf<Long?>(null)
-        var pendingOpenTab by mutableStateOf<String?>(null)
     }
 }
 
@@ -192,31 +162,6 @@ fun PomoPalApp(viewModel: TimerViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val startDest = if (com.example.service.SettingsManager.getUserName() == null) "signin" else "home"
     val navController = rememberNavController()
-
-    LaunchedEffect(MainActivity.pendingStudyBlockId) {
-        val blockId = MainActivity.pendingStudyBlockId
-        if (blockId != null) {
-            viewModel.getStudyBlockById(blockId) { block ->
-                if (block != null) {
-                    viewModel.startSessionFromStudyBlock(block)
-                    navController.navigate("home") {
-                        popUpTo("home") { inclusive = true }
-                    }
-                }
-            }
-            MainActivity.pendingStudyBlockId = null
-        }
-    }
-
-    LaunchedEffect(MainActivity.pendingOpenTab) {
-        val tab = MainActivity.pendingOpenTab
-        if (tab != null) {
-            navController.navigate(tab) {
-                popUpTo("home")
-            }
-            MainActivity.pendingOpenTab = null
-        }
-    }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: startDest
     val isAddingTask by viewModel.isAddingTask.collectAsState()
@@ -227,7 +172,6 @@ fun PomoPalApp(viewModel: TimerViewModel) {
     val view = androidx.compose.ui.platform.LocalView.current
 
     val currentTheme = com.example.ui.theme.LocalAppTheme.current
-    val protectionStates = com.example.ui.rememberSystemProtectionStates()
     LaunchedEffect(Unit) {
         val url = UpdateChecker.checkForUpdates()
         if (url != null) {
@@ -245,11 +189,13 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                     try {
                         view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                     } catch (e: Exception) {}
-                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(updateUrl))
-                    context.startActivity(intent)
+                    try {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(updateUrl))
+                        context.startActivity(intent)
+                    } catch (e: Exception) {}
                     updateUrl = null
                 }) {
-                    Text("Download", color = Color(0xFFFF8A80), fontWeight = FontWeight.Bold)
+                    Text("Download", color = currentTheme.primary, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -262,7 +208,7 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                     Text("Later", color = currentTheme.textSecondary)
                 }
             },
-            containerColor = Color.Transparent,
+            containerColor = currentTheme.surface,
             shape = RoundedCornerShape(24.dp)
         )
     }
@@ -277,16 +223,18 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                 visible = !isSignInRoute && !isAddingTask && timerState == TimerManager.TimerState.STOPPED && !isSettingsOpen,
                 enter = slideInVertically(
                     initialOffsetY = { it * 2 },
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
-                ) + fadeIn(animationSpec = tween(400, delayMillis = 220)),
-                exit = slideOutVertically(targetOffsetY = { it * 2 }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeOut(),
+                    animationSpec = tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)
+                ) + fadeIn(animationSpec = tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)),
+                exit = slideOutVertically(
+                    targetOffsetY = { it * 2 },
+                    animationSpec = tween(PomoMotion.DURATION_FAST, easing = PomoMotion.SmoothInOutEasing)
+                ) + fadeOut(animationSpec = tween(PomoMotion.DURATION_FAST)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(bottom = 16.dp, top = 8.dp)
             ) {
                 val currentTheme = com.example.ui.theme.LocalAppTheme.current
-    val protectionStates = com.example.ui.rememberSystemProtectionStates()
                 val currentFont = com.example.ui.theme.LocalAppFont.current
                 Box(
                     modifier = Modifier.fillMaxWidth(),
@@ -297,18 +245,28 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                             .shadow(8.dp, RoundedCornerShape(32.dp), spotColor = currentTheme.shadowColor)
                             .clip(RoundedCornerShape(32.dp))
                             .background(currentTheme.surface)
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
-                            .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessLow)),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(32.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .animateContentSize(animationSpec = tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothOutEasing)),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val navSpring = spring<Float>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
                         val isHome = currentRoute == "home"
-                        val homeWeight by animateFloatAsState(targetValue = if (isHome) 1f else 0f, animationSpec = navSpring)
-                        
+                        val homeBg by animateColorAsState(
+                            targetValue = if (isHome) currentTheme.pillActiveBg else Color.Transparent,
+                            animationSpec = PomoMotion.colorSpec,
+                            label = "homePillBg"
+                        )
+                        val homeTint by animateColorAsState(
+                            targetValue = if (isHome) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.55f),
+                            animationSpec = PomoMotion.colorSpec,
+                            label = "homePillTint"
+                        )
+
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(24.dp))
-                                .background(if (isHome) currentTheme.pillActiveBg else Color.Transparent)
+                                .background(homeBg)
                                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                                     try {
                                         view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -321,29 +279,46 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                             Icon(
                                 imageVector = Icons.Filled.Home,
                                 contentDescription = "Home",
-                                tint = if (isHome) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.5f),
-                                modifier = Modifier.size(24.dp)
+                                tint = homeTint,
+                                modifier = Modifier.size(22.dp)
                             )
-                            if (homeWeight > 0.1f) {
-                                Spacer(modifier = Modifier.width(8.dp * homeWeight))
-                                Text(
-                                    text = "Timer",
-                                    color = currentTheme.primary,
-                                    fontSize = (14 * homeWeight).sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = currentFont,
-                                    maxLines = 1
-                                )
+                            AnimatedVisibility(
+                                visible = isHome,
+                                enter = expandHorizontally(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothOutEasing)) +
+                                    fadeIn(tween(PomoMotion.DURATION_FAST)),
+                                exit = shrinkHorizontally(tween(PomoMotion.DURATION_FAST, easing = PomoMotion.SmoothInOutEasing)) +
+                                    fadeOut(tween(150))
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Timer",
+                                        color = currentTheme.primary,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = currentFont,
+                                        maxLines = 1
+                                    )
+                                }
                             }
                         }
 
                         val isHistory = currentRoute == "history"
-                        val historyWeight by animateFloatAsState(targetValue = if (isHistory) 1f else 0f, animationSpec = navSpring)
+                        val historyBg by animateColorAsState(
+                            targetValue = if (isHistory) currentTheme.pillActiveBg else Color.Transparent,
+                            animationSpec = PomoMotion.colorSpec,
+                            label = "historyPillBg"
+                        )
+                        val historyTint by animateColorAsState(
+                            targetValue = if (isHistory) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.55f),
+                            animationSpec = PomoMotion.colorSpec,
+                            label = "historyPillTint"
+                        )
 
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(24.dp))
-                                .background(if (isHistory) currentTheme.pillActiveBg else Color.Transparent)
+                                .background(historyBg)
                                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                                     try {
                                         view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -356,89 +331,27 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                             Icon(
                                 imageVector = Icons.Default.List,
                                 contentDescription = "History",
-                                tint = if (isHistory) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.5f),
-                                modifier = Modifier.size(24.dp)
+                                tint = historyTint,
+                                modifier = Modifier.size(22.dp)
                             )
-                            if (historyWeight > 0.1f) {
-                                Spacer(modifier = Modifier.width(8.dp * historyWeight))
-                                Text(
-                                    text = "History",
-                                    color = currentTheme.primary,
-                                    fontSize = (14 * historyWeight).sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = currentFont,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-
-                        val isFocus = currentRoute == "focus" || currentRoute == "study_blocks"
-                        val focusWeight by animateFloatAsState(targetValue = if (isFocus) 1f else 0f, animationSpec = navSpring)
-
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(if (isFocus) currentTheme.pillActiveBg else Color.Transparent)
-                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                    try {
-                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                    } catch (e: Exception) {}
-                                    if (!isFocus) navController.navigate("focus") { popUpTo(0) }
+                            AnimatedVisibility(
+                                visible = isHistory,
+                                enter = expandHorizontally(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothOutEasing)) +
+                                    fadeIn(tween(PomoMotion.DURATION_FAST)),
+                                exit = shrinkHorizontally(tween(PomoMotion.DURATION_FAST, easing = PomoMotion.SmoothInOutEasing)) +
+                                    fadeOut(tween(150))
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "History",
+                                        color = currentTheme.primary,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = currentFont,
+                                        maxLines = 1
+                                    )
                                 }
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MenuBook,
-                                contentDescription = "Focus",
-                                tint = if (isFocus) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.5f),
-                                modifier = Modifier.size(24.dp)
-                            )
-                            if (focusWeight > 0.1f) {
-                                Spacer(modifier = Modifier.width(8.dp * focusWeight))
-                                Text(
-                                    text = "Focus",
-                                    color = currentTheme.primary,
-                                    fontSize = (14 * focusWeight).sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = currentFont,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-
-                        val isAlarm = currentRoute == "alarm"
-                        val alarmWeight by animateFloatAsState(targetValue = if (isAlarm) 1f else 0f, animationSpec = navSpring)
-
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(if (isAlarm) currentTheme.pillActiveBg else Color.Transparent)
-                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                    try {
-                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                    } catch (e: Exception) {}
-                                    if (!isAlarm) navController.navigate("alarm") { popUpTo(0) }
-                                }
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Notifications,
-                                contentDescription = "Alarm",
-                                tint = if (isAlarm) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.5f),
-                                modifier = Modifier.size(24.dp)
-                            )
-                            if (alarmWeight > 0.1f) {
-                                Spacer(modifier = Modifier.width(8.dp * alarmWeight))
-                                Text(
-                                    text = "Alarm",
-                                    color = currentTheme.primary,
-                                    fontSize = (14 * alarmWeight).sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = currentFont,
-                                    maxLines = 1
-                                )
                             }
                         }
                     }
@@ -451,76 +364,55 @@ fun PomoPalApp(viewModel: TimerViewModel) {
             startDestination = startDest,
             modifier = Modifier.fillMaxSize(),
             enterTransition = {
-                fadeIn(animationSpec = tween(400, easing = LinearOutSlowInEasing)) + 
-                slideInVertically(
-                    animationSpec = tween(400, easing = LinearOutSlowInEasing),
-                    initialOffsetY = { it / 12 }
-                )
+                val fromSignIn = initialState.destination.route == "signin"
+                val toHistory = targetState.destination.route == "history"
+                if (fromSignIn) {
+                    fadeIn(tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)) +
+                        scaleIn(initialScale = 0.96f, animationSpec = tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing))
+                } else {
+                    fadeIn(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothOutEasing)) +
+                        slideInHorizontally(tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)) { width ->
+                            if (toHistory) width / 6 else -width / 6
+                        }
+                }
             },
             exitTransition = {
-                fadeOut(animationSpec = tween(350, easing = FastOutSlowInEasing))
+                val fromSignIn = initialState.destination.route == "signin"
+                val toHistory = targetState.destination.route == "history"
+                if (fromSignIn) {
+                    fadeOut(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing)) +
+                        scaleOut(targetScale = 0.94f, animationSpec = tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing))
+                } else {
+                    fadeOut(tween(PomoMotion.DURATION_FAST, easing = PomoMotion.SmoothInOutEasing)) +
+                        slideOutHorizontally(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing)) { width ->
+                            if (toHistory) -width / 8 else width / 8
+                        }
+                }
             },
             popEnterTransition = {
-                fadeIn(animationSpec = tween(400, easing = LinearOutSlowInEasing)) +
-                slideInVertically(
-                    animationSpec = tween(400, easing = LinearOutSlowInEasing),
-                    initialOffsetY = { -it / 12 }
-                )
+                fadeIn(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothOutEasing)) +
+                    slideInHorizontally(tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)) { width -> -width / 6 }
             },
             popExitTransition = {
-                fadeOut(animationSpec = tween(350, easing = FastOutSlowInEasing))
+                fadeOut(tween(PomoMotion.DURATION_FAST, easing = PomoMotion.SmoothInOutEasing)) +
+                    slideOutHorizontally(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing)) { width -> width / 8 }
             }
         ) {
             val bottomPadding = paddingValues.calculateBottomPadding()
-            composable(
-                route = "signin",
-                exitTransition = {
-                    fadeOut(animationSpec = tween(400, easing = LinearOutSlowInEasing)) +
-                    scaleOut(targetScale = 0.94f, animationSpec = tween(400, easing = FastOutSlowInEasing))
-                },
-                popExitTransition = {
-                    fadeOut(animationSpec = tween(400, easing = LinearOutSlowInEasing)) +
-                    scaleOut(targetScale = 0.94f, animationSpec = tween(400, easing = FastOutSlowInEasing))
-                }
-            ) {
+            composable(route = "signin") {
                 com.example.ui.SignInScreen(navController = navController, onSignInSuccess = {
                     navController.navigate("home") {
                         popUpTo("signin") { inclusive = true }
                     }
                 })
             }
-            composable(
-                route = "home",
-                enterTransition = {
-                    fadeIn(animationSpec = tween(550, delayMillis = 80, easing = LinearOutSlowInEasing)) +
-                    scaleIn(initialScale = 1.04f, animationSpec = tween(550, delayMillis = 80, easing = LinearOutSlowInEasing))
-                }
-            ) {
+            composable(route = "home") {
                 HomeScreen(viewModel, navController, bottomPadding)
             }
             composable("history") {
                 com.example.ui.HistoryScreen(viewModel, navController, bottomPadding)
             }
-            composable("focus") {
-                com.example.ui.StudyBlocksScreen(viewModel, navController, bottomPadding)
-            }
-            composable("study_blocks") {
-                com.example.ui.StudyBlocksScreen(viewModel, navController, bottomPadding)
-            }
-            composable("alarm") {
-                com.example.ui.AlarmScreen(navController, bottomPadding)
-            }
-            composable("calibration") {
-                com.example.ui.SquatCalibrationScreen(onNavigateBack = { navController.popBackStack() })
-            }
         }
-    }
-
-    if (com.example.service.AlarmState.isAlarmRinging) {
-        AlarmRingingLockScreen(
-            label = com.example.service.AlarmState.activeAlarmLabel,
-            targetCount = com.example.service.AlarmState.activeAlarmSquatTarget
-        )
     }
 }
 
@@ -676,8 +568,8 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                 val settingsInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
                 val isSettingsPressed by settingsInteraction.collectIsPressedAsState()
                 val settingsRotation by androidx.compose.animation.core.animateFloatAsState(
-                    targetValue = if (isSettingsPressed) 90f else 0f,
-                    animationSpec = androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy, stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
+                    targetValue = if (isSettingsPressed) 45f else 0f,
+                    animationSpec = PomoMotion.floatSpec,
                     label = "settingsRotation"
                 )
                 
@@ -734,8 +626,10 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                         } catch(e: Exception) {}
                         showJustInTimeSetup = true
                     } else {
-                        val intent = android.content.Intent(context, com.example.service.TimerService::class.java).apply { action = com.example.service.TimerService.ACTION_START }
-                        context.startService(intent)
+                        try {
+                            val intent = android.content.Intent(context, com.example.service.TimerService::class.java).apply { action = com.example.service.TimerService.ACTION_START }
+                            androidx.core.content.ContextCompat.startForegroundService(context, intent)
+                        } catch (_: Exception) {}
                     }
                 }
             )
@@ -750,10 +644,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                 AnimatedContent(
                     targetState = timerState == TimerManager.TimerState.STOPPED,
                     transitionSpec = {
-                        val enterSpring = spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
-                        val exitSpring = spring<androidx.compose.ui.unit.IntOffset>(stiffness = Spring.StiffnessMedium)
-                        (fadeIn(spring(stiffness = Spring.StiffnessLow)) + slideInVertically(animationSpec = enterSpring) { 100 }) togetherWith 
-                                (fadeOut(spring(stiffness = Spring.StiffnessMedium)) + slideOutVertically(animationSpec = exitSpring) { -100 })
+                        PomoMotion.verticalCrossfadeTransition(upward = !targetState)
                     },
                     label = "bottomContent"
                 ) { stopped ->
@@ -854,8 +745,10 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
     
     AnimatedVisibility(
         visible = showFullScreenSeriousness,
-        enter = fadeIn(animationSpec = tween(500)) + scaleIn(initialScale = 0.95f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)),
-        exit = fadeOut(animationSpec = tween(400)) + scaleOut(targetScale = 0.95f, animationSpec = spring(stiffness = Spring.StiffnessMedium))
+        enter = fadeIn(animationSpec = tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)) +
+            scaleIn(initialScale = 0.96f, animationSpec = tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)),
+        exit = fadeOut(animationSpec = tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing)) +
+            scaleOut(targetScale = 0.96f, animationSpec = tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing))
     ) {
         SeriousFullscreenOverlay(
             quote = currentQuote,
@@ -866,8 +759,14 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
     }
         AnimatedVisibility(
             visible = showSettings,
-            enter = slideInVertically(initialOffsetY = { it }, animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = spring(stiffness = Spring.StiffnessMedium)) + fadeOut(),
+            enter = slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)
+            ) + fadeIn(tween(PomoMotion.DURATION_STANDARD)),
+            exit = slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec = tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing)
+            ) + fadeOut(tween(PomoMotion.DURATION_FAST)),
             modifier = Modifier.fillMaxSize().background(currentTheme.background)
         ) {
             SettingsOverlay(onDismiss = { viewModel.setSettingsOpen(false) }, initialTab = settingsInitialTab)
@@ -916,8 +815,10 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                         onClick = {
                             showJustInTimeSetup = false
                             // Allow them to continue anyway if they really want to ignore it
-                            val intent = android.content.Intent(context, com.example.service.TimerService::class.java).apply { action = com.example.service.TimerService.ACTION_START }
-                            context.startService(intent)
+                            try {
+                                val intent = android.content.Intent(context, com.example.service.TimerService::class.java).apply { action = com.example.service.TimerService.ACTION_START }
+                                androidx.core.content.ContextCompat.startForegroundService(context, intent)
+                            } catch (_: Exception) {}
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -999,19 +900,28 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
         }
     }
 
-    if (showBlockedApps) {
-        com.example.ui.BlockedAppsScreen(onBack = { showBlockedApps = false })
-        return
-    }
-
     var localFocus by remember { mutableStateOf(SettingsManager.getFocusTimeMins().toFloat()) }
     var localBreak by remember { mutableStateOf(SettingsManager.getBreakTimeMins().toFloat()) }
     var localCompletion by remember { mutableStateOf(SettingsManager.getCompletionSound()) }
     var localCompletionDuration by remember { mutableStateOf(SettingsManager.getCompletionDurationSec().toFloat()) }
     
     val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
-    val maxVolume = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).toFloat()
-    var localVolume by remember { mutableStateOf(audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toFloat()) }
+    val maxVolume = remember {
+        try {
+            audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).toFloat().coerceAtLeast(1f)
+        } catch (_: Exception) {
+            15f
+        }
+    }
+    var localVolume by remember {
+        mutableStateOf(
+            try {
+                audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toFloat().coerceIn(0f, maxVolume)
+            } catch (_: Exception) {
+                maxVolume * 0.5f
+            }
+        )
+    }
     
     LaunchedEffect(localFocus, localBreak, localCompletion, localCompletionDuration) {
         SettingsManager.setFocusTimeMins(localFocus.toInt())
@@ -1034,8 +944,11 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
     }
     
     androidx.activity.compose.BackHandler(enabled = true) {
-        if (tabBackStack.isNotEmpty()) {
-            val prevTab = tabBackStack.removeLast()
+        if (showBlockedApps) {
+            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+            showBlockedApps = false
+        } else if (tabBackStack.isNotEmpty()) {
+            val prevTab = tabBackStack.removeAt(tabBackStack.lastIndex)
             try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
             selectedTabIndex = prevTab
         } else {
@@ -1045,309 +958,337 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
         }
     }
 
-    val tabListState = androidx.compose.foundation.lazy.rememberLazyListState(
-        initialFirstVisibleItemIndex = selectedTabIndex
-    )
+    AnimatedContent(
+        targetState = showBlockedApps,
+        transitionSpec = { PomoMotion.horizontalSlideTransition(forward = targetState) },
+        label = "BlockedAppsTransition"
+    ) { isBlockedAppsVisible ->
+        if (isBlockedAppsVisible) {
+            com.example.ui.BlockedAppsScreen(onBack = { showBlockedApps = false })
+        } else {
+            val tabListState = androidx.compose.foundation.lazy.rememberLazyListState(
+                initialFirstVisibleItemIndex = selectedTabIndex.coerceIn(0, tabs.size - 1)
+            )
 
-    LaunchedEffect(selectedTabIndex) {
-        kotlinx.coroutines.delay(60)
-        tabListState.animateScrollToItem(selectedTabIndex)
-    }
-
-    val scope = rememberCoroutineScope()
-    val currentTheme = LocalAppTheme.current
-    Scaffold(
-        modifier = Modifier.fillMaxSize().background(currentTheme.background),
-        containerColor = currentTheme.background,
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Settings",
-                    fontFamily = CursiveFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 32.scaledSp,
-                    color = currentTheme.textPrimary
-                )
-
-                IconButton(
-                    onClick = {
-                        try {
-                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                        } catch (e: Exception) {}
-                        com.example.service.SoundPlayer.stop()
-                        onDismiss()
-                    }
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = "Close",
-                        tint = currentTheme.textPrimary
-                    )
-                }
+            LaunchedEffect(selectedTabIndex) {
+                kotlinx.coroutines.delay(60)
+                try {
+                    tabListState.animateScrollToItem(selectedTabIndex.coerceIn(0, tabs.size - 1))
+                } catch (_: Exception) {}
             }
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
+
             val currentTheme = LocalAppTheme.current
-            androidx.compose.foundation.lazy.LazyRow(
-                state = tabListState,
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
-            ) {
-                items(tabs.size) { index ->
-                    val isSelected = selectedTabIndex == index
-                    val tabBgColor by androidx.compose.animation.animateColorAsState(
-                        targetValue = if (isSelected) currentTheme.primary else currentTheme.surface, 
-                        animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow), label = ""
-                    )
-                    val tabTextColor by androidx.compose.animation.animateColorAsState(
-                        targetValue = if (isSelected) Color.White else currentTheme.textPrimary, 
-                        animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow), label = ""
-                    )
-                    val tabElevation by androidx.compose.animation.core.animateDpAsState(
-                        targetValue = if (isSelected) 4.dp else 1.dp, 
-                        animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow), label = ""
-                    )
-                    
-                    Box(
+            Scaffold(
+                modifier = Modifier.fillMaxSize().background(currentTheme.background),
+                containerColor = currentTheme.background,
+                topBar = {
+                    Row(
                         modifier = Modifier
-                            .shadow(
-                                elevation = tabElevation,
-                                shape = RoundedCornerShape(16.dp),
-                                spotColor = currentTheme.shadowColor
-                            )
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(tabBgColor)
-                            .border(
-                                width = 1.dp,
-                                color = if (isSelected) currentTheme.primary else currentTheme.cardBorder,
-                                shape = RoundedCornerShape(16.dp)
-                            )
-                            .clickable { 
-                                try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-                                if (selectedTabIndex != index) {
-                                    tabBackStack.add(selectedTabIndex)
-                                    selectedTabIndex = index 
-                                }
-                            }
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(horizontal = 24.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = tabs[index],
-                            color = tabTextColor,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            text = "Settings",
+                            fontFamily = CursiveFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.scaledSp
+                            fontSize = 32.scaledSp,
+                            color = currentTheme.textPrimary
                         )
-                    }
-                }
-            }
 
-            Box(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                androidx.compose.animation.AnimatedContent(
-                    targetState = selectedTabIndex,
-                    transitionSpec = {
-                        (androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(220, delayMillis = 90)) +
-                        androidx.compose.animation.slideInHorizontally(
-                            initialOffsetX = { fullWidth -> if (targetState > initialState) fullWidth else -fullWidth },
-                            animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 300f)
-                        )).togetherWith(
-                            androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(90)) +
-                            androidx.compose.animation.slideOutHorizontally(
-                                targetOffsetX = { fullWidth -> if (targetState > initialState) -fullWidth else fullWidth },
-                                animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 300f)
-                            )
-                        )
-                    },
-                    label = "SettingsTabTransition"
-                ) { tabIndex ->
-                    if (tabIndex == 4) {
-                        com.example.ui.components.InteractiveAboutScreen()
-                    } else {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 24.dp)
-                                .verticalScroll(rememberScrollState())
+                        IconButton(
+                            onClick = {
+                                try {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                } catch (e: Exception) {}
+                                com.example.service.SoundPlayer.stop()
+                                onDismiss()
+                            }
                         ) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                        if (tabIndex == 0) {
-                    var focusInput by remember(localFocus) { mutableStateOf(localFocus.toInt().toString()) }
-            var breakInput by remember(localBreak) { mutableStateOf(localBreak.toInt().toString()) }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Timer & Sound", fontSize = 16.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.textPrimary)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                        Text("Focus Time (min):", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
-                        androidx.compose.foundation.text.BasicTextField(
-                            value = focusInput,
-                            onValueChange = { newVal ->
-                                val filtered = newVal.filter { it.isDigit() }
-                                focusInput = filtered
-                                filtered.toFloatOrNull()?.let { 
-                                    localFocus = it.coerceIn(1f, 200f) 
-                                }
-                            },
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                            textStyle = androidx.compose.ui.text.TextStyle(color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
-                            modifier = Modifier.width(60.dp).background(currentTheme.textPrimary.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
-                            singleLine = true
-                        )
-                    }
-                    Slider(
-                        value = localFocus.coerceIn(1f, 60f),
-                        onValueChange = { 
-                            val oldVal = localFocus.toInt()
-                            val newVal = it.toInt()
-                            if (oldVal != newVal) {
-                                try {
-                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                                } catch (e: Exception) {}
-                            }
-                            localFocus = it 
-                        },
-                        valueRange = 1f..60f,
-                        colors = SliderDefaults.colors(thumbColor = Color(0xFFFF8A80), activeTrackColor = Color(0xFFFFCC80))
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                        Text("Break Time (min):", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
-                        androidx.compose.foundation.text.BasicTextField(
-                            value = breakInput,
-                            onValueChange = { newVal ->
-                                val filtered = newVal.filter { it.isDigit() }
-                                breakInput = filtered
-                                filtered.toFloatOrNull()?.let { 
-                                    localBreak = it.coerceIn(1f, 120f) 
-                                }
-                            },
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                            textStyle = androidx.compose.ui.text.TextStyle(color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
-                            modifier = Modifier.width(60.dp).background(currentTheme.textPrimary.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
-                            singleLine = true
-                        )
-                    }
-                    Slider(
-                        value = localBreak.coerceIn(1f, 30f),
-                        onValueChange = { 
-                            val oldVal = localBreak.toInt()
-                            val newVal = it.toInt()
-                            if (oldVal != newVal) {
-                                try {
-                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                                } catch (e: Exception) {}
-                            }
-                            localBreak = it 
-                        },
-                        valueRange = 1f..30f,
-                        colors = SliderDefaults.colors(thumbColor = Color(0xFF81D4FA), activeTrackColor = Color(0xFFB3E5FC))
-                    )
-                    
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = currentTheme.textPrimary.copy(alpha = 0.1f))
-                    
-                    Text("Volume", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
-                    Slider(
-                        value = localVolume,
-                        onValueChange = { 
-                            val oldVal = localVolume.toInt()
-                            val newVal = it.toInt()
-                            if (oldVal != newVal) {
-                                try {
-                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                                } catch (e: Exception) {}
-                            }
-                            localVolume = it
-                            audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, it.toInt(), 0)
-                        },
-                        valueRange = 0f..maxVolume,
-                        steps = (maxVolume.toInt() - 1).takeIf { it > 0 } ?: 0,
-                        colors = SliderDefaults.colors(thumbColor = Color(0xFFCE93D8), activeTrackColor = Color(0xFFE1BEE7))
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Text("Completion Sound", color = currentTheme.textPrimary, fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(currentTheme.textPrimary.copy(alpha=0.05f))) {
-                        val compOptions = listOf("Beep", "Alarm", "Ring", "Custom")
-                        compOptions.forEachIndexed { index, name ->
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (localCompletion == index) Color(0xFFFF8A80) else Color.Transparent)
-                                    .clickable { 
-                                        try {
-                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                        } catch (e: Exception) {}
-                                        if (index == 3) {
-                                            completionLauncher.launch(arrayOf("audio/*"))
-                                        } else {
-                                            localCompletion = index
-                                            com.example.service.SoundPlayer.playCompletion(context, index)
-                                        }
-                                    }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center
-                            ) { Text(name, color = if (localCompletion == index) Color.White else currentTheme.textPrimary, fontSize = 11.scaledSp, maxLines = 1) }
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Close",
+                                tint = currentTheme.textPrimary
+                            )
                         }
                     }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Completion Sound Duration: ${localCompletionDuration.toInt()} sec", color = currentTheme.textPrimary, fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
-                    Slider(
-                        value = localCompletionDuration,
-                        onValueChange = { 
-                            val oldVal = localCompletionDuration.toInt()
-                            val newVal = it.toInt()
-                            if (oldVal != newVal) {
-                                try {
-                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                                } catch (e: Exception) {}
-                            }
-                            localCompletionDuration = it 
-                        },
-                        valueRange = 2f..20f,
-                        colors = SliderDefaults.colors(thumbColor = Color(0xFF81D4FA), activeTrackColor = Color(0xFFB3E5FC))
-                    )
                 }
-            }
-            
-            }
-            
-            if (tabIndex == 1) {
-                com.example.ui.components.ThemeFontCustomizer()
-            }
-            
-            if (tabIndex == 2) {
-                val blockedInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                val isBlockedPressed by blockedInteraction.collectIsPressedAsState()
-                val blockedScale by androidx.compose.animation.core.animateFloatAsState(
-                    targetValue = if (isBlockedPressed) 0.96f else 1f,
-                    animationSpec = androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy, stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
-                    label = "blockedScale"
-                )
+            ) { paddingValues ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                ) {
+                    val currentTheme = LocalAppTheme.current
+                    androidx.compose.foundation.lazy.LazyRow(
+                        state = tabListState,
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
+                    ) {
+                        items(tabs.size) { index ->
+                            val isSelected = selectedTabIndex == index
+                            val onPrimaryColor = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
+                            val tabBgColor by androidx.compose.animation.animateColorAsState(
+                                targetValue = if (isSelected) currentTheme.primary else currentTheme.surface, 
+                                animationSpec = PomoMotion.colorSpec, label = "tabBg"
+                            )
+                            val tabTextColor by androidx.compose.animation.animateColorAsState(
+                                targetValue = if (isSelected) onPrimaryColor else currentTheme.textPrimary, 
+                                animationSpec = PomoMotion.colorSpec, label = "tabText"
+                            )
+                            val tabElevation by androidx.compose.animation.core.animateDpAsState(
+                                targetValue = if (isSelected) 4.dp else 1.dp, 
+                                animationSpec = PomoMotion.elevationSpec, label = "tabElev"
+                            )
+                            
+                            Box(
+                                modifier = Modifier
+                                    .shadow(
+                                        elevation = tabElevation.coerceAtLeast(0.dp),
+                                        shape = RoundedCornerShape(16.dp),
+                                        spotColor = currentTheme.shadowColor
+                                    )
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(tabBgColor)
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) currentTheme.primary else currentTheme.cardBorder,
+                                        shape = RoundedCornerShape(16.dp)
+                                    )
+                                    .clickable { 
+                                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                                        if (selectedTabIndex != index) {
+                                            tabBackStack.add(selectedTabIndex)
+                                            selectedTabIndex = index 
+                                        }
+                                    }
+                            ) {
+                                Text(
+                                    text = tabs[index],
+                                    color = tabTextColor,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.scaledSp
+                                )
+                            }
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        androidx.compose.animation.AnimatedContent(
+                            targetState = selectedTabIndex,
+                            transitionSpec = {
+                                PomoMotion.horizontalSlideTransition(forward = targetState > initialState)
+                            },
+                            label = "SettingsTabTransition"
+                        ) { tabIndex ->
+                            if (tabIndex == 4) {
+                                com.example.ui.components.InteractiveAboutScreen()
+                            } else {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 24.dp)
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    if (tabIndex == 0) {
+                                        var focusInput by remember(localFocus) { mutableStateOf(localFocus.toInt().toString()) }
+                                        var breakInput by remember(localBreak) { mutableStateOf(localBreak.toInt().toString()) }
+
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder)
+                                        ) {
+                                            Column(modifier = Modifier.padding(16.dp)) {
+                                                Text("Timer & Sound", fontSize = 16.scaledSp, fontWeight = FontWeight.Bold, color = currentTheme.textPrimary)
+                                                Spacer(modifier = Modifier.height(16.dp))
+                                                
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                                    Text("Focus Time (min):", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
+                                                    androidx.compose.foundation.text.BasicTextField(
+                                                        value = focusInput,
+                                                        onValueChange = { newVal ->
+                                                            val filtered = newVal.filter { it.isDigit() }
+                                                            focusInput = filtered
+                                                            filtered.toFloatOrNull()?.let { 
+                                                                localFocus = it.coerceIn(1f, 200f) 
+                                                            }
+                                                        },
+                                                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                                        textStyle = androidx.compose.ui.text.TextStyle(color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
+                                                        modifier = Modifier.width(60.dp).background(currentTheme.textPrimary.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                        singleLine = true
+                                                    )
+                                                }
+                                                Slider(
+                                                    value = localFocus.coerceIn(1f, 60f),
+                                                    onValueChange = { 
+                                                        val oldVal = localFocus.toInt()
+                                                        val newVal = it.toInt()
+                                                        if (oldVal != newVal) {
+                                                            try {
+                                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                                            } catch (e: Exception) {}
+                                                        }
+                                                        localFocus = it 
+                                                    },
+                                                    valueRange = 1f..60f,
+                                                    colors = SliderDefaults.colors(
+                                                        thumbColor = currentTheme.primary,
+                                                        activeTrackColor = currentTheme.primary.copy(alpha = 0.7f)
+                                                    )
+                                                )
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                                    Text("Break Time (min):", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
+                                                    androidx.compose.foundation.text.BasicTextField(
+                                                        value = breakInput,
+                                                        onValueChange = { newVal ->
+                                                            val filtered = newVal.filter { it.isDigit() }
+                                                            breakInput = filtered
+                                                            filtered.toFloatOrNull()?.let { 
+                                                                localBreak = it.coerceIn(1f, 120f) 
+                                                            }
+                                                        },
+                                                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                                        textStyle = androidx.compose.ui.text.TextStyle(color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End),
+                                                        modifier = Modifier.width(60.dp).background(currentTheme.textPrimary.copy(alpha=0.05f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                        singleLine = true
+                                                    )
+                                                }
+                                                Slider(
+                                                    value = localBreak.coerceIn(1f, 30f),
+                                                    onValueChange = { 
+                                                        val oldVal = localBreak.toInt()
+                                                        val newVal = it.toInt()
+                                                        if (oldVal != newVal) {
+                                                            try {
+                                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                                            } catch (e: Exception) {}
+                                                        }
+                                                        localBreak = it 
+                                                    },
+                                                    valueRange = 1f..30f,
+                                                    colors = SliderDefaults.colors(
+                                                        thumbColor = currentTheme.secondary,
+                                                        activeTrackColor = currentTheme.secondary.copy(alpha = 0.7f)
+                                                    )
+                                                )
+                                                
+                                                HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = currentTheme.textPrimary.copy(alpha = 0.1f))
+                                                
+                                                Text("Volume", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.scaledSp)
+                                                Slider(
+                                                    value = localVolume.coerceIn(0f, maxVolume),
+                                                    onValueChange = { 
+                                                        val oldVal = localVolume.toInt()
+                                                        val newVal = it.toInt()
+                                                        if (oldVal != newVal) {
+                                                            try {
+                                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                                            } catch (e: Exception) {}
+                                                        }
+                                                        localVolume = it
+                                                        try {
+                                                            audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, it.toInt(), 0)
+                                                        } catch (_: Exception) {}
+                                                    },
+                                                    valueRange = 0f..maxVolume,
+                                                    steps = (maxVolume.toInt() - 1).takeIf { it > 0 } ?: 0,
+                                                    colors = SliderDefaults.colors(
+                                                        thumbColor = currentTheme.accent,
+                                                        activeTrackColor = currentTheme.accent.copy(alpha = 0.7f)
+                                                    )
+                                                )
+                                                Spacer(modifier = Modifier.height(16.dp))
+                                                
+                                                Text("Completion Sound", color = currentTheme.textPrimary, fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(currentTheme.textPrimary.copy(alpha=0.05f))) {
+                                                    val compOptions = listOf("Beep", "Alarm", "Ring", "Custom")
+                                                    val onSelectedCompColor = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
+                                                    compOptions.forEachIndexed { index, name ->
+                                                        val isSelectedComp = localCompletion == index
+                                                        val compBg by animateColorAsState(
+                                                            targetValue = if (isSelectedComp) currentTheme.primary else Color.Transparent,
+                                                            animationSpec = PomoMotion.colorSpec,
+                                                            label = "compBg_$index"
+                                                        )
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .clip(RoundedCornerShape(12.dp))
+                                                                .background(compBg)
+                                                                .clickable { 
+                                                                    try {
+                                                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                                                    } catch (e: Exception) {}
+                                                                    if (index == 3) {
+                                                                        completionLauncher.launch(arrayOf("audio/*"))
+                                                                    } else {
+                                                                        localCompletion = index
+                                                                        com.example.service.SoundPlayer.playCompletion(context, index)
+                                                                    }
+                                                                }
+                                                                .padding(vertical = 10.dp),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Text(
+                                                                name,
+                                                                color = if (isSelectedComp) onSelectedCompColor else currentTheme.textPrimary,
+                                                                fontSize = 11.scaledSp,
+                                                                fontWeight = if (isSelectedComp) FontWeight.Bold else FontWeight.Medium,
+                                                                maxLines = 1
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                
+                                                Spacer(modifier = Modifier.height(16.dp))
+                                                Text("Completion Sound Duration: ${localCompletionDuration.toInt()} sec", color = currentTheme.textPrimary, fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
+                                                Slider(
+                                                    value = localCompletionDuration.coerceIn(2f, 20f),
+                                                    onValueChange = { 
+                                                        val oldVal = localCompletionDuration.toInt()
+                                                        val newVal = it.toInt()
+                                                        if (oldVal != newVal) {
+                                                            try {
+                                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                                            } catch (e: Exception) {}
+                                                        }
+                                                        localCompletionDuration = it 
+                                                    },
+                                                    valueRange = 2f..20f,
+                                                    colors = SliderDefaults.colors(
+                                                        thumbColor = currentTheme.secondary,
+                                                        activeTrackColor = currentTheme.secondary.copy(alpha = 0.7f)
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (tabIndex == 1) {
+                                        com.example.ui.components.ThemeFontCustomizer()
+                                    }
+                                    
+                                    if (tabIndex == 2) {
+                                        val blockedInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                                        val isBlockedPressed by blockedInteraction.collectIsPressedAsState()
+                                        val blockedScale by androidx.compose.animation.core.animateFloatAsState(
+                                            targetValue = if (isBlockedPressed) 0.96f else 1f,
+                                            animationSpec = PomoMotion.pressScaleSpec,
+                                            label = "blockedScale"
+                                        )
 
                 val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
                 var accessibilityStatus by remember { mutableStateOf(com.example.service.AppBlockerManager.getAccessibilityStatus(context)) }
@@ -1500,6 +1441,8 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
             }
     }
 }
+        }
+    }
 }
 
 @Composable
@@ -1509,18 +1452,20 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
     val currentTheme = LocalAppTheme.current
     val currentFont = LocalAppFont.current
     
-    val taskArgb = (task.categoryColor and 0xFFFFFFFFL).toInt()
+    val taskColor = com.example.service.safeParseColor(task.categoryColor, currentTheme.primary)
     val borderColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (isSelected) Color(taskArgb) else currentTheme.cardBorder,
+        targetValue = if (isSelected) taskColor else currentTheme.cardBorder,
+        animationSpec = PomoMotion.colorSpec,
         label = "borderColor"
     )
     val borderWidth by androidx.compose.animation.core.animateDpAsState(
         targetValue = if (isSelected) 1.5.dp else 1.dp,
+        animationSpec = PomoMotion.dpSpec,
         label = "borderWidth"
     )
     
     val containerColor = if (isSelected) {
-        androidx.compose.ui.graphics.Color(taskArgb).copy(alpha = 0.05f).compositeOver(currentTheme.surface)
+        taskColor.copy(alpha = 0.06f).compositeOver(currentTheme.surface)
     } else {
         currentTheme.surface
     }
@@ -1551,7 +1496,7 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
                 modifier = Modifier
                     .size(16.scaledDp)
                     .clip(CircleShape)
-                    .background(Color(taskArgb))
+                    .background(taskColor)
             )
             Spacer(modifier = Modifier.width(12.scaledDp))
             Column(modifier = Modifier.weight(1f)) {
@@ -1587,13 +1532,13 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
             
             androidx.compose.animation.AnimatedVisibility(
                 visible = isSelected,
-                enter = androidx.compose.animation.scaleIn() + androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.scaleOut() + androidx.compose.animation.fadeOut()
+                enter = androidx.compose.animation.scaleIn(PomoMotion.floatSpec) + androidx.compose.animation.fadeIn(tween(180)),
+                exit = androidx.compose.animation.scaleOut(PomoMotion.floatSpec) + androidx.compose.animation.fadeOut(tween(150))
             ) {
                 Icon(
                     imageVector = Icons.Filled.CheckCircle,
                     contentDescription = "Selected",
-                    tint = Color((task.categoryColor and 0xFFFFFFFFL).toInt()),
+                    tint = taskColor,
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -1614,9 +1559,7 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
 
 @Composable
 fun PremiumJumpingTextPreview(text: String) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     val currentTheme = com.example.ui.theme.LocalAppTheme.current
-    val protectionStates = com.example.ui.rememberSystemProtectionStates()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1635,29 +1578,26 @@ fun PremiumJumpingTextPreview(text: String) {
             )
         } else {
             text.forEachIndexed { index, char ->
-                val animatedOffset = remember(index) { androidx.compose.animation.core.Animatable(-30f) }
-                val animatedScale = remember(index) { androidx.compose.animation.core.Animatable(0.4f) }
+                val animatedOffset = remember(index) { androidx.compose.animation.core.Animatable(-16f) }
+                val animatedScale = remember(index) { androidx.compose.animation.core.Animatable(0.75f) }
                 val animatedAlpha = remember(index) { androidx.compose.animation.core.Animatable(0f) }
                 
                 LaunchedEffect(key1 = index) {
                     animatedOffset.animateTo(
                         targetValue = 0f,
-                        animationSpec = spring(
-                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-                            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
-                        )
+                        animationSpec = PomoMotion.floatSpec
                     )
                 }
                 LaunchedEffect(key1 = index) {
                     animatedScale.animateTo(
                         targetValue = 1f,
-                        animationSpec = spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy)
+                        animationSpec = PomoMotion.floatSpec
                     )
                 }
                 LaunchedEffect(key1 = index) {
                     animatedAlpha.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(durationMillis = 250)
+                        animationSpec = tween(durationMillis = 200)
                     )
                 }
                 
@@ -1683,31 +1623,28 @@ fun PremiumJumpingTextPreview(text: String) {
 
 @Composable
 fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     androidx.compose.ui.window.Dialog(
-        onDismissRequest = onCancel, // Allow platform click outside and back press dismiss
+        onDismissRequest = onCancel,
         properties = androidx.compose.ui.window.DialogProperties(
             usePlatformDefaultWidth = false,
             dismissOnClickOutside = false,
-            dismissOnBackPress = true // Support system back button for convenience
+            dismissOnBackPress = true
         )
     ) {
         var animateIn by remember { mutableStateOf(false) }
         LaunchedEffect(Unit) {
-        animateIn = true
-    }
+            animateIn = true
+        }
         val scale by animateFloatAsState(
-            targetValue = if (animateIn) 1f else 0.8f,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessLow
-            ),
+            targetValue = if (animateIn) 1f else 0.92f,
+            animationSpec = PomoMotion.floatSpec,
             label = "dialogScale"
         )
         val alpha by animateFloatAsState(
             targetValue = if (animateIn) 1f else 0f,
-            animationSpec = tween(durationMillis = 250),
+            animationSpec = tween(durationMillis = PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothOutEasing),
             label = "dialogAlpha"
         )
 
@@ -1720,7 +1657,10 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.4f * alpha))
                 .pointerInput(Unit) {
-                    detectTapGestures(onTap = { focusManager.clearFocus() })
+                    detectTapGestures(onTap = {
+                        keyboardController?.hide()
+                        focusManager.clearFocus()
+                    })
                 },
             contentAlignment = Alignment.Center
         ) {
@@ -1737,7 +1677,10 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                     .shadow(elevation = 12.dp, shape = RoundedCornerShape(28.dp), spotColor = currentTheme.shadowColor)
                     .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(28.dp))
                     .pointerInput(Unit) {
-                        detectTapGestures(onTap = { focusManager.clearFocus() })
+                        detectTapGestures(onTap = {
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
+                        })
                     },
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
@@ -1755,7 +1698,10 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .pointerInput(Unit) {
-                            detectTapGestures(onTap = { focusManager.clearFocus() })
+                            detectTapGestures(onTap = {
+                                keyboardController?.hide()
+                                focusManager.clearFocus()
+                            })
                         }
                         .padding(24.dp)
                 ) {
@@ -1779,12 +1725,13 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.Black,
-                            unfocusedTextColor = Color.Black,
-                            cursorColor = Color.Black,
-                            focusedBorderColor = currentTheme.textPrimary,
-                            unfocusedBorderColor = Color.LightGray,
-                            focusedLabelColor = currentTheme.textPrimary
+                            focusedTextColor = currentTheme.textPrimary,
+                            unfocusedTextColor = currentTheme.textPrimary,
+                            cursorColor = currentTheme.primary,
+                            focusedBorderColor = currentTheme.primary,
+                            unfocusedBorderColor = currentTheme.cardBorder,
+                            focusedLabelColor = currentTheme.primary,
+                            unfocusedLabelColor = currentTheme.textSecondary
                         ),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                             imeAction = androidx.compose.ui.text.input.ImeAction.Done
@@ -1794,7 +1741,9 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                                 try {
                                     view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                                 } catch (e: Exception) {}
-                                onSave(title.ifEmpty { "Do nothing" }, selectedCategory.first, (selectedCategory.second.toArgb().toLong() and 0xFFFFFFFFL))
+                                keyboardController?.hide()
+                                focusManager.clearFocus()
+                                onSave(title.ifEmpty { "Focus Task" }, selectedCategory.first, (selectedCategory.second.toArgb().toLong() and 0xFFFFFFFFL))
                             }
                         ),
                         singleLine = true
@@ -1807,12 +1756,13 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         categories.forEach { cat ->
+                            val isCatSelected = selectedCategory == cat
                             Box(
                                 modifier = Modifier
                                     .size(40.dp)
                                     .clip(CircleShape)
-                                    .background(if (selectedCategory == cat) cat.second else cat.second.copy(alpha = 0.3f))
-                                    .border(if (selectedCategory == cat) 2.dp else 0.dp, Color.Black, CircleShape)
+                                    .background(if (isCatSelected) cat.second else cat.second.copy(alpha = 0.3f))
+                                    .border(if (isCatSelected) 2.dp else 1.dp, if (isCatSelected) currentTheme.textPrimary else currentTheme.cardBorder, CircleShape)
                                     .clickable {
                                         try {
                                             view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -1829,6 +1779,8 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                                 try {
                                     view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                                 } catch (e: Exception) {}
+                                keyboardController?.hide()
+                                focusManager.clearFocus()
                                 onCancel()
                             }
                         ) {
@@ -1838,10 +1790,12 @@ fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
                         com.example.ui.components.PomoButton(
                             text = "Save Task",
                             onClick = {
+                                keyboardController?.hide()
+                                focusManager.clearFocus()
                                 onSave(title.ifEmpty { "Focus Task" }, selectedCategory.first, (selectedCategory.second.toArgb().toLong() and 0xFFFFFFFFL))
                             },
                             containerColor = currentTheme.primary,
-                            contentColor = Color.White,
+                            contentColor = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
                             shape = RoundedCornerShape(16.dp),
                             elevation = 4.dp
                         )
@@ -1862,17 +1816,16 @@ fun AnimatedScaleBox(
     shadowColor: androidx.compose.ui.graphics.Color = Color.Black.copy(alpha = 0.2f),
     content: @Composable () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed && enabled) 0.90f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        targetValue = if (isPressed && enabled) 0.92f else 1f,
+        animationSpec = PomoMotion.pressScaleSpec,
         label = "scale"
     )
     val currentElevation by animateDpAsState(
         targetValue = if (isPressed && enabled) 1.5.dp else if (enabled) elevation else 0.dp,
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        animationSpec = PomoMotion.elevationSpec,
         label = "elevation"
     )
     val view = androidx.compose.ui.platform.LocalView.current
@@ -1885,7 +1838,7 @@ fun AnimatedScaleBox(
                 alpha = if (enabled) 1f else 0.5f
             }
             .shadow(
-                elevation = currentElevation,
+                elevation = currentElevation.coerceAtLeast(0.dp),
                 shape = shape,
                 clip = false,
                 spotColor = shadowColor,
@@ -1919,12 +1872,15 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
         verticalAlignment = Alignment.CenterVertically
     ) {
         AnimatedScaleBox(
+            enabled = state != TimerManager.TimerState.STOPPED,
             shape = CircleShape,
             elevation = 5.dp,
             shadowColor = Color.Black.copy(alpha = 0.15f),
             onClick = {
-                val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_STOP }
-                context.startService(intent)
+                try {
+                    val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_STOP }
+                    context.startService(intent)
+                } catch (_: Exception) {}
             }
         ) {
             Box(
@@ -1948,8 +1904,10 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
             shadowColor = currentTheme.shadowColor,
             onClick = {
                 if (isRunning) {
-                    val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_PAUSE }
-                    context.startService(intent)
+                    try {
+                        val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_PAUSE }
+                        context.startService(intent)
+                    } catch (_: Exception) {}
                 } else {
                     onStartAttempt()
                 }
@@ -1967,7 +1925,14 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
                     .border(2.dp, Color.White.copy(alpha = 0.8f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                AnimatedContent(targetState = isRunning, label = "playPause") { running ->
+                AnimatedContent(
+                    targetState = isRunning,
+                    transitionSpec = {
+                        (fadeIn(tween(180)) + scaleIn(initialScale = 0.85f, animationSpec = tween(180, easing = PomoMotion.SmoothOutEasing))) togetherWith
+                            (fadeOut(tween(150)) + scaleOut(targetScale = 0.85f, animationSpec = tween(150)))
+                    },
+                    label = "playPause"
+                ) { running ->
                     Icon(
                         if (running) Icons.Filled.Pause else Icons.Filled.PlayArrow, 
                         contentDescription = if (running) "Pause" else "Start", 
@@ -1989,8 +1954,10 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
             onClick = {
                 val isServiceActive = state != TimerManager.TimerState.STOPPED
                 if (isServiceActive) {
-                    val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_TOGGLE_MODE }
-                    context.startService(intent)
+                    try {
+                        val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_TOGGLE_MODE }
+                        context.startService(intent)
+                    } catch (_: Exception) {}
                 } else {
                     val newIsBreak = !isBreakMode
                     TimerManager.setBreakMode(newIsBreak)
@@ -2021,7 +1988,6 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
 
 @Composable
 fun SlidingTimer(timeRemaining: Int, fontSize: androidx.compose.ui.unit.TextUnit = 64.scaledSp) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     val timeString = "%02d:%02d".format(timeRemaining / 60, timeRemaining % 60)
     Row(
         horizontalArrangement = Arrangement.Center,
@@ -2041,19 +2007,19 @@ fun SlidingTimer(timeRemaining: Int, fontSize: androidx.compose.ui.unit.TextUnit
                 AnimatedContent(
                     targetState = char,
                     transitionSpec = {
-                        val enterSpring = spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
-                        val exitSpring = spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
-                        val alphaEnter = spring<Float>(stiffness = Spring.StiffnessLow)
-                        val alphaExit = spring<Float>(stiffness = Spring.StiffnessMedium)
+                        val enterSpec = tween<androidx.compose.ui.unit.IntOffset>(220, easing = PomoMotion.SmoothOutEasing)
+                        val exitSpec = tween<androidx.compose.ui.unit.IntOffset>(180, easing = PomoMotion.SmoothInOutEasing)
+                        val alphaEnter = tween<Float>(200, easing = PomoMotion.SmoothOutEasing)
+                        val alphaExit = tween<Float>(160, easing = PomoMotion.SmoothInOutEasing)
                         
                         if (targetState < initialState || (initialState == '0' && targetState == '9') || (initialState == '0' && targetState == '5')) {
                             // Counting down
-                            (slideInVertically(enterSpring) { height -> -height } + fadeIn(alphaEnter)) togetherWith
-                                    (slideOutVertically(exitSpring) { height -> height } + fadeOut(alphaExit))
+                            (slideInVertically(enterSpec) { height -> -height / 2 } + fadeIn(alphaEnter)) togetherWith
+                                    (slideOutVertically(exitSpec) { height -> height / 2 } + fadeOut(alphaExit))
                         } else {
                             // Counting up or reset
-                            (slideInVertically(enterSpring) { height -> height } + fadeIn(alphaEnter)) togetherWith
-                                    (slideOutVertically(exitSpring) { height -> -height } + fadeOut(alphaExit))
+                            (slideInVertically(enterSpec) { height -> height / 2 } + fadeIn(alphaEnter)) togetherWith
+                                    (slideOutVertically(exitSpec) { height -> -height / 2 } + fadeOut(alphaExit))
                         }.using(SizeTransform(clip = false))
                     },
                     label = "digitAnimation_$index"
@@ -2162,8 +2128,10 @@ fun TimerDisplay(
                             } catch (e: Exception) {}
                             val isServiceActive = state != TimerManager.TimerState.STOPPED
                             if (isServiceActive) {
-                                val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_TOGGLE_MODE }
-                                context.startService(intent)
+                                try {
+                                    val intent = Intent(context, TimerService::class.java).apply { action = TimerService.ACTION_TOGGLE_MODE }
+                                    context.startService(intent)
+                                } catch (_: Exception) {}
                             } else {
                                 val newIsBreak = !isBreakMode
                                 TimerManager.setBreakMode(newIsBreak)
@@ -2189,6 +2157,7 @@ fun TimerDisplay(
         Spacer(modifier = Modifier.height(if (circleSize < 200.dp) 16.dp else if (circleSize < 240.dp) 24.dp else 40.dp))
         
         if (currentTask != null) {
+            val activeTaskColor = com.example.service.safeParseColor(currentTask.categoryColor, currentTheme.primary)
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = currentTheme.surface.copy(alpha = 0.5f)),
@@ -2208,7 +2177,7 @@ fun TimerDisplay(
                         modifier = Modifier
                             .size(14.dp)
                             .clip(CircleShape)
-                            .background(Color((currentTask.categoryColor and 0xFFFFFFFFL).toInt()))
+                            .background(activeTaskColor)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
@@ -2771,367 +2740,6 @@ fun SeriousFullscreenOverlay(
                             )
                         }
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun AlarmRingingLockScreen(
-    label: String,
-    targetCount: Int
-) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var currentCount by remember { mutableStateOf(0) }
-    var shakeWarning by remember { mutableStateOf(false) }
-    var sensorMessage by remember { mutableStateOf("Ready to register. Put the device in your pocket and begin!") }
-    var isFinished by remember { mutableStateOf(false) }
-
-    // Intercept back button to prevent escaping the workout alarm
-    androidx.activity.compose.BackHandler(enabled = true) {
-        // Intercept back actions and do nothing
-    }
-
-    // Register Squat sensor service for real-time secure tracking
-    DisposableEffect(Unit) {
-        val sensorService = com.example.service.SquatSensorService(context)
-        sensorService.startTracking(
-            targetSquats = targetCount,
-            onComplete = {
-                com.example.service.SoundPlayer.stopContinuousAlarm()
-                com.example.service.AlarmReceiver.dismissNotification(context)
-                isFinished = true
-            },
-            onUpdate = { count ->
-                currentCount = count
-                sensorMessage = "Awesome! Perfect squat registered."
-            },
-            onShakeWarning = { isShaking ->
-                shakeWarning = isShaking
-                if (isShaking) {
-                    sensorMessage = "Locked: Please stop shaking the phone!"
-                } else {
-                    sensorMessage = "Standing stable. Keep performing smooth physical squats."
-                }
-            }
-        )
-
-        onDispose {
-            sensorService.stopTracking()
-        }
-    }
-
-    // Fullscreen Dynamic Dawn Sunrise / Dark Premium Lock Screen
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0D0E11)) // Midnight premium ash
-            .padding(24.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (isFinished) {
-                // Celebration screen - transitioning to study state
-                Box(
-                    modifier = Modifier
-                        .size(96.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF00E676).copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = "Success",
-                        tint = Color(0xFF00E676),
-                        modifier = Modifier.size(56.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text(
-                    text = "Sleep Defeated! 🧠🔥",
-                    fontSize = 26.scaledSp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    fontFamily = AppFontFamily
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = "Your neuromuscular system is fully activated. Oxygenated blood flow has rushed to your brain, washing sleep inertia away instantly.\n\nYou are chemically primed for hyper-focus studying!",
-                    fontSize = 13.scaledSp,
-                    color = Color.LightGray,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 20.scaledSp,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-                Button(onClick = {
-                        try {
-                            val view = context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
-                            view?.vibrate(100)
-                        } catch (e: Exception) {}
-                        com.example.service.AlarmState.isAlarmRinging = false
-                        com.example.service.AlarmReceiver.dismissNotification(context)
-
-                        val activity = context as? android.app.Activity
-                        try {
-                            val launchIntent = android.content.Intent(context, MainActivity::class.java).apply {
-                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                            }
-                            context.startActivity(launchIntent)
-                        } catch (e: Exception) {
-                            android.util.Log.e("SquatDebug", "Failed to launch main activity", e)
-                        }
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
-                            activity?.setShowWhenLocked(false)
-                            activity?.setTurnScreenOn(false)
-                        }
-                        activity?.window?.clearFlags(
-                            android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                            android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or 
-                            android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                            android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-                        )
-                        activity?.finish()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676)),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth(0.85f)
-                        .height(56.dp)
-                ) {
-                    Text(
-                        text = "LAUNCH FOCUS SESSION 🚀",
-                        fontSize = 14.scaledSp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFF0D0E11),
-                        letterSpacing = 1.scaledSp
-                    )
-                }
-            } else {
-                // Active Alarm Screaming & Squat tracking
-                val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-                val scale by infiniteTransition.animateFloat(
-                    initialValue = 0.95f,
-                    targetValue = 1.05f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1000, easing = FastOutSlowInEasing),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "alarmScale"
-                )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(bottom = 16.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF00E676)) // Blink green indicator showing sensory active
-                    )
-                    Text(
-                        text = "KINETIC G-SENSOR SYNCHRONIZED",
-                        fontSize = 10.scaledSp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFF00E676),
-                        letterSpacing = 1.5.scaledSp,
-                        fontFamily = MonospaceFontFamily
-                    )
-                }
-
-                Text(
-                    text = label,
-                    fontSize = 24.scaledSp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    fontFamily = AppFontFamily
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = "SOMATIC WAKE-UP AUDIT",
-                    fontSize = 11.scaledSp,
-                    fontWeight = FontWeight.Black,
-                    color = Color(0xFFFFB300),
-                    letterSpacing = 2.scaledSp,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                // Beautiful Circular Wakeup Activity Ring
-                Box(
-                    modifier = Modifier
-                        .size(190.dp)
-                        .scale(scale),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val progress = if (targetCount > 0) currentCount.toFloat() / targetCount.toFloat() else 0f
-                    val animatedProgress by animateFloatAsState(
-                        targetValue = progress,
-                        animationSpec = spring(stiffness = Spring.StiffnessLow),
-                        label = "progress"
-                    )
-                    
-                    // Shadow Ring (Background)
-                    CircularProgressIndicator(
-                        progress = { 1f },
-                        modifier = Modifier.fillMaxSize(),
-                        color = Color.White.copy(alpha = 0.05f),
-                        strokeWidth = 14.dp,
-                        strokeCap = StrokeCap.Round
-                    )
-
-                    // Energized Ring (Foreground)
-                    CircularProgressIndicator(
-                        progress = { animatedProgress },
-                        modifier = Modifier.fillMaxSize(),
-                        color = Color(0xFF00E676),
-                        strokeWidth = 14.dp,
-                        strokeCap = StrokeCap.Round
-                    )
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "$currentCount",
-                            fontSize = 60.scaledSp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            fontFamily = MonospaceFontFamily
-                        )
-                        Text(
-                            text = "/ $targetCount SQUATS",
-                            fontSize = 11.scaledSp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White.copy(alpha = 0.5f),
-                            letterSpacing = 1.scaledSp
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = "For accurate tracking, hold your phone firmly with any hand without shaking.",
-                    fontSize = 12.scaledSp,
-                    color = Color.White.copy(alpha = 0.7f),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 32.dp)
-                )
-
-                Spacer(modifier = Modifier.height(28.dp))
-
-                // Real-Time Waveform Generator indicating the body works
-                val wavePhase = rememberInfiniteTransition(label = "wave")
-                val waveOffset by wavePhase.animateFloat(
-                    initialValue = 0f,
-                    targetValue = 2f * 3.14159f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1200, easing = LinearEasing),
-                        repeatMode = RepeatMode.Restart
-                    ),
-                    label = "waveOffset"
-                )
-
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(36.dp)
-                        .padding(horizontal = 32.dp)
-                ) {
-                    val path = androidx.compose.ui.graphics.Path()
-                    val width = size.width
-                    val height = size.height
-                    val midY = height / 2f
-                    val amplitude = if (shakeWarning) 16f else 6f
-                    val frequency = 3.5f
-                    
-                    path.moveTo(0f, midY)
-                    for (x in 0..width.toInt() step 6) {
-                        val relativeX = x.toFloat() / width
-                        val sineVal = kotlin.math.sin(relativeX * frequency * 2f * 3.14159f + waveOffset)
-                        val y = midY + (sineVal * amplitude)
-                        path.lineTo(x.toFloat(), y)
-                    }
-                    
-                    drawPath(
-                        path = path,
-                        color = if (shakeWarning) Color(0xFFFF5252).copy(alpha = 0.8f) else Color(0xFF00E676).copy(alpha = 0.5f),
-                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = sensorMessage,
-                    fontSize = 12.scaledSp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (shakeWarning) Color(0xFFFF8A80) else Color.White.copy(alpha = 0.8f),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                // Chaotic Shake Warning Indicator
-                AnimatedVisibility(
-                    visible = shakeWarning,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0xFFD32F2F).copy(alpha = 0.15f))
-                            .border(1.dp, Color(0xFFD32F2F).copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = androidx.compose.material.icons.Icons.Default.Lock,
-                            contentDescription = "Lock State Alert",
-                            tint = Color(0xFFFF5252),
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = "Chaotic Shaking Detected! Stand still and perform smooth, deep squats to pass.",
-                            fontSize = 12.scaledSp,
-                            color = Color(0xFFFF8A80),
-                            fontWeight = FontWeight.Bold,
-                            lineHeight = 16.scaledSp
-                        )
-                    }
-                }
-
-                // Normal instructions if not shaking
-                if (!shakeWarning) {
-                    Text(
-                        text = "Phone loops sensory ringtones at full volume. No snooze, no exit! Pocket the device or hold it, then complete squats to unlock.",
-                        fontSize = 11.scaledSp,
-                        color = Color.White.copy(alpha = 0.35f),
-                        textAlign = TextAlign.Center,
-                        lineHeight = 16.scaledSp,
-                        modifier = Modifier.padding(horizontal = 24.dp)
-                    )
                 }
             }
         }

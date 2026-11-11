@@ -47,6 +47,7 @@ import com.example.ui.components.PomoButton
 import com.example.ui.components.pomoShadow
 import com.example.ui.theme.LocalAppFont
 import com.example.ui.theme.LocalAppTheme
+import com.example.ui.theme.PomoMotion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -161,23 +162,29 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         blockedAttemptsToday = AppBlockerManager.getBlockAttemptsToday(context)
         withContext(Dispatchers.IO) {
-            val pm = context.packageManager
-            val intent = Intent(Intent.ACTION_MAIN, null).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
-            val resolveInfos = pm.queryIntentActivities(intent, 0)
-
             val buildList = mutableListOf<AppItem>()
-            val addedPackages = mutableSetOf<String>()
+            try {
+                val pm = context.packageManager
+                val intent = Intent(Intent.ACTION_MAIN, null).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
+                val resolveInfos = pm.queryIntentActivities(intent, 0)
 
-            for (resolveInfo in resolveInfos) {
-                val packageName = resolveInfo.activityInfo.packageName
-                if (packageName == context.packageName) continue
-                if (addedPackages.contains(packageName)) continue
+                val addedPackages = mutableSetOf<String>()
 
-                val label = resolveInfo.loadLabel(pm).toString()
-                buildList.add(AppItem(packageName, label, blockedSet.contains(packageName)))
-                addedPackages.add(packageName)
-            }
-            buildList.sortBy { it.label.lowercase() }
+                for (resolveInfo in resolveInfos) {
+                    val packageName = resolveInfo.activityInfo?.packageName ?: continue
+                    if (packageName == context.packageName) continue
+                    if (addedPackages.contains(packageName)) continue
+
+                    val label = try {
+                        resolveInfo.loadLabel(pm).toString()
+                    } catch (_: Exception) {
+                        packageName
+                    }
+                    buildList.add(AppItem(packageName, label, blockedSet.contains(packageName)))
+                    addedPackages.add(packageName)
+                }
+                buildList.sortBy { it.label.lowercase() }
+            } catch (_: Exception) {}
             withContext(Dispatchers.Main) {
                 appList = buildList
                 isLoading = false
@@ -689,7 +696,7 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                             )
                             val checkScale by animateFloatAsState(
                                 targetValue = if (isSelected) 1f else 0f,
-                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                                animationSpec = PomoMotion.floatSpec,
                                 label = "checkScale"
                             )
 

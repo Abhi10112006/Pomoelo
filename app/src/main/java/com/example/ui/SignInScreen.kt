@@ -205,7 +205,7 @@ fun Interactive3DTile(
                     this.cameraDistance = 16f * density
                 }
                 .shadow(
-                    elevation = shadowElev,
+                    elevation = shadowElev.coerceAtLeast(0.dp),
                     shape = RoundedCornerShape(22.dp),
                     ambientColor = baseColor.copy(alpha = 0.4f),
                     spotColor = baseColor.copy(alpha = if (currentTheme.isDark) 0.65f else 0.4f)
@@ -708,7 +708,7 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .shadow(cardShadowElev, RoundedCornerShape(26.dp), spotColor = currentTheme.primary.copy(alpha = 0.25f))
+                        .shadow(cardShadowElev.coerceAtLeast(0.dp), RoundedCornerShape(26.dp), spotColor = currentTheme.primary.copy(alpha = 0.25f))
                         .clip(RoundedCornerShape(26.dp))
                         .background(surfaceBgColor)
                         .border(2.dp, borderColor, RoundedCornerShape(26.dp))

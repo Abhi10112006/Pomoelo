@@ -247,7 +247,8 @@ fun ProtectionCard(
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.98f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessLow)
+        animationSpec = com.example.ui.theme.PomoMotion.pressScaleSpec,
+        label = "protectionCardScale"
     )
 
     val isGranted = state == PermissionState.READY
@@ -255,11 +256,13 @@ fun ProtectionCard(
 
     val containerColor by animateColorAsState(
         targetValue = if (isGranted) currentTheme.surface else currentTheme.background,
-        animationSpec = tween(300)
+        animationSpec = com.example.ui.theme.PomoMotion.colorSpec,
+        label = "protectionContainerColor"
     )
     val borderColor by animateColorAsState(
         targetValue = if (isGranted) Color(0xFF4CAF50).copy(alpha = 0.5f) else currentTheme.cardBorder,
-        animationSpec = tween(300)
+        animationSpec = com.example.ui.theme.PomoMotion.colorSpec,
+        label = "protectionBorderColor"
     )
 
     Card(

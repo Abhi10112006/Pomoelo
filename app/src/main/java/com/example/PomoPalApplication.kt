@@ -5,14 +5,16 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import com.example.service.InactivityReceiver
 import com.example.service.SettingsManager
+import com.example.service.TimerService
 
 class PomoPalApplication : Application() {
     companion object {
         private var instance: PomoPalApplication? = null
 
         fun getContext(): Context {
-            return instance?.applicationContext 
+            return instance?.applicationContext
                 ?: throw IllegalStateException("PomoPalApplication not initialized yet.")
         }
     }
@@ -20,36 +22,51 @@ class PomoPalApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        // Initialize settings manager as early as possible
-        SettingsManager.init(this)
-        
+        try {
+            SettingsManager.init(this)
+        } catch (_: Exception) {}
+        createNotificationChannels()
+    }
 
-        // Initialize "Somatic Alarms" Notification Channel
+    private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                "somatic_alarm_channel",
-                "Somatic Alarms",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Somatic physical squat alarms"
-                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
-                enableVibration(true)
-            }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            try {
+                val manager = getSystemService(NotificationManager::class.java) ?: return
 
-            // Initialize "Study Ritual Reminders" Notification Channel
-            val studyChannel = NotificationChannel(
-                com.example.service.StudyBlockReminderScheduler.CHANNEL_ID,
-                "Study Ritual Reminders",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Mindful notifications when your scheduled study blocks are ready to begin"
-                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
-                enableVibration(true)
-                setShowBadge(true)
-            }
-            manager?.createNotificationChannel(studyChannel)
+                val progressChannel = NotificationChannel(
+                    TimerService.CHANNEL_ID,
+                    "Active Focus Timer",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Displays real-time countdown and controls during active focus and break sessions."
+                    setShowBadge(false)
+                }
+
+                val completionChannel = NotificationChannel(
+                    TimerService.COMPLETION_CHANNEL_ID,
+                    "Session Completion Alerts",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Notifies you when a focus or break session finishes."
+                    enableVibration(true)
+                    setShowBadge(true)
+                }
+
+                val reminderChannel = NotificationChannel(
+                    InactivityReceiver.CHANNEL_ID,
+                    "Mindful Focus Reminders",
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "Gentle check-ins to help you return to your focus sessions."
+                    enableVibration(true)
+                    setShowBadge(true)
+                }
+
+                manager.createNotificationChannels(
+                    listOf(progressChannel, completionChannel, reminderChannel)
+                )
+            } catch (_: Exception) {}
         }
     }
 }
+

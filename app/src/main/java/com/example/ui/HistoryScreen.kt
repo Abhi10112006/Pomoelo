@@ -85,25 +85,7 @@ fun Modifier.historyCardShadow(
 )
 
 fun safeParseColor(colorLong: Long?, fallback: Color): Color {
-    if (colorLong == null || colorLong == 0L) return fallback
-    return try {
-        val upper32 = (colorLong ushr 32).toInt()
-        val lower32 = (colorLong and 0xFFFFFFFFL).toInt()
-        val rawArgb = if (upper32 != 0 && lower32 in 0..60) {
-            upper32
-        } else {
-            lower32
-        }
-        val safeArgb = if ((rawArgb and -0x1000000) == 0 && rawArgb != 0) {
-            rawArgb or -0x1000000
-        } else {
-            rawArgb
-        }
-        val c = Color(safeArgb)
-        if (c.alpha >= 0f) c else fallback
-    } catch (e: Throwable) {
-        fallback
-    }
+    return com.example.service.safeParseColor(colorLong, fallback)
 }
 
 fun resolveTaskColor(taskName: String, sessions: List<TimerSession>, allTasks: List<TaskItem>, currentTheme: ThemeOption): Color {
@@ -472,7 +454,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                             colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primary),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("[ Delete anyway ]", color = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White, fontWeight = FontWeight.Bold)
+                            Text("Delete", color = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White, fontWeight = FontWeight.Bold)
                         }
                     },
                     dismissButton = {
@@ -482,7 +464,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                 showTier2Dialog = false
                             }
                         ) {
-                            Text("[ Cancel ]", color = currentTheme.textSecondary)
+                            Text("Cancel", color = currentTheme.textSecondary)
                         }
                     },
                     containerColor = currentTheme.surface,
@@ -594,7 +576,7 @@ fun HistoryScreen(viewModel: TimerViewModel, navController: NavController, botto
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
                                         Text(
-                                            text = "[ PERMANENTLY DELETE ]",
+                                            text = "Erase Month",
                                             color = if (tier3InputText == "ERASE") Color.White else Color.White.copy(alpha = 0.5f),
                                             fontWeight = FontWeight.Bold
                                         )
@@ -621,6 +603,7 @@ fun MicroSummaryPill(
 ) {
     val view = androidx.compose.ui.platform.LocalView.current
     var expanded by remember { mutableStateOf(false) }
+    val arrowRotation by animateFloatAsState(if (expanded) 180f else 0f, animationSpec = PomoMotion.floatSpec, label = "microArrow")
     val dateStr = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(dateMillis))
     val focusSessions = sessions.filter { !it.isBreak }
     val totalFocusMins = focusSessions.sumOf { it.durationMinutes }
@@ -690,9 +673,20 @@ fun MicroSummaryPill(
                         modifier = Modifier.size(18.dp)
                     )
                 }
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Expand",
+                    tint = currentTheme.textSecondary,
+                    modifier = Modifier.rotate(arrowRotation)
+                )
             }
             
-            AnimatedVisibility(visible = expanded) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = PomoMotion.expandSection,
+                exit = PomoMotion.collapseSection
+            ) {
                 Column(modifier = Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val groupedByTask = sessions.groupBy { it.taskName }
                     groupedByTask.forEach { (task, list) ->
@@ -720,6 +714,7 @@ fun MonthSummaryCard(
 ) {
     val view = androidx.compose.ui.platform.LocalView.current
     var expanded by remember { mutableStateOf(false) }
+    val arrowRotation by animateFloatAsState(if (expanded) 180f else 0f, animationSpec = PomoMotion.floatSpec, label = "monthArrow")
     val focusSessions = sessions.filter { !it.isBreak }
     val totalFocusMins = focusSessions.sumOf { it.durationMinutes }
     val totalDays = sessions.groupBy { getStartOfDay(it.startTime) }.size
@@ -789,9 +784,20 @@ fun MonthSummaryCard(
                         modifier = Modifier.size(20.dp)
                     )
                 }
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Expand",
+                    tint = currentTheme.textSecondary,
+                    modifier = Modifier.rotate(arrowRotation)
+                )
             }
             
-            AnimatedVisibility(visible = expanded) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = PomoMotion.expandSection,
+                exit = PomoMotion.collapseSection
+            ) {
                 Column(modifier = Modifier.padding(top = 16.dp)) {
                     HorizontalDivider(color = currentTheme.cardBorder, modifier = Modifier.padding(bottom = 12.dp))
                     Text("Breakdown Details", fontWeight = FontWeight.SemiBold, fontSize = 14.scaledSp, color = currentTheme.textPrimary)
@@ -828,7 +834,7 @@ fun HistorySessionPill(
 ) {
     val view = androidx.compose.ui.platform.LocalView.current
     var expanded by remember { mutableStateOf(false) }
-    val arrowRotation by animateFloatAsState(if (expanded) 180f else 0f, label = "arrow")
+    val arrowRotation by animateFloatAsState(if (expanded) 180f else 0f, animationSpec = PomoMotion.floatSpec, label = "arrow")
 
     val currentTheme = LocalAppTheme.current
     val currentFont = LocalAppFont.current
@@ -921,85 +927,91 @@ fun HistorySessionPill(
                 )
             }
             
-            AnimatedVisibility(visible = expanded) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = PomoMotion.expandSection,
+                exit = PomoMotion.collapseSection
+            ) {
                 Column(modifier = Modifier.padding(top = 12.dp)) {
                     val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
                     sessions.sortedBy { it.startTime }.forEach { session ->
-                        val type = if (session.isBreak) "Rest" else "Focus"
-                        val start = timeFormat.format(Date(session.startTime))
-                        val end = timeFormat.format(Date(session.endTime))
-                        val sessionColor = resolveTaskColor(taskName, listOf(session), allTasks, currentTheme)
-                        
-                        val dismissState = rememberSwipeToDismissBoxState(
-                            confirmValueChange = { value ->
-                                if (value == SwipeToDismissBoxValue.EndToStart) {
-                                    try {
-                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
-                                    } catch (e: Exception) {}
-                                    viewModel.deleteSession(session)
-                                    true
-                                } else {
-                                    false
+                        key(session.id) {
+                            val type = if (session.isBreak) "Rest" else "Focus"
+                            val start = timeFormat.format(Date(session.startTime))
+                            val end = timeFormat.format(Date(session.endTime))
+                            val sessionColor = resolveTaskColor(taskName, listOf(session), allTasks, currentTheme)
+                            
+                            val dismissState = rememberSwipeToDismissBoxState(
+                                confirmValueChange = { value ->
+                                    if (value == SwipeToDismissBoxValue.EndToStart) {
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                                        } catch (e: Exception) {}
+                                        viewModel.deleteSession(session)
+                                        true
+                                    } else {
+                                        false
+                                    }
                                 }
-                            }
-                        )
-                        SwipeToDismissBox(
-                            state = dismissState,
-                            enableDismissFromStartToEnd = false,
-                            backgroundContent = {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(currentTheme.primary)
-                                        .padding(horizontal = 16.dp),
-                                    contentAlignment = Alignment.CenterEnd
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Delete",
-                                        tint = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            },
-                            content = {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(currentTheme.surface)
-                                        .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 16.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.weight(1f)
+                            )
+                            SwipeToDismissBox(
+                                state = dismissState,
+                                enableDismissFromStartToEnd = false,
+                                backgroundContent = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(currentTheme.primary)
+                                            .padding(horizontal = 16.dp),
+                                        contentAlignment = Alignment.CenterEnd
                                     ) {
-                                        Box(
-                                            modifier = Modifier.size(8.dp).clip(CircleShape)
-                                                .background(if (session.isBreak) Color.Transparent else sessionColor)
-                                                .border(if (session.isBreak) 2.dp else 0.dp, sessionColor, CircleShape)
-                                        )
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Text(
-                                            text = type,
-                                            color = currentTheme.textPrimary,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 14.scaledSp,
-                                            fontFamily = currentFont
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete",
+                                            tint = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     }
-                                    Text(
-                                        text = "$start - $end",
-                                        color = currentTheme.textSecondary,
-                                        fontSize = 13.scaledSp,
-                                        fontFamily = MonospaceFontFamily
-                                    )
-                                }
-                            },
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
+                                },
+                                content = {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(currentTheme.surface)
+                                            .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 16.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.size(8.dp).clip(CircleShape)
+                                                    .background(if (session.isBreak) Color.Transparent else sessionColor)
+                                                    .border(if (session.isBreak) 2.dp else 0.dp, sessionColor, CircleShape)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = type,
+                                                color = currentTheme.textPrimary,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 14.scaledSp,
+                                                fontFamily = currentFont
+                                            )
+                                        }
+                                        Text(
+                                            text = "$start - $end",
+                                            color = currentTheme.textSecondary,
+                                            fontSize = 13.scaledSp,
+                                            fontFamily = MonospaceFontFamily
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
                     }
                 }
             }
