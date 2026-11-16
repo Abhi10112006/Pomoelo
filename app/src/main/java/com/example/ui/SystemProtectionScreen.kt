@@ -56,27 +56,18 @@ fun SystemProtectionScreen() {
     val batteryState = protectionStates.batteryState
     val dndState = protectionStates.dndState
     
-    var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        visible = true
-    }
-
     // Prepare data for UI
     val states = listOf(notificationsState, batteryState, dndState)
     val readyCount = states.count { it == PermissionState.READY }
     val requiredCount = states.count { it == PermissionState.ACTION_REQUIRED }
     val applicableCount = states.count { it != PermissionState.UNKNOWN }
 
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(400)) + slideInVertically(tween(500, easing = FastOutSlowInEasing), initialOffsetY = { it / 4 })
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Overall Status Header
-            OverallStatusCard(readyCount = readyCount, applicableCount = applicableCount, requiredCount = requiredCount)
+        // Overall Status Header
+        OverallStatusCard(readyCount = readyCount, applicableCount = applicableCount, requiredCount = requiredCount)
 
             // Intro text
             Text(
@@ -173,9 +164,8 @@ fun SystemProtectionScreen() {
                 }
             )
 
-            if (dndState == PermissionState.ACTION_REQUIRED) {
-                SideloadedAppTip()
-            }
+        if (dndState == PermissionState.ACTION_REQUIRED) {
+            SideloadedAppTip()
         }
     }
 }
