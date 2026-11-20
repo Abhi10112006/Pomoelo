@@ -9,32 +9,48 @@ import kotlinx.coroutines.*
 object SoundPlayer {
     private var mediaPlayer: MediaPlayer? = null
     private var ringtone: android.media.Ringtone? = null
-    private val scope = CoroutineScope(Dispatchers.Main + Job())
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var stopJob: Job? = null
 
     fun playCompletion(context: Context, type: Int) {
         stop()
+        val appContext = context.applicationContext
         try {
-            if (type == 3) { // Custom
-                val uriStr = SettingsManager.getCustomCompletionUri()
-                if (uriStr != null) {
-                    mediaPlayer = MediaPlayer().apply {
-                        setDataSource(context, Uri.parse(uriStr))
-                        prepare()
-                        start()
+            when (type) {
+                3 -> { // Custom
+                    val uriStr = SettingsManager.getCustomCompletionUri()
+                    if (uriStr != null) {
+                        mediaPlayer = MediaPlayer().apply {
+                            setDataSource(appContext, Uri.parse(uriStr))
+                            isLooping = true
+                            prepare()
+                            start()
+                        }
                     }
                 }
-            } else {
-                val uri = when (type) {
-                    1 -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                    2 -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-                    else -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                1, 2 -> { // Alarm, Ring
+                    val uri = when (type) {
+                        1 -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                        else -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                    }
+                    ringtone = RingtoneManager.getRingtone(appContext, uri)
+                    ringtone?.play()
                 }
-                ringtone = RingtoneManager.getRingtone(context, uri)
-                ringtone?.play()
+                else -> { // 0: Get Up (default)
+                    val player = MediaPlayer.create(appContext, com.example.R.raw.get_up)
+                    if (player != null) {
+                        player.isLooping = true
+                        player.start()
+                        mediaPlayer = player
+                    } else {
+                        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                        ringtone = RingtoneManager.getRingtone(appContext, uri)
+                        ringtone?.play()
+                    }
+                }
             }
-            
-            val durationMs = SettingsManager.getCompletionDurationSec() * 1000L
+
+            val durationMs = SettingsManager.getCompletionDurationSec().coerceAtLeast(1) * 1000L
             stopJob = scope.launch {
                 delay(durationMs)
                 stop()

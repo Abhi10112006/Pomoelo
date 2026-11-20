@@ -19,24 +19,6 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
     val timeRemainingSeconds = TimerManager.timeRemainingSeconds
     val currentTaskName = TimerManager.currentTaskName
 
-    private fun getStartOfToday(): Long {
-        val cal = java.util.Calendar.getInstance()
-        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
-        cal.set(java.util.Calendar.MINUTE, 0)
-        cal.set(java.util.Calendar.SECOND, 0)
-        cal.set(java.util.Calendar.MILLISECOND, 0)
-        return cal.timeInMillis
-    }
-
-    fun autoCleanupIfNeeded() {
-        viewModelScope.launch {
-            try {
-                val startOfToday = getStartOfToday()
-                database.taskDao().deleteTasksBefore(startOfToday)
-            } catch (_: Throwable) {}
-        }
-    }
-    
     val allTasks = database.taskDao().getAllTasks()
         .catch { emit(emptyList()) }
         .stateIn(
@@ -96,18 +78,25 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
         // Handled via Intent to Service in Activity, but update name first
     }
 
-    fun setTask(id: Int, name: String, color: Long? = null) {
-        TimerManager.setTask(id, name, color)
+    fun setTask(id: Int, name: String, color: Long? = null, isBreakCategory: Boolean? = null) {
+        TimerManager.setTask(id, name, color, isBreakCategory)
     }
     
-    fun saveTask(taskName: String, categoryName: String, categoryColor: Long, onSaved: ((Int) -> Unit)? = null) {
+    fun saveTask(
+        taskName: String,
+        categoryName: String,
+        categoryColor: Long,
+        isBreakCategory: Boolean = false,
+        onSaved: ((Int) -> Unit)? = null
+    ) {
         viewModelScope.launch {
             try {
                 val id = database.taskDao().insertTask(
                     TaskItem(
                         name = taskName,
                         categoryName = categoryName,
-                        categoryColor = categoryColor
+                        categoryColor = categoryColor,
+                        isBreakCategory = isBreakCategory
                     )
                 )
                 onSaved?.invoke(id.toInt())
@@ -120,8 +109,17 @@ class TimerViewModel(private val database: AppDatabase) : ViewModel() {
             try {
                 database.taskDao().deleteTaskById(timerItem.id)
                 if (TimerManager.currentTaskId.value == timerItem.id && TimerManager.timerState.value == TimerManager.TimerState.STOPPED) {
-                    TimerManager.setTask(-1, "Focus Time!")
+                    val isBreak = TimerManager.isBreakMode.value
+                    TimerManager.setTask(-1, if (isBreak) "Break Time!" else "Focus Time!")
                 }
+            } catch (_: Throwable) {}
+        }
+    }
+
+    fun restoreTask(task: TaskItem) {
+        viewModelScope.launch {
+            try {
+                database.taskDao().insertTask(task)
             } catch (_: Throwable) {}
         }
     }

@@ -1,16 +1,8 @@
 package com.example.ui.components
 
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.runtime.remember
-import androidx.compose.ui.draw.rotate
-
 import android.view.HapticFeedbackConstants
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -33,14 +26,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.ui.theme.LocalAppTheme
+import com.example.ui.theme.PomoMotion
 
 /**
  * Applies a tactile shadow matching the EXACT geometry of the button (never square)
@@ -60,11 +57,9 @@ fun Modifier.pomoShadow(
 )
 
 /**
- * Premium tactile bouncy click modifier.
- * Ensures the shadow behind the button matches the button's shape exactly,
- * smoothly compresses the shadow and scales the button down when pressed,
- * clips the click ripple to the exact rounded contour (no square corners),
- * and triggers crisp haptic feedback.
+ * Premium M3 tactile spring click modifier.
+ * Uses GPU-accelerated graphicsLayer scaling with interruptible fastSpatial spring,
+ * smooth elevation compression, shape-clipped ripple, and crisp haptic feedback.
  */
 @Composable
 fun Modifier.pomoBouncyClick(
@@ -73,6 +68,7 @@ fun Modifier.pomoBouncyClick(
     pressedElevation: Dp = 1.5.dp,
     shadowColor: Color = LocalAppTheme.current.shadowColor,
     enabled: Boolean = true,
+    pressedScale: Float = 0.95f,
     onClick: () -> Unit
 ): Modifier {
     val interactionSource = remember { MutableInteractionSource() }
@@ -80,19 +76,29 @@ fun Modifier.pomoBouncyClick(
     val view = LocalView.current
 
     val scale by animateFloatAsState(
-        targetValue = if (isPressed && enabled) 0.96f else 1f,
-        animationSpec = com.example.ui.theme.PomoMotion.pressScaleSpec,
+        targetValue = if (isPressed && enabled) pressedScale else 1f,
+        animationSpec = PomoMotion.pressScaleSpec,
         label = "pomoScale"
     )
 
     val currentElevation by animateDpAsState(
         targetValue = if (isPressed && enabled) pressedElevation else if (enabled) elevation else 0.dp,
-        animationSpec = com.example.ui.theme.PomoMotion.elevationSpec,
+        animationSpec = PomoMotion.elevationSpec,
         label = "pomoElevation"
     )
 
+    val contentAlpha by animateFloatAsState(
+        targetValue = if (enabled) 1f else 0.55f,
+        animationSpec = PomoMotion.fastEffects(),
+        label = "pomoAlpha"
+    )
+
     return this
-        .scale(scale)
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+            alpha = contentAlpha
+        }
         .shadow(
             elevation = currentElevation.coerceAtLeast(0.dp),
             shape = shape,
@@ -108,7 +114,7 @@ fun Modifier.pomoBouncyClick(
             onClick = {
                 try {
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                } catch (e: Exception) {}
+                } catch (_: Exception) {}
                 onClick()
             }
         )
@@ -169,7 +175,6 @@ fun PomoButton(
     contentPadding: PaddingValues = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
     content: @Composable RowScope.() -> Unit
 ) {
-    val theme = LocalAppTheme.current
     val actualShadow = if (containerColor == Color.White) Color.Black.copy(alpha = 0.15f) else shadowColor
 
     val topHighlight = remember {
@@ -195,7 +200,7 @@ fun PomoButton(
                 enabled = enabled,
                 onClick = onClick
             )
-            .background(if (enabled) containerColor else containerColor.copy(alpha = 0.5f), shape)
+            .background(containerColor, shape)
             .border(1.dp, topHighlight, shape)
             .border(1.dp, bottomShadow, shape)
             .then(if (border != null) Modifier.border(border, shape) else Modifier)
@@ -251,9 +256,10 @@ fun PomoIconButton(
                 elevation = elevation,
                 shadowColor = actualShadow,
                 enabled = enabled,
+                pressedScale = 0.92f,
                 onClick = onClick
             )
-            .background(if (enabled) containerColor else containerColor.copy(alpha = 0.5f), shape)
+            .background(containerColor, shape)
             .border(1.dp, topHighlight, shape)
             .border(1.dp, bottomShadow, shape)
             .then(if (border != null) Modifier.border(border, shape) else Modifier),

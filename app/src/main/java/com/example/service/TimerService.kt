@@ -317,9 +317,9 @@ class TimerService : Service() {
         val end = System.currentTimeMillis()
         val start = if (startTimestamp > 0L) startTimestamp else (end - (durationMins * 60 * 1000L))
 
+        val taskId = TimerManager.currentTaskId.value
         if (!completedWasBreak) {
             TimerManager.notifyTaskCompleted()
-            val taskId = TimerManager.currentTaskId.value
             serviceScope.launch {
                 try {
                     database.sessionDao().insertSession(
@@ -342,14 +342,17 @@ class TimerService : Service() {
                 try {
                     database.sessionDao().insertSession(
                         com.example.data.TimerSession(
-                            taskName = "Break Time!",
+                            taskName = if (taskId != -1) completedTask else "Break Time!",
                             isBreak = true,
                             durationMinutes = durationMins.coerceAtLeast(1),
                             startTime = start,
                             endTime = end,
-                            taskColor = null
+                            taskColor = if (taskId != -1) completedColor else null
                         )
                     )
+                    if (taskId != -1) {
+                        database.taskDao().incrementPomodoroCount(taskId)
+                    }
                 } catch (_: Throwable) {}
             }
         }
@@ -360,11 +363,7 @@ class TimerService : Service() {
         TimerManager.updateTime(
             if (newIsBreak) TimerManager.breakTimeSeconds.value else TimerManager.focusTimeSeconds.value
         )
-        if (newIsBreak) {
-            TimerManager.setTask(-1, "Break Time!")
-        } else if (TimerManager.currentTaskId.value == -1) {
-            TimerManager.setTask(-1, "Focus Time!")
-        }
+        TimerManager.setTask(-1, if (newIsBreak) "Break Time!" else "Focus Time!")
 
         SoundPlayer.playCompletion(this, SettingsManager.getCompletionSound())
 

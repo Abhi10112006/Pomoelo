@@ -15,7 +15,9 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
+import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Canvas
@@ -29,8 +31,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Pause
@@ -39,24 +43,36 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.ui.platform.testTag
 import kotlinx.coroutines.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
+import com.example.ui.components.AddTaskCard
+import com.example.ui.components.LocalMascotRenderMode
+import com.example.ui.components.MascotRenderMode
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.dynamicanimation.animation.DynamicAnimation
+import androidx.dynamicanimation.animation.SpringAnimation
+import androidx.dynamicanimation.animation.SpringForce
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
@@ -88,8 +104,11 @@ import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     private lateinit var database: AppDatabase
+    private var isAppReady by mutableStateOf(false)
+    private var isSplashExiting by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         SettingsManager.init(applicationContext)
@@ -98,11 +117,95 @@ class MainActivity : ComponentActivity() {
 
         database = DatabaseProvider.getDatabase(applicationContext)
 
+        splashScreen.setKeepOnScreenCondition { !isAppReady }
+        splashScreen.setOnExitAnimationListener { splashScreenView ->
+            isSplashExiting = true
+            var splashRemoved = false
+            fun removeSplashSafely() {
+                if (!splashRemoved) {
+                    splashRemoved = true
+                    runCatching { splashScreenView.remove() }
+                }
+            }
+
+            // Critically damped Effects spring (dampingRatio = 1.0f) via AndroidX DynamicAnimation
+            val viewAlphaAnim = SpringAnimation(splashScreenView.view, DynamicAnimation.ALPHA, 0f).apply {
+                setStartValue(1f)
+                spring = SpringForce(0f).apply {
+                    dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
+                    stiffness = 1200f
+                }
+                addEndListener { _, _, _, _ ->
+                    removeSplashSafely()
+                }
+            }
+
+            // OEM-safe null guard for iconView (prevents NPE on warm launch / notification launch)
+            val iconView = runCatching { splashScreenView.iconView }.getOrNull()
+            if (iconView != null) {
+                SpringAnimation(iconView, DynamicAnimation.SCALE_X, 1.08f).apply {
+                    setStartValue(1f)
+                    spring = SpringForce(1.08f).apply {
+                        dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
+                        stiffness = 1200f
+                    }
+                }.start()
+
+                SpringAnimation(iconView, DynamicAnimation.SCALE_Y, 1.08f).apply {
+                    setStartValue(1f)
+                    spring = SpringForce(1.08f).apply {
+                        dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
+                        stiffness = 1200f
+                    }
+                }.start()
+
+                SpringAnimation(iconView, DynamicAnimation.ALPHA, 0f).apply {
+                    setStartValue(1f)
+                    spring = SpringForce(0f).apply {
+                        dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
+                        stiffness = 1200f
+                    }
+                }.start()
+            }
+
+            viewAlphaAnim.start()
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                withTimeoutOrNull(120L) {
+                    database.taskDao().getAllTasks().first()
+                }
+            } catch (_: Throwable) {}
+            withContext(Dispatchers.Main) {
+                isAppReady = true
+            }
+        }
+
         enableEdgeToEdge()
         handleIntent(intent)
         setContent {
             val currentTheme by SettingsManager.themeState.collectAsState()
             val currentFont by SettingsManager.fontState.collectAsState()
+
+            LaunchedEffect(isAppReady) {
+                if (isAppReady && !isSplashExiting) {
+                    delay(80L)
+                    isSplashExiting = true
+                }
+            }
+
+            val entryAlpha by animateFloatAsState(
+                targetValue = if (isSplashExiting) 1f else 0f,
+                animationSpec = PomoMotion.defaultEffects(),
+                label = "coldStartAlpha"
+            )
+            val entryScale by animateFloatAsState(
+                targetValue = if (isSplashExiting) 1f else 0.96f,
+                animationSpec = PomoMotion.defaultEffects(),
+                label = "coldStartScale"
+            )
+
             MyApplicationTheme(
                 themeOption = currentTheme,
                 fontOption = currentFont
@@ -118,7 +221,22 @@ class MainActivity : ComponentActivity() {
                 val activeTheme = LocalAppTheme.current
                 Box(modifier = Modifier.fillMaxSize().background(activeTheme.background)) {
                     com.example.ui.components.PaperTextureOverlay()
-                    PomoPalApp(viewModel)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                alpha = entryAlpha
+                                scaleX = entryScale
+                                scaleY = entryScale
+                                compositingStrategy = if (entryAlpha < 0.999f) {
+                                    CompositingStrategy.Offscreen
+                                } else {
+                                    CompositingStrategy.Auto
+                                }
+                            }
+                    ) {
+                        PomoPalApp(viewModel)
+                    }
                 }
             }
         }
@@ -169,7 +287,20 @@ fun PomoPalApp(viewModel: TimerViewModel) {
     val isSettingsOpen by viewModel.isSettingsOpen.collectAsState()
     val settingsInitialTab by viewModel.settingsTab.collectAsState()
     var updateUrl by remember { mutableStateOf<String?>(null) }
+    var isTasksNavCollapsed by remember { mutableStateOf(false) }
+    var tasksScrollToTopTrigger by remember { mutableIntStateOf(0) }
+    var isHistoryNavCollapsed by remember { mutableStateOf(false) }
+    var historyScrollToTopTrigger by remember { mutableIntStateOf(0) }
     val view = androidx.compose.ui.platform.LocalView.current
+
+    LaunchedEffect(currentRoute) {
+        if (currentRoute != "tasks") {
+            isTasksNavCollapsed = false
+        }
+        if (currentRoute != "history") {
+            isHistoryNavCollapsed = false
+        }
+    }
 
     val currentTheme = com.example.ui.theme.LocalAppTheme.current
     LaunchedEffect(Unit) {
@@ -180,8 +311,31 @@ fun PomoPalApp(viewModel: TimerViewModel) {
     }
 
     if (updateUrl != null) {
+        var updateAnimateIn by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { updateAnimateIn = true }
+        val updateScale by animateFloatAsState(
+            targetValue = if (updateAnimateIn) 1f else 0.88f,
+            animationSpec = PomoMotion.expressiveSpatial(),
+            label = "updateDialogScale"
+        )
+        val updateAlpha by animateFloatAsState(
+            targetValue = if (updateAnimateIn) 1f else 0f,
+            animationSpec = PomoMotion.defaultEffects(),
+            label = "updateDialogAlpha"
+        )
+
         AlertDialog(
             onDismissRequest = { updateUrl = null },
+            modifier = Modifier.graphicsLayer {
+                scaleX = updateScale
+                scaleY = updateScale
+                alpha = updateAlpha
+                compositingStrategy = if (updateAlpha < 0.999f) {
+                    CompositingStrategy.Offscreen
+                } else {
+                    CompositingStrategy.Auto
+                }
+            },
             title = { Text("Update Available", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold) },
             text = { Text("A new version of PomoPal is available! Please download it to enjoy the latest features and bug fixes.", color = currentTheme.textPrimary) },
             confirmButton = {
@@ -223,12 +377,14 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                 visible = !isSignInRoute && !isAddingTask && timerState == TimerManager.TimerState.STOPPED && !isSettingsOpen,
                 enter = slideInVertically(
                     initialOffsetY = { it * 2 },
-                    animationSpec = tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)
-                ) + fadeIn(animationSpec = tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)),
+                    animationSpec = PomoMotion.intOffsetSpatial
+                ) + fadeIn(animationSpec = PomoMotion.defaultEffects()) +
+                    scaleIn(initialScale = 0.92f, animationSpec = PomoMotion.fastSpatial()),
                 exit = slideOutVertically(
                     targetOffsetY = { it * 2 },
-                    animationSpec = tween(PomoMotion.DURATION_FAST, easing = PomoMotion.SmoothInOutEasing)
-                ) + fadeOut(animationSpec = tween(PomoMotion.DURATION_FAST)),
+                    animationSpec = PomoMotion.intOffsetFastSpatial
+                ) + fadeOut(animationSpec = PomoMotion.fastEffects()) +
+                    scaleOut(targetScale = 0.92f, animationSpec = PomoMotion.fastSpatial()),
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.navigationBars)
@@ -236,9 +392,22 @@ fun PomoPalApp(viewModel: TimerViewModel) {
             ) {
                 val currentTheme = com.example.ui.theme.LocalAppTheme.current
                 val currentFont = com.example.ui.theme.LocalAppFont.current
+                val collapsedInTasks = isTasksNavCollapsed && currentRoute == "tasks"
+                val collapsedInHistory = isHistoryNavCollapsed && currentRoute == "history"
+                val isAnyNavCollapsed = collapsedInTasks || collapsedInHistory
+                val navHorizontalBias by animateFloatAsState(
+                    targetValue = if (isAnyNavCollapsed) -1f else 0f,
+                    animationSpec = PomoMotion.smoothSpring(stiffness = 560f),
+                    label = "navHorizontalBias"
+                )
                 Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.Center
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    contentAlignment = BiasAlignment(
+                        horizontalBias = navHorizontalBias.coerceIn(-1f, 1f),
+                        verticalBias = 0f
+                    )
                 ) {
                     Row(
                         modifier = Modifier
@@ -246,111 +415,281 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                             .clip(RoundedCornerShape(32.dp))
                             .background(currentTheme.surface)
                             .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(32.dp))
-                            .padding(horizontal = 12.dp, vertical = 10.dp)
-                            .animateContentSize(animationSpec = tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothOutEasing)),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Start,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val isHome = currentRoute == "home"
-                        val homeBg by animateColorAsState(
-                            targetValue = if (isHome) currentTheme.pillActiveBg else Color.Transparent,
-                            animationSpec = PomoMotion.colorSpec,
-                            label = "homePillBg"
-                        )
-                        val homeTint by animateColorAsState(
-                            targetValue = if (isHome) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.55f),
-                            animationSpec = PomoMotion.colorSpec,
-                            label = "homePillTint"
-                        )
-
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(homeBg)
-                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                    try {
-                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                    } catch (e: Exception) {}
-                                    if (!isHome) navController.navigate("home") { popUpTo(0) }
-                                }
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // 1. Timer Tab (collapses when docked on either Tasks or History)
+                        AnimatedVisibility(
+                            visible = !isAnyNavCollapsed,
+                            enter = expandHorizontally(
+                                animationSpec = PomoMotion.intSizeSpatial,
+                                expandFrom = Alignment.Start
+                            ) + fadeIn(animationSpec = PomoMotion.defaultEffects()),
+                            exit = shrinkHorizontally(
+                                animationSpec = PomoMotion.intSizeSpatial,
+                                shrinkTowards = Alignment.Start
+                            ) + fadeOut(animationSpec = PomoMotion.fastEffects())
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Home,
-                                contentDescription = "Home",
-                                tint = homeTint,
-                                modifier = Modifier.size(22.dp)
-                            )
-                            AnimatedVisibility(
-                                visible = isHome,
-                                enter = expandHorizontally(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothOutEasing)) +
-                                    fadeIn(tween(PomoMotion.DURATION_FAST)),
-                                exit = shrinkHorizontally(tween(PomoMotion.DURATION_FAST, easing = PomoMotion.SmoothInOutEasing)) +
-                                    fadeOut(tween(150))
+                            Row(
+                                modifier = Modifier.padding(end = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Timer",
-                                        color = currentTheme.primary,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = currentFont,
-                                        maxLines = 1
+                                val isHome = currentRoute == "home"
+                                val homeInteraction = remember { MutableInteractionSource() }
+                                val isHomePressed by homeInteraction.collectIsPressedAsState()
+                                val homeScale by animateFloatAsState(
+                                    targetValue = if (isHomePressed) 0.93f else 1f,
+                                    animationSpec = PomoMotion.pressScaleSpec,
+                                    label = "homePillScale"
+                                )
+                                val homeBg by animateColorAsState(
+                                    targetValue = if (isHome) currentTheme.pillActiveBg else Color.Transparent,
+                                    animationSpec = PomoMotion.colorSpec,
+                                    label = "homePillBg"
+                                )
+                                val homeTint by animateColorAsState(
+                                    targetValue = if (isHome) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.55f),
+                                    animationSpec = PomoMotion.colorSpec,
+                                    label = "homePillTint"
+                                )
+
+                                Row(
+                                    modifier = Modifier
+                                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                        .graphicsLayer {
+                                            scaleX = homeScale
+                                            scaleY = homeScale
+                                        }
+                                        .clip(RoundedCornerShape(24.dp))
+                                        .background(homeBg)
+                                        .clickable(interactionSource = homeInteraction, indication = null) {
+                                            try {
+                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                            } catch (e: Exception) {}
+                                            if (!isHome) {
+                                                navController.navigate("home") {
+                                                    popUpTo(0)
+                                                    launchSingleTop = true
+                                                }
+                                            }
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                                        .testTag("nav_tab_home"),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Home,
+                                        contentDescription = "Timer",
+                                        tint = homeTint,
+                                        modifier = Modifier.size(22.dp)
                                     )
+                                    AnimatedVisibility(
+                                        visible = isHome,
+                                        enter = expandHorizontally(animationSpec = PomoMotion.intSizeSpatial) +
+                                            fadeIn(animationSpec = PomoMotion.defaultEffects()),
+                                        exit = shrinkHorizontally(animationSpec = PomoMotion.intSizeSpatial) +
+                                            fadeOut(animationSpec = PomoMotion.fastEffects())
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Timer",
+                                                color = currentTheme.primary,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = currentFont,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
 
-                        val isHistory = currentRoute == "history"
-                        val historyBg by animateColorAsState(
-                            targetValue = if (isHistory) currentTheme.pillActiveBg else Color.Transparent,
-                            animationSpec = PomoMotion.colorSpec,
-                            label = "historyPillBg"
-                        )
-                        val historyTint by animateColorAsState(
-                            targetValue = if (isHistory) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.55f),
-                            animationSpec = PomoMotion.colorSpec,
-                            label = "historyPillTint"
-                        )
-
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(historyBg)
-                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                    try {
-                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                    } catch (e: Exception) {}
-                                    if (!isHistory) navController.navigate("history") { popUpTo(0) }
-                                }
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // 2. Tasks Tab (remains docked on Tasks collapse; hides on History collapse)
+                        AnimatedVisibility(
+                            visible = !collapsedInHistory,
+                            enter = expandHorizontally(
+                                animationSpec = PomoMotion.intSizeSpatial,
+                                expandFrom = Alignment.Start
+                            ) + fadeIn(animationSpec = PomoMotion.defaultEffects()),
+                            exit = shrinkHorizontally(
+                                animationSpec = PomoMotion.intSizeSpatial,
+                                shrinkTowards = Alignment.Start
+                            ) + fadeOut(animationSpec = PomoMotion.fastEffects())
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.List,
-                                contentDescription = "History",
-                                tint = historyTint,
-                                modifier = Modifier.size(22.dp)
+                            val isTasks = currentRoute == "tasks"
+                            val tasksInteraction = remember { MutableInteractionSource() }
+                            val isTasksPressed by tasksInteraction.collectIsPressedAsState()
+                            val tasksScale by animateFloatAsState(
+                                targetValue = if (isTasksPressed) 0.93f else 1f,
+                                animationSpec = PomoMotion.pressScaleSpec,
+                                label = "tasksPillScale"
                             )
-                            AnimatedVisibility(
-                                visible = isHistory,
-                                enter = expandHorizontally(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothOutEasing)) +
-                                    fadeIn(tween(PomoMotion.DURATION_FAST)),
-                                exit = shrinkHorizontally(tween(PomoMotion.DURATION_FAST, easing = PomoMotion.SmoothInOutEasing)) +
-                                    fadeOut(tween(150))
+                            val tasksBg by animateColorAsState(
+                                targetValue = if (isTasks) currentTheme.pillActiveBg else Color.Transparent,
+                                animationSpec = PomoMotion.colorSpec,
+                                label = "tasksPillBg"
+                            )
+                            val tasksTint by animateColorAsState(
+                                targetValue = if (isTasks) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.55f),
+                                animationSpec = PomoMotion.colorSpec,
+                                label = "tasksPillTint"
+                            )
+
+                            Row(
+                                modifier = Modifier
+                                    .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                    .graphicsLayer {
+                                        scaleX = tasksScale
+                                        scaleY = tasksScale
+                                    }
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .background(tasksBg)
+                                    .clickable(interactionSource = tasksInteraction, indication = null) {
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                        } catch (e: Exception) {}
+                                        if (!isTasks) {
+                                            navController.navigate("tasks") {
+                                                popUpTo(0)
+                                                launchSingleTop = true
+                                            }
+                                        } else if (collapsedInTasks) {
+                                            isTasksNavCollapsed = false
+                                            tasksScrollToTopTrigger++
+                                        }
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                                    .testTag("nav_tab_tasks"),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "History",
-                                        color = currentTheme.primary,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = currentFont,
-                                        maxLines = 1
-                                    )
+                                Icon(
+                                    imageVector = Icons.Rounded.TaskAlt,
+                                    contentDescription = "Tasks",
+                                    tint = tasksTint,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                AnimatedVisibility(
+                                    visible = isTasks,
+                                    enter = expandHorizontally(animationSpec = PomoMotion.intSizeSpatial) +
+                                        fadeIn(animationSpec = PomoMotion.defaultEffects()),
+                                    exit = shrinkHorizontally(animationSpec = PomoMotion.intSizeSpatial) +
+                                        fadeOut(animationSpec = PomoMotion.fastEffects())
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Tasks",
+                                            color = currentTheme.primary,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = currentFont,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Spacer between Tasks and History only when full 3-tab pill is expanded
+                        AnimatedVisibility(
+                            visible = !isAnyNavCollapsed,
+                            enter = expandHorizontally(
+                                animationSpec = PomoMotion.intSizeSpatial,
+                                expandFrom = Alignment.Start
+                            ),
+                            exit = shrinkHorizontally(
+                                animationSpec = PomoMotion.intSizeSpatial,
+                                shrinkTowards = Alignment.Start
+                            )
+                        ) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+
+                        // 3. History Tab (remains docked on History collapse; hides on Tasks collapse)
+                        AnimatedVisibility(
+                            visible = !collapsedInTasks,
+                            enter = expandHorizontally(
+                                animationSpec = PomoMotion.intSizeSpatial,
+                                expandFrom = Alignment.Start
+                            ) + fadeIn(animationSpec = PomoMotion.defaultEffects()),
+                            exit = shrinkHorizontally(
+                                animationSpec = PomoMotion.intSizeSpatial,
+                                shrinkTowards = Alignment.Start
+                            ) + fadeOut(animationSpec = PomoMotion.fastEffects())
+                        ) {
+                            val isHistory = currentRoute == "history"
+                            val historyInteraction = remember { MutableInteractionSource() }
+                            val isHistoryPressed by historyInteraction.collectIsPressedAsState()
+                            val historyScale by animateFloatAsState(
+                                targetValue = if (isHistoryPressed) 0.93f else 1f,
+                                animationSpec = PomoMotion.pressScaleSpec,
+                                label = "historyPillScale"
+                            )
+                            val historyBg by animateColorAsState(
+                                targetValue = if (isHistory) currentTheme.pillActiveBg else Color.Transparent,
+                                animationSpec = PomoMotion.colorSpec,
+                                label = "historyPillBg"
+                            )
+                            val historyTint by animateColorAsState(
+                                targetValue = if (isHistory) currentTheme.primary else currentTheme.textSecondary.copy(alpha = 0.55f),
+                                animationSpec = PomoMotion.colorSpec,
+                                label = "historyPillTint"
+                            )
+
+                            Row(
+                                modifier = Modifier
+                                    .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                    .graphicsLayer {
+                                        scaleX = historyScale
+                                        scaleY = historyScale
+                                    }
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .background(historyBg)
+                                    .clickable(interactionSource = historyInteraction, indication = null) {
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                        } catch (e: Exception) {}
+                                        if (!isHistory) {
+                                            navController.navigate("history") {
+                                                popUpTo(0)
+                                                launchSingleTop = true
+                                            }
+                                        } else if (collapsedInHistory) {
+                                            isHistoryNavCollapsed = false
+                                            historyScrollToTopTrigger++
+                                        }
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                                    .testTag("nav_tab_history"),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.List,
+                                    contentDescription = "History",
+                                    tint = historyTint,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                AnimatedVisibility(
+                                    visible = isHistory,
+                                    enter = expandHorizontally(animationSpec = PomoMotion.intSizeSpatial) +
+                                        fadeIn(animationSpec = PomoMotion.defaultEffects()),
+                                    exit = shrinkHorizontally(animationSpec = PomoMotion.intSizeSpatial) +
+                                        fadeOut(animationSpec = PomoMotion.fastEffects())
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "History",
+                                            color = currentTheme.primary,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = currentFont,
+                                            maxLines = 1
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -359,43 +698,40 @@ fun PomoPalApp(viewModel: TimerViewModel) {
             }
         }
     ) { paddingValues ->
-        NavHost(
-            navController = navController,
-            startDestination = startDest,
-            modifier = Modifier.fillMaxSize(),
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(currentTheme.background)
+        ) {
+            com.example.ui.components.PaperTextureOverlay()
+            NavHost(
+                navController = navController,
+                startDestination = startDest,
+                modifier = Modifier.fillMaxSize(),
             enterTransition = {
                 val fromSignIn = initialState.destination.route == "signin"
-                val toHistory = targetState.destination.route == "history"
                 if (fromSignIn) {
-                    fadeIn(tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)) +
-                        scaleIn(initialScale = 0.96f, animationSpec = tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing))
+                    fadeIn(animationSpec = PomoMotion.defaultEffects()) +
+                        scaleIn(initialScale = 0.94f, animationSpec = PomoMotion.defaultSpatial()) +
+                        slideInHorizontally(animationSpec = PomoMotion.intOffsetSpatial) { width -> width / 6 }
                 } else {
-                    fadeIn(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothOutEasing)) +
-                        slideInHorizontally(tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)) { width ->
-                            if (toHistory) width / 6 else -width / 6
-                        }
+                    PomoMotion.asymmetricFadeThroughEnter()
                 }
             },
             exitTransition = {
                 val fromSignIn = initialState.destination.route == "signin"
-                val toHistory = targetState.destination.route == "history"
                 if (fromSignIn) {
-                    fadeOut(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing)) +
-                        scaleOut(targetScale = 0.94f, animationSpec = tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing))
+                    fadeOut(animationSpec = PomoMotion.fastEffects()) +
+                        slideOutHorizontally(animationSpec = PomoMotion.intOffsetFastSpatial) { width -> -width / 6 }
                 } else {
-                    fadeOut(tween(PomoMotion.DURATION_FAST, easing = PomoMotion.SmoothInOutEasing)) +
-                        slideOutHorizontally(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing)) { width ->
-                            if (toHistory) -width / 8 else width / 8
-                        }
+                    PomoMotion.asymmetricFadeThroughExit()
                 }
             },
             popEnterTransition = {
-                fadeIn(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothOutEasing)) +
-                    slideInHorizontally(tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)) { width -> -width / 6 }
+                PomoMotion.asymmetricFadeThroughEnter()
             },
             popExitTransition = {
-                fadeOut(tween(PomoMotion.DURATION_FAST, easing = PomoMotion.SmoothInOutEasing)) +
-                    slideOutHorizontally(tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing)) { width -> width / 8 }
+                PomoMotion.asymmetricFadeThroughExit()
             }
         ) {
             val bottomPadding = paddingValues.calculateBottomPadding()
@@ -409,32 +745,58 @@ fun PomoPalApp(viewModel: TimerViewModel) {
             composable(route = "home") {
                 HomeScreen(viewModel, navController, bottomPadding)
             }
+            composable(route = "tasks") {
+                com.example.ui.TasksScreen(
+                    viewModel = viewModel,
+                    navController = navController,
+                    bottomPadding = bottomPadding,
+                    onBottomNavCollapseChange = { collapsed ->
+                        isTasksNavCollapsed = collapsed
+                    },
+                    scrollToTopTrigger = tasksScrollToTopTrigger
+                )
+            }
             composable("history") {
-                com.example.ui.HistoryScreen(viewModel, navController, bottomPadding)
+                com.example.ui.HistoryScreen(
+                    viewModel = viewModel,
+                    navController = navController,
+                    bottomPadding = bottomPadding,
+                    onBottomNavCollapseChange = { collapsed ->
+                        isHistoryNavCollapsed = collapsed
+                    },
+                    scrollToTopTrigger = historyScrollToTopTrigger
+                )
             }
         }
+        }
+    }
+
+    if (isAddingTask) {
+        AddTaskCard(
+            onSave = { name, cat, color, isBreakCategory ->
+                viewModel.saveTask(name, cat, color, isBreakCategory) { newId ->
+                    viewModel.setTask(newId, name, color, isBreakCategory)
+                }
+                viewModel.setAddingTask(false)
+            },
+            onCancel = { viewModel.setAddingTask(false) }
+        )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.NavController, bottomPadding: androidx.compose.ui.unit.Dp = 0.dp) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    LaunchedEffect(Unit) {
-        viewModel.autoCleanupIfNeeded()
-    }
     val timerState by viewModel.timerState.collectAsState()
     val isBreakMode by TimerManager.isBreakMode.collectAsState()
     val currentQuote by viewModel.currentQuote.collectAsState()
     val timeRemaining by viewModel.timeRemainingSeconds.collectAsState()
     val currentTaskName by viewModel.currentTaskName.collectAsState()
     val currentTaskId by com.example.service.TimerManager.currentTaskId.collectAsState()
-    val currentTaskColor by com.example.service.TimerManager.currentTaskColor.collectAsState()
     val allTasks by viewModel.allTasks.collectAsState()
-    val isAddingTask by viewModel.isAddingTask.collectAsState()
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val view = androidx.compose.ui.platform.LocalView.current
-    var showAllTasksSheet by remember { mutableStateOf(false) }
 
     val showSettings by viewModel.isSettingsOpen.collectAsState()
     val settingsInitialTab by viewModel.settingsTab.collectAsState()
@@ -469,7 +831,12 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
         label = "bgColor"
     )
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(stateColor.copy(alpha = 0.85f))) {
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .background(stateColor.copy(alpha = 0.85f))
+    ) {
         if (currentTheme.id == "premium" && !isBreakMode) {
             com.example.ui.components.PremiumBackgroundOverlays()
         }
@@ -493,6 +860,7 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                 else -> 24.dp
             } * adaptiveDimensions.scale
 
+        SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier.fillMaxSize().pointerInput(Unit) {
                 detectTapGestures(onTap = { focusManager.clearFocus() })
@@ -513,8 +881,8 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
             // Small Global Indicator
             androidx.compose.animation.AnimatedVisibility(
                 visible = protectionStates.needsAttention && timerState == TimerManager.TimerState.STOPPED,
-                enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
+                enter = PomoMotion.expandSection,
+                exit = PomoMotion.collapseSection
             ) {
                 com.example.ui.SystemProtectionBanner(
                     state = protectionStates,
@@ -532,17 +900,16 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(46.dp)
                             .shadow(3.dp, RoundedCornerShape(16.dp), spotColor = currentTheme.shadowColor)
                             .clip(RoundedCornerShape(16.dp))
                             .background(currentTheme.surface)
                             .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(16.dp)),
                         contentAlignment = Alignment.Center
                     ) {
-                        com.example.ui.components.PomoPalMascot(
-                            expression = com.example.ui.components.MascotExpression.IDLE,
-                            modifier = Modifier.size(32.dp).padding(top = 2.dp),
-                            isBreathing = false
+                        com.example.ui.components.JudyAvatarBadge(
+                            modifier = Modifier.size(36.dp),
+                            isBreathing = true
                         )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
@@ -573,35 +940,67 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                     label = "settingsRotation"
                 )
                 
+                val settingsScale by animateFloatAsState(
+                    targetValue = if (isSettingsPressed) 0.90f else 1f,
+                    animationSpec = PomoMotion.pressScaleSpec,
+                    label = "settingsScale"
+                )
+
                 Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .shadow(3.dp, CircleShape, spotColor = currentTheme.shadowColor)
-                        .clip(CircleShape)
-                        .background(currentTheme.surface)
-                        .border(1.dp, currentTheme.cardBorder, CircleShape)
-                        .clickable(
-                            interactionSource = settingsInteraction,
-                            indication = androidx.compose.material3.ripple()
-                        ) {
-                            try {
-                                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                            } catch (e: Exception) {}
-                            viewModel.setSettingsOpen(true, 0)
-                        },
-                     contentAlignment = Alignment.Center
+                    modifier = Modifier.size(42.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Settings,
-                        contentDescription = "Settings",
-                        tint = currentTheme.textPrimary,
-                        modifier = Modifier.graphicsLayer { rotationZ = settingsRotation }
-                    )
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = !showSettings,
+                        enter = fadeIn(PomoMotion.fastEffects()) +
+                            scaleIn(initialScale = 0.85f, animationSpec = PomoMotion.fastSpatial()),
+                        exit = fadeOut(PomoMotion.fastEffects())
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .sharedBounds(
+                                    sharedContentState = rememberSharedContentState(key = "settings_overlay_bounds"),
+                                    animatedVisibilityScope = this@AnimatedVisibility,
+                                    boundsTransform = { _, _ -> PomoMotion.defaultSpatial() },
+                                    resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+                                )
+                                .graphicsLayer {
+                                    scaleX = settingsScale
+                                    scaleY = settingsScale
+                                }
+                                .shadow(3.dp, CircleShape, spotColor = currentTheme.shadowColor)
+                                .clip(CircleShape)
+                                .background(currentTheme.surface)
+                                .border(1.dp, currentTheme.cardBorder, CircleShape)
+                                .clickable(
+                                    interactionSource = settingsInteraction,
+                                    indication = androidx.compose.material3.ripple()
+                                ) {
+                                    try {
+                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                    } catch (e: Exception) {}
+                                    viewModel.setSettingsOpen(true, 0)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = "Settings",
+                                tint = currentTheme.textPrimary,
+                                modifier = Modifier.graphicsLayer { rotationZ = settingsRotation }
+                            )
+                        }
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(verticalSpacing))
 
-            // Timer display
+            if (timerState == TimerManager.TimerState.STOPPED) {
+                Spacer(modifier = Modifier.weight(0.32f))
+            }
+
+            // Clean centered timer display
             TimerDisplay(
                 timeRemaining = timeRemaining,
                 totalTime = if (isBreakMode) SettingsManager.getBreakTimeMins() * 60 else SettingsManager.getFocusTimeMins() * 60,
@@ -610,7 +1009,13 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                 taskName = currentTaskName,
                 currentTask = allTasks.find { it.id == currentTaskId },
                 context = context,
-                circleSize = circleSize
+                circleSize = circleSize,
+                onChooseTaskClick = {
+                    navController.navigate("tasks") {
+                        popUpTo(0)
+                        launchSingleTop = true
+                    }
+                }
             )
 
             Spacer(modifier = Modifier.height(verticalSpacing))
@@ -641,103 +1046,59 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                AnimatedContent(
-                    targetState = timerState == TimerManager.TimerState.STOPPED,
-                    transitionSpec = {
-                        PomoMotion.verticalCrossfadeTransition(upward = !targetState)
-                    },
-                    label = "bottomContent"
-                ) { stopped ->
-                    if (stopped) {
-                        BoxWithConstraints(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = bottomPadding + 88.dp)
-                        ) {
-                            val availableHeight = maxHeight
-                            val headerSpace = 48.dp
-                            val buttonSpace = 56.dp
-                            val taskSpace = 84.dp
-                            
-                            val usableHeightForTasks = availableHeight - headerSpace - buttonSpace
-                            val calculatedFit = (usableHeightForTasks / taskSpace).toInt()
-                            val maxPreviewTasks = calculatedFit.coerceIn(1, 3)
-
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(12.scaledDp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.scaledDp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Your Tasks",
-                                        fontSize = 20.scaledSp,
-                                        fontFamily = AppFontFamily,
-                                        fontWeight = FontWeight.Bold,
-                                        color = currentTheme.textPrimary
-                                    )
-                                    IconButton(onClick = { viewModel.setAddingTask(true) }, modifier = Modifier.size(36.dp)) {
-                                        Icon(Icons.Filled.Add, contentDescription = "Add Task", tint = currentTheme.textPrimary)
-                                    }
-                                }
-                                
-                                val previewTasks = allTasks.take(maxPreviewTasks)
-                                previewTasks.forEach { task ->
-                                    TaskItemRow(
-                                        task = task,
-                                        isSelected = currentTaskId == task.id,
-                                        onSelect = { viewModel.setTask(task.id, task.name, task.categoryColor) },
-                                        onDelete = { viewModel.deleteTask(task) }
-                                    )
-                                }
-                                
-                                if (allTasks.size > maxPreviewTasks) {
-                                    TextButton(
-                                        onClick = { showAllTasksSheet = true },
-                                        modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp)
-                                    ) {
-                                        Text("View all tasks →", color = currentTheme.textSecondary, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .verticalScroll(rememberScrollState()),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = timerState != TimerManager.TimerState.STOPPED,
+                    enter = fadeIn(PomoMotion.defaultEffects()) +
+                        slideInVertically(animationSpec = PomoMotion.intOffsetSpatial) { it / 6 },
+                    exit = fadeOut(PomoMotion.fastEffects()) +
+                        slideOutVertically(animationSpec = PomoMotion.intOffsetFastSpatial) { it / 8 }
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                             AnimatedQuoteCard(quote = currentQuote, isBreak = isBreakMode)
                             
-                            if (!isBreakMode && timerState == TimerManager.TimerState.RUNNING) {
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Button(
-                                    onClick = {
-                                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-                                        showFullScreenSeriousness = true
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
-                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
-                                    shape = RoundedCornerShape(16.dp),
-                                    modifier = Modifier.height(48.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Lock,
-                                        contentDescription = "Serious Mode Lock",
-                                        modifier = Modifier.size(18.dp),
-                                        tint = Color.White
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Lock Screen in Serious Mode", fontSize = 14.scaledSp, fontWeight = FontWeight.Bold, color = Color.White)
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = !showFullScreenSeriousness && !isBreakMode && timerState == TimerManager.TimerState.RUNNING,
+                                enter = fadeIn(PomoMotion.defaultEffects()) +
+                                    scaleIn(initialScale = 0.92f, animationSpec = PomoMotion.defaultSpatial()),
+                                exit = fadeOut(PomoMotion.fastEffects())
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Button(
+                                        onClick = {
+                                            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                                            showFullScreenSeriousness = true
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+                                        shape = RoundedCornerShape(16.dp),
+                                        modifier = Modifier
+                                            .height(48.dp)
+                                            .sharedBounds(
+                                                sharedContentState = rememberSharedContentState(key = "serious_mode_bounds"),
+                                                animatedVisibilityScope = this@AnimatedVisibility,
+                                                boundsTransform = { _, _ -> PomoMotion.defaultSpatial() },
+                                                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+                                            )
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Lock,
+                                            contentDescription = "Serious Mode Lock",
+                                            modifier = Modifier.size(18.dp),
+                                            tint = Color.White
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Lock Screen in Serious Mode", fontSize = 14.scaledSp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
                                 }
                             }
                             Spacer(modifier = Modifier.height(bottomPadding + 88.dp))
                         }
-                    }
                 }
             }
         }
@@ -745,40 +1106,89 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
     
     AnimatedVisibility(
         visible = showFullScreenSeriousness,
-        enter = fadeIn(animationSpec = tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)) +
-            scaleIn(initialScale = 0.96f, animationSpec = tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)),
-        exit = fadeOut(animationSpec = tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing)) +
-            scaleOut(targetScale = 0.96f, animationSpec = tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing))
+        enter = fadeIn(animationSpec = PomoMotion.defaultEffects()),
+        exit = fadeOut(animationSpec = PomoMotion.fastEffects()),
+        modifier = Modifier.fillMaxSize()
     ) {
-        SeriousFullscreenOverlay(
-            quote = currentQuote,
-            taskName = currentTaskName,
-            timeRemaining = timeRemaining,
-            onDismiss = { showFullScreenSeriousness = false }
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .sharedBounds(
+                    sharedContentState = rememberSharedContentState(key = "serious_mode_bounds"),
+                    animatedVisibilityScope = this@AnimatedVisibility,
+                    boundsTransform = { _, _ -> PomoMotion.defaultSpatial() },
+                    resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds(
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        alignment = Alignment.Center
+                    ),
+                    clipInOverlayDuringTransition = OverlayClip(RoundedCornerShape(24.dp))
+                )
+        ) {
+            SeriousFullscreenOverlay(
+                quote = currentQuote,
+                taskName = currentTaskName,
+                timeRemaining = timeRemaining,
+                onDismiss = { showFullScreenSeriousness = false }
+            )
+        }
     }
         AnimatedVisibility(
             visible = showSettings,
-            enter = slideInVertically(
-                initialOffsetY = { it },
-                animationSpec = tween(PomoMotion.DURATION_MEDIUM, easing = PomoMotion.SmoothOutEasing)
-            ) + fadeIn(tween(PomoMotion.DURATION_STANDARD)),
-            exit = slideOutVertically(
-                targetOffsetY = { it },
-                animationSpec = tween(PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothInOutEasing)
-            ) + fadeOut(tween(PomoMotion.DURATION_FAST)),
-            modifier = Modifier.fillMaxSize().background(currentTheme.background)
+            enter = PomoMotion.asymmetricFadeThroughEnter(),
+            exit = PomoMotion.asymmetricFadeThroughExit(),
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
         ) {
-            SettingsOverlay(onDismiss = { viewModel.setSettingsOpen(false) }, initialTab = settingsInitialTab)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .sharedBounds(
+                        sharedContentState = rememberSharedContentState(key = "settings_overlay_bounds"),
+                        animatedVisibilityScope = this@AnimatedVisibility,
+                        boundsTransform = { _, _ -> PomoMotion.defaultSpatial() },
+                        resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds(
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            alignment = Alignment.TopCenter
+                        ),
+                        clipInOverlayDuringTransition = OverlayClip(RoundedCornerShape(28.dp))
+                    )
+            ) {
+                SettingsOverlay(onDismiss = { viewModel.setSettingsOpen(false) }, initialTab = settingsInitialTab)
+            }
         }
+        } // closes SharedTransitionLayout
         } // closes ProvideAdaptiveDimensions
     } // closes the Box Wrapping the Scaffold
 
     if (showJustInTimeSetup) {
         androidx.compose.ui.window.Dialog(onDismissRequest = { showJustInTimeSetup = false }) {
+            var jitAnimateIn by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { jitAnimateIn = true }
+            val jitScale by animateFloatAsState(
+                targetValue = if (jitAnimateIn) 1f else 0.88f,
+                animationSpec = PomoMotion.expressiveSpatial(),
+                label = "jitDialogScale"
+            )
+            val jitAlpha by animateFloatAsState(
+                targetValue = if (jitAnimateIn) 1f else 0f,
+                animationSpec = PomoMotion.defaultEffects(),
+                label = "jitDialogAlpha"
+            )
+
             androidx.compose.foundation.layout.Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .graphicsLayer {
+                        scaleX = jitScale
+                        scaleY = jitScale
+                        alpha = jitAlpha
+                        compositingStrategy = if (jitAlpha < 0.999f) {
+                            CompositingStrategy.Offscreen
+                        } else {
+                            CompositingStrategy.Auto
+                        }
+                    }
                     .clip(RoundedCornerShape(24.dp))
                     .background(currentTheme.surface)
                     .padding(24.dp)
@@ -828,60 +1238,9 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
             }
         }
     }
-
-    if (isAddingTask) {
-        AddTaskCard(
-            onSave = { name, cat, color ->
-                viewModel.saveTask(name, cat, color) { newId ->
-                    viewModel.setTask(newId, name, color)
-                }
-                viewModel.setAddingTask(false)
-            },
-            onCancel = { viewModel.setAddingTask(false) }
-        )
-    }
-
-    if (showAllTasksSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showAllTasksSheet = false },
-            containerColor = currentTheme.background,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp)
-            ) {
-                Text(
-                    text = "All Tasks",
-                    fontSize = 24.scaledSp,
-                    fontFamily = AppFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    color = currentTheme.textPrimary,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(bottom = 32.dp)
-                ) {
-                    items(allTasks, key = { it.id }) { task ->
-                        TaskItemRow(
-                            task = task,
-                            isSelected = currentTaskId == task.id,
-                            onSelect = { 
-                                viewModel.setTask(task.id, task.name, task.categoryColor)
-                                showAllTasksSheet = false
-                            },
-                            onDelete = { viewModel.deleteTask(task) }
-                        )
-                    }
-                }
-            }
-        }
-    }
 }
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -943,29 +1302,87 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
         }
     }
     
-    androidx.activity.compose.BackHandler(enabled = true) {
-        if (showBlockedApps) {
-            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-            showBlockedApps = false
-        } else if (tabBackStack.isNotEmpty()) {
-            val prevTab = tabBackStack.removeAt(tabBackStack.lastIndex)
-            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-            selectedTabIndex = prevTab
-        } else {
-            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-            com.example.service.SoundPlayer.stop()
-            onDismiss()
+    val backProgress = remember { Animatable(0f) }
+    var backEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
+
+    PredictiveBackHandler(enabled = !showBlockedApps) { progressFlow ->
+        try {
+            progressFlow.collect { event ->
+                backEdge = event.swipeEdge
+                backProgress.snapTo(event.progress.coerceIn(0f, 1f))
+            }
+            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+            if (tabBackStack.isNotEmpty()) {
+                val prevTab = tabBackStack.removeAt(tabBackStack.lastIndex)
+                selectedTabIndex = prevTab
+                backProgress.snapTo(0f)
+            } else {
+                com.example.service.SoundPlayer.stop()
+                onDismiss()
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            withContext(kotlinx.coroutines.NonCancellable) {
+                backProgress.animateTo(0f, animationSpec = PomoMotion.fastSpatial())
+            }
+            throw e
         }
     }
 
-    AnimatedContent(
-        targetState = showBlockedApps,
-        transitionSpec = { PomoMotion.horizontalSlideTransition(forward = targetState) },
-        label = "BlockedAppsTransition"
-    ) { isBlockedAppsVisible ->
-        if (isBlockedAppsVisible) {
-            com.example.ui.BlockedAppsScreen(onBack = { showBlockedApps = false })
-        } else {
+    val isPoppingTab = tabBackStack.isNotEmpty()
+    val isPredictiveDragging by remember {
+        derivedStateOf { backProgress.value > 0.001f }
+    }
+    val mascotRenderMode = when {
+        showBlockedApps -> MascotRenderMode.PAUSED
+        isPredictiveDragging -> MascotRenderMode.THROTTLED_30FPS
+        else -> MascotRenderMode.FULL
+    }
+
+    CompositionLocalProvider(LocalMascotRenderMode provides mascotRenderMode) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .drawBehind {
+                val p = backProgress.value
+                if (p > 0f) {
+                    drawRect(Color.Black.copy(alpha = (p * 0.25f).coerceIn(0f, 0.25f)))
+                }
+            }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val p = backProgress.value
+                    val edgeDirection = if (backEdge == BackEventCompat.EDGE_LEFT) 1f else -1f
+                    val overlayScale = if (isPoppingTab) 1f - (p * 0.03f) else 1f - (p * 0.10f)
+                    val overlayCornerDp = if (isPoppingTab) 0.dp else (p * 28f).dp
+                    scaleX = overlayScale
+                    scaleY = overlayScale
+                    translationX = edgeDirection * p * (if (isPoppingTab) 32.dp.toPx() else 20.dp.toPx())
+                    shape = RoundedCornerShape(overlayCornerDp)
+                    clip = overlayCornerDp > 0.dp
+                    compositingStrategy = CompositingStrategy.Offscreen
+                }
+        ) {
+    SharedTransitionLayout {
+        AnimatedContent(
+            targetState = showBlockedApps,
+            transitionSpec = { PomoMotion.horizontalSlideTransition(forward = targetState) },
+            label = "BlockedAppsTransition"
+        ) { isBlockedAppsVisible ->
+            val blockedAppsVisibilityScope = this
+            val blockedBoundsModifier = Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = "blocked_apps_bounds"),
+                animatedVisibilityScope = blockedAppsVisibilityScope,
+                boundsTransform = { _, _ -> PomoMotion.expressiveSpatial() }
+            )
+            if (isBlockedAppsVisible) {
+                com.example.ui.BlockedAppsScreen(
+                    onBack = { showBlockedApps = false },
+                    modifier = blockedBoundsModifier
+                )
+            } else {
             val tabListState = androidx.compose.foundation.lazy.rememberLazyListState(
                 initialFirstVisibleItemIndex = selectedTabIndex.coerceIn(0, tabs.size - 1)
             )
@@ -1031,21 +1448,32 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
                         items(tabs.size) { index ->
                             val isSelected = selectedTabIndex == index
                             val onPrimaryColor = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
-                            val tabBgColor by androidx.compose.animation.animateColorAsState(
+                            val tabInteraction = remember { MutableInteractionSource() }
+                            val isTabPressed by tabInteraction.collectIsPressedAsState()
+                            val tabScale by animateFloatAsState(
+                                targetValue = if (isTabPressed) 0.93f else (if (isSelected) 1.02f else 1f),
+                                animationSpec = PomoMotion.expressiveSpatial(),
+                                label = "tabScale"
+                            )
+                            val tabBgColor by animateColorAsState(
                                 targetValue = if (isSelected) currentTheme.primary else currentTheme.surface, 
                                 animationSpec = PomoMotion.colorSpec, label = "tabBg"
                             )
-                            val tabTextColor by androidx.compose.animation.animateColorAsState(
+                            val tabTextColor by animateColorAsState(
                                 targetValue = if (isSelected) onPrimaryColor else currentTheme.textPrimary, 
                                 animationSpec = PomoMotion.colorSpec, label = "tabText"
                             )
-                            val tabElevation by androidx.compose.animation.core.animateDpAsState(
-                                targetValue = if (isSelected) 4.dp else 1.dp, 
+                            val tabElevation by animateDpAsState(
+                                targetValue = if (isTabPressed) 0.dp else (if (isSelected) 4.dp else 1.dp), 
                                 animationSpec = PomoMotion.elevationSpec, label = "tabElev"
                             )
                             
                             Box(
                                 modifier = Modifier
+                                    .graphicsLayer {
+                                        scaleX = tabScale
+                                        scaleY = tabScale
+                                    }
                                     .shadow(
                                         elevation = tabElevation.coerceAtLeast(0.dp),
                                         shape = RoundedCornerShape(16.dp),
@@ -1058,8 +1486,11 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
                                         color = if (isSelected) currentTheme.primary else currentTheme.cardBorder,
                                         shape = RoundedCornerShape(16.dp)
                                     )
-                                    .clickable { 
-                                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                                    .clickable(
+                                        interactionSource = tabInteraction,
+                                        indication = ripple(bounded = true)
+                                    ) { 
+                                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
                                         if (selectedTabIndex != index) {
                                             tabBackStack.add(selectedTabIndex)
                                             selectedTabIndex = index 
@@ -1078,13 +1509,20 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
                     }
 
                     Box(
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(currentTheme.background)
                     ) {
                         androidx.compose.animation.AnimatedContent(
                             targetState = selectedTabIndex,
                             transitionSpec = {
-                                PomoMotion.horizontalSlideTransition(forward = targetState > initialState)
+                                PomoMotion.asymmetricFadeThroughTransition()
                             },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    compositingStrategy = CompositingStrategy.Offscreen
+                                },
                             label = "SettingsTabTransition"
                         ) { tabIndex ->
                             if (tabIndex == 4) {
@@ -1213,42 +1651,82 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
                                                 
                                                 Text("Completion Sound", color = currentTheme.textPrimary, fontSize = 14.scaledSp, fontWeight = FontWeight.Bold)
                                                 Spacer(modifier = Modifier.height(8.dp))
-                                                Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(currentTheme.textPrimary.copy(alpha=0.05f))) {
-                                                    val compOptions = listOf("Beep", "Alarm", "Ring", "Custom")
+                                                BoxWithConstraints(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clip(RoundedCornerShape(14.dp))
+                                                        .background(currentTheme.textPrimary.copy(alpha = 0.05f))
+                                                        .padding(4.dp)
+                                                ) {
+                                                    val compOptions = remember { listOf("Get Up", "Alarm", "Ring", "Custom") }
                                                     val onSelectedCompColor = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
-                                                    compOptions.forEachIndexed { index, name ->
-                                                        val isSelectedComp = localCompletion == index
-                                                        val compBg by animateColorAsState(
-                                                            targetValue = if (isSelectedComp) currentTheme.primary else Color.Transparent,
-                                                            animationSpec = PomoMotion.colorSpec,
-                                                            label = "compBg_$index"
-                                                        )
+                                                    val segWidth = maxWidth / compOptions.size
+                                                    val compIndicatorOffset by animateDpAsState(
+                                                        targetValue = segWidth * localCompletion.coerceIn(0, compOptions.lastIndex),
+                                                        animationSpec = PomoMotion.expressiveSpatial(androidx.compose.ui.unit.Dp.VisibilityThreshold),
+                                                        label = "compIndicatorOffset"
+                                                    )
+
+                                                    Box(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
                                                         Box(
                                                             modifier = Modifier
-                                                                .weight(1f)
-                                                                .clip(RoundedCornerShape(12.dp))
-                                                                .background(compBg)
-                                                                .clickable { 
-                                                                    try {
-                                                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                                                    } catch (e: Exception) {}
-                                                                    if (index == 3) {
-                                                                        completionLauncher.launch(arrayOf("audio/*"))
-                                                                    } else {
-                                                                        localCompletion = index
-                                                                        com.example.service.SoundPlayer.playCompletion(context, index)
-                                                                    }
+                                                                .offset(x = compIndicatorOffset)
+                                                                .width(segWidth)
+                                                                .fillMaxHeight()
+                                                                .shadow(2.dp, RoundedCornerShape(10.dp), spotColor = currentTheme.primary.copy(alpha = 0.35f))
+                                                                .clip(RoundedCornerShape(10.dp))
+                                                                .background(currentTheme.primary)
+                                                        )
+
+                                                        Row(modifier = Modifier.fillMaxWidth()) {
+                                                            compOptions.forEachIndexed { index, name ->
+                                                                val isSelectedComp = localCompletion == index
+                                                                val segInteraction = remember { MutableInteractionSource() }
+                                                                val isSegPressed by segInteraction.collectIsPressedAsState()
+                                                                val segScale by animateFloatAsState(
+                                                                    targetValue = if (isSegPressed) 0.93f else 1f,
+                                                                    animationSpec = PomoMotion.pressScaleSpec,
+                                                                    label = "compSegScale_$index"
+                                                                )
+                                                                val compTextColor by animateColorAsState(
+                                                                    targetValue = if (isSelectedComp) onSelectedCompColor else currentTheme.textPrimary,
+                                                                    animationSpec = PomoMotion.colorSpec,
+                                                                    label = "compTextColor_$index"
+                                                                )
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .weight(1f)
+                                                                        .graphicsLayer {
+                                                                            scaleX = segScale
+                                                                            scaleY = segScale
+                                                                        }
+                                                                        .clip(RoundedCornerShape(10.dp))
+                                                                        .clickable(
+                                                                            interactionSource = segInteraction,
+                                                                            indication = ripple(bounded = true)
+                                                                        ) {
+                                                                            try {
+                                                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                                                            } catch (_: Exception) {}
+                                                                            if (index == 3) {
+                                                                                completionLauncher.launch(arrayOf("audio/*"))
+                                                                            } else {
+                                                                                localCompletion = index
+                                                                                com.example.service.SoundPlayer.playCompletion(context, index)
+                                                                            }
+                                                                        }
+                                                                        .padding(vertical = 10.dp),
+                                                                    contentAlignment = Alignment.Center
+                                                                ) {
+                                                                    Text(
+                                                                        name,
+                                                                        color = compTextColor,
+                                                                        fontSize = 11.scaledSp,
+                                                                        fontWeight = if (isSelectedComp) FontWeight.Bold else FontWeight.Medium,
+                                                                        maxLines = 1
+                                                                    )
                                                                 }
-                                                                .padding(vertical = 10.dp),
-                                                            contentAlignment = Alignment.Center
-                                                        ) {
-                                                            Text(
-                                                                name,
-                                                                color = if (isSelectedComp) onSelectedCompColor else currentTheme.textPrimary,
-                                                                fontSize = 11.scaledSp,
-                                                                fontWeight = if (isSelectedComp) FontWeight.Bold else FontWeight.Medium,
-                                                                maxLines = 1
-                                                            )
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -1404,12 +1882,16 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
 
                 Card(
                     onClick = { 
-                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
                         showBlockedApps = true 
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .scale(blockedScale),
+                        .then(blockedBoundsModifier)
+                        .graphicsLayer {
+                            scaleX = blockedScale
+                            scaleY = blockedScale
+                        },
                     shape = RoundedCornerShape(16.dp),
                     interactionSource = blockedInteraction,
                     colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
@@ -1437,13 +1919,17 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
             Spacer(modifier = Modifier.height(100.dp))
                         } // closes Column
                     } // closes else
-                } // closes AnimatedContent
-            }
-    }
-}
-        }
-    }
-}
+                } // closes SettingsTabTransition AnimatedContent
+            } // closes Box
+        } // closes Column
+    } // closes Scaffold
+} // closes else
+        } // closes BlockedAppsTransition AnimatedContent
+    } // closes SharedTransitionLayout
+        } // closes predictive back content Box
+    } // closes predictive back scrim Box
+    } // closes CompositionLocalProvider(LocalMascotRenderMode)
+} // closes SettingsOverlay
 
 @Composable
 fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, onSelect: (com.example.data.TaskItem) -> Unit, onDelete: () -> Unit, modifier: Modifier = Modifier) {
@@ -1463,22 +1949,43 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
         animationSpec = PomoMotion.dpSpec,
         label = "borderWidth"
     )
-    
-    val containerColor = if (isSelected) {
-        taskColor.copy(alpha = 0.06f).compositeOver(currentTheme.surface)
-    } else {
-        currentTheme.surface
-    }
+    val containerColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isSelected) {
+            taskColor.copy(alpha = 0.08f).compositeOver(currentTheme.surface)
+        } else {
+            currentTheme.surface
+        },
+        animationSpec = PomoMotion.colorSpec,
+        label = "taskContainerColor"
+    )
+    val rowInteraction = remember { MutableInteractionSource() }
+    val isRowPressed by rowInteraction.collectIsPressedAsState()
+    val rowScale by animateFloatAsState(
+        targetValue = when {
+            isRowPressed -> 0.97f
+            isSelected -> 1.015f
+            else -> 1f
+        },
+        animationSpec = PomoMotion.pressScaleSpec,
+        label = "taskRowScale"
+    )
     
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
         modifier = modifier
             .fillMaxWidth()
-            .shadow(elevation = 3.dp, shape = RoundedCornerShape(24.dp), spotColor = currentTheme.shadowColor)
+            .graphicsLayer {
+                scaleX = rowScale
+                scaleY = rowScale
+            }
+            .shadow(elevation = if (isSelected) 5.dp else 3.dp, shape = RoundedCornerShape(24.dp), spotColor = currentTheme.shadowColor)
             .border(borderWidth, borderColor, RoundedCornerShape(24.dp))
             .clip(RoundedCornerShape(24.dp))
-            .clickable {
+            .clickable(
+                interactionSource = rowInteraction,
+                indication = androidx.compose.material3.ripple(bounded = true)
+            ) {
                 try {
                     view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                 } catch (e: Exception) {}
@@ -1532,8 +2039,10 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
             
             androidx.compose.animation.AnimatedVisibility(
                 visible = isSelected,
-                enter = androidx.compose.animation.scaleIn(PomoMotion.floatSpec) + androidx.compose.animation.fadeIn(tween(180)),
-                exit = androidx.compose.animation.scaleOut(PomoMotion.floatSpec) + androidx.compose.animation.fadeOut(tween(150))
+                enter = androidx.compose.animation.scaleIn(PomoMotion.expressiveSpatial()) +
+                    androidx.compose.animation.fadeIn(PomoMotion.fastEffects()),
+                exit = androidx.compose.animation.scaleOut(PomoMotion.fastSpatial()) +
+                    androidx.compose.animation.fadeOut(PomoMotion.fastEffects())
             ) {
                 Icon(
                     imageVector = Icons.Filled.CheckCircle,
@@ -1551,255 +2060,6 @@ fun TaskItemRow(task: com.example.data.TaskItem, isSelected: Boolean = false, on
                     onDelete()
                 }) {
                     Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFFEF9A9A))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun PremiumJumpingTextPreview(text: String) {
-    val currentTheme = com.example.ui.theme.LocalAppTheme.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp)
-            .height(44.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (text.isEmpty()) {
-            Text(
-                text = "Type task name...",
-                fontSize = 18.scaledSp,
-                color = currentTheme.textSecondary.copy(alpha = 0.5f),
-                fontFamily = AppFontFamily,
-                fontWeight = FontWeight.Medium
-            )
-        } else {
-            text.forEachIndexed { index, char ->
-                val animatedOffset = remember(index) { androidx.compose.animation.core.Animatable(-16f) }
-                val animatedScale = remember(index) { androidx.compose.animation.core.Animatable(0.75f) }
-                val animatedAlpha = remember(index) { androidx.compose.animation.core.Animatable(0f) }
-                
-                LaunchedEffect(key1 = index) {
-                    animatedOffset.animateTo(
-                        targetValue = 0f,
-                        animationSpec = PomoMotion.floatSpec
-                    )
-                }
-                LaunchedEffect(key1 = index) {
-                    animatedScale.animateTo(
-                        targetValue = 1f,
-                        animationSpec = PomoMotion.floatSpec
-                    )
-                }
-                LaunchedEffect(key1 = index) {
-                    animatedAlpha.animateTo(
-                        targetValue = 1f,
-                        animationSpec = tween(durationMillis = 200)
-                    )
-                }
-                
-                Text(
-                    text = if (char == ' ') " " else char.toString(),
-                    fontSize = 24.scaledSp,
-                    fontFamily = AppFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    color = currentTheme.textPrimary,
-                    modifier = Modifier
-                        .graphicsLayer {
-                            translationY = animatedOffset.value
-                            scaleX = animatedScale.value
-                            scaleY = animatedScale.value
-                            this.alpha = animatedAlpha.value
-                        }
-                        .padding(horizontal = 1.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun AddTaskCard(onSave: (String, String, Long) -> Unit, onCancel: () -> Unit) {
-    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
-    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onCancel,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnClickOutside = false,
-            dismissOnBackPress = true
-        )
-    ) {
-        var animateIn by remember { mutableStateOf(false) }
-        LaunchedEffect(Unit) {
-            animateIn = true
-        }
-        val scale by animateFloatAsState(
-            targetValue = if (animateIn) 1f else 0.92f,
-            animationSpec = PomoMotion.floatSpec,
-            label = "dialogScale"
-        )
-        val alpha by animateFloatAsState(
-            targetValue = if (animateIn) 1f else 0f,
-            animationSpec = tween(durationMillis = PomoMotion.DURATION_STANDARD, easing = PomoMotion.SmoothOutEasing),
-            label = "dialogAlpha"
-        )
-
-        val view = androidx.compose.ui.platform.LocalView.current
-        val currentTheme = LocalAppTheme.current
-        val currentFont = LocalAppFont.current
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.4f * alpha))
-                .pointerInput(Unit) {
-                    detectTapGestures(onTap = {
-                        keyboardController?.hide()
-                        focusManager.clearFocus()
-                    })
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Card(
-                shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
-                modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                        this.alpha = alpha
-                    }
-                    .shadow(elevation = 12.dp, shape = RoundedCornerShape(28.dp), spotColor = currentTheme.shadowColor)
-                    .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(28.dp))
-                    .pointerInput(Unit) {
-                        detectTapGestures(onTap = {
-                            keyboardController?.hide()
-                            focusManager.clearFocus()
-                        })
-                    },
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-            ) {
-                var title by remember { mutableStateOf("") }
-                
-                val categories = listOf(
-                    Pair("Study", Color(0xFF81D4FA)),
-                    Pair("Work", Color(0xFFA5D6A7)),
-                    Pair("Read", Color(0xFFCE93D8)),
-                    Pair("Rest", Color(0xFFFFAB91))
-                )
-                var selectedCategory by remember { mutableStateOf(categories[0]) }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .pointerInput(Unit) {
-                            detectTapGestures(onTap = {
-                                keyboardController?.hide()
-                                focusManager.clearFocus()
-                            })
-                        }
-                        .padding(24.dp)
-                ) {
-                    Text(
-                        text = "New Task",
-                        fontFamily = CursiveFontFamily,
-                        fontSize = 28.scaledSp,
-                        fontWeight = FontWeight.Bold,
-                        color = currentTheme.textPrimary
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    PremiumJumpingTextPreview(text = title)
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        label = { Text("Task Name") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = currentTheme.textPrimary,
-                            unfocusedTextColor = currentTheme.textPrimary,
-                            cursorColor = currentTheme.primary,
-                            focusedBorderColor = currentTheme.primary,
-                            unfocusedBorderColor = currentTheme.cardBorder,
-                            focusedLabelColor = currentTheme.primary,
-                            unfocusedLabelColor = currentTheme.textSecondary
-                        ),
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            imeAction = androidx.compose.ui.text.input.ImeAction.Done
-                        ),
-                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                            onDone = {
-                                try {
-                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                } catch (e: Exception) {}
-                                keyboardController?.hide()
-                                focusManager.clearFocus()
-                                onSave(title.ifEmpty { "Focus Task" }, selectedCategory.first, (selectedCategory.second.toArgb().toLong() and 0xFFFFFFFFL))
-                            }
-                        ),
-                        singleLine = true
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Category", fontSize = 14.scaledSp, color = currentTheme.textSecondary)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        categories.forEach { cat ->
-                            val isCatSelected = selectedCategory == cat
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isCatSelected) cat.second else cat.second.copy(alpha = 0.3f))
-                                    .border(if (isCatSelected) 2.dp else 1.dp, if (isCatSelected) currentTheme.textPrimary else currentTheme.cardBorder, CircleShape)
-                                    .clickable {
-                                        try {
-                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                        } catch (e: Exception) {}
-                                        selectedCategory = cat
-                                    }
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                        TextButton(
-                            onClick = {
-                                try {
-                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                } catch (e: Exception) {}
-                                keyboardController?.hide()
-                                focusManager.clearFocus()
-                                onCancel()
-                            }
-                        ) {
-                            Text("Cancel", color = currentTheme.textSecondary, fontWeight = FontWeight.Medium, fontFamily = currentFont)
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        com.example.ui.components.PomoButton(
-                            text = "Save Task",
-                            onClick = {
-                                keyboardController?.hide()
-                                focusManager.clearFocus()
-                                onSave(title.ifEmpty { "Focus Task" }, selectedCategory.first, (selectedCategory.second.toArgb().toLong() and 0xFFFFFFFFL))
-                            },
-                            containerColor = currentTheme.primary,
-                            contentColor = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
-                            shape = RoundedCornerShape(16.dp),
-                            elevation = 4.dp
-                        )
-                    }
                 }
             }
         }
@@ -1898,8 +2158,15 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
         Spacer(modifier = Modifier.width(26.dp))
 
         val isRunning = state == TimerManager.TimerState.RUNNING
+        val playButtonCorner by animateDpAsState(
+            targetValue = if (isRunning) 24.dp else 40.dp,
+            animationSpec = PomoMotion.expressiveSpatial(androidx.compose.ui.unit.Dp.VisibilityThreshold),
+            label = "playButtonCorner"
+        )
+        val playButtonShape = RoundedCornerShape(playButtonCorner)
+
         AnimatedScaleBox(
-            shape = CircleShape,
+            shape = playButtonShape,
             elevation = 8.dp,
             shadowColor = currentTheme.shadowColor,
             onClick = {
@@ -1916,20 +2183,22 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
             Box(
                 modifier = Modifier
                     .size(80.dp)
-                    .clip(CircleShape)
+                    .clip(playButtonShape)
                     .background(
                         brush = androidx.compose.ui.graphics.Brush.radialGradient(
                             colors = listOf(currentTheme.primaryLight, currentTheme.primary)
                         )
                     )
-                    .border(2.dp, Color.White.copy(alpha = 0.8f), CircleShape),
+                    .border(2.dp, Color.White.copy(alpha = 0.8f), playButtonShape),
                 contentAlignment = Alignment.Center
             ) {
                 AnimatedContent(
                     targetState = isRunning,
                     transitionSpec = {
-                        (fadeIn(tween(180)) + scaleIn(initialScale = 0.85f, animationSpec = tween(180, easing = PomoMotion.SmoothOutEasing))) togetherWith
-                            (fadeOut(tween(150)) + scaleOut(targetScale = 0.85f, animationSpec = tween(150)))
+                        (fadeIn(PomoMotion.fastEffects()) +
+                            scaleIn(initialScale = 0.75f, animationSpec = PomoMotion.expressiveSpatial())) togetherWith
+                            (fadeOut(PomoMotion.fastEffects()) +
+                                scaleOut(targetScale = 0.75f, animationSpec = PomoMotion.fastSpatial()))
                     },
                     label = "playPause"
                 ) { running ->
@@ -1946,6 +2215,11 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
         Spacer(modifier = Modifier.width(26.dp))
 
         val isBreakMode by TimerManager.isBreakMode.collectAsState()
+        val syncRotation by animateFloatAsState(
+            targetValue = if (isBreakMode) 180f else 0f,
+            animationSpec = PomoMotion.expressiveSpatial(),
+            label = "syncModeRotation"
+        )
         AnimatedScaleBox(
             enabled = !isRunning,
             shape = CircleShape,
@@ -1979,7 +2253,9 @@ fun AppControls(state: TimerManager.TimerState, context: android.content.Context
                     imageVector = Icons.Filled.Sync,
                     contentDescription = "Switch Mode",
                     tint = currentTheme.textPrimary,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier
+                        .size(28.dp)
+                        .graphicsLayer { rotationZ = syncRotation }
                 )
             }
         }
@@ -2007,20 +2283,19 @@ fun SlidingTimer(timeRemaining: Int, fontSize: androidx.compose.ui.unit.TextUnit
                 AnimatedContent(
                     targetState = char,
                     transitionSpec = {
-                        val enterSpec = tween<androidx.compose.ui.unit.IntOffset>(220, easing = PomoMotion.SmoothOutEasing)
-                        val exitSpec = tween<androidx.compose.ui.unit.IntOffset>(180, easing = PomoMotion.SmoothInOutEasing)
-                        val alphaEnter = tween<Float>(200, easing = PomoMotion.SmoothOutEasing)
-                        val alphaExit = tween<Float>(160, easing = PomoMotion.SmoothInOutEasing)
-                        
                         if (targetState < initialState || (initialState == '0' && targetState == '9') || (initialState == '0' && targetState == '5')) {
-                            // Counting down
-                            (slideInVertically(enterSpec) { height -> -height / 2 } + fadeIn(alphaEnter)) togetherWith
-                                    (slideOutVertically(exitSpec) { height -> height / 2 } + fadeOut(alphaExit))
+                            // Counting down (Shared Axis Y downward roll)
+                            (slideInVertically(PomoMotion.intOffsetSpatial) { height -> -height / 2 } +
+                                fadeIn(PomoMotion.defaultEffects())) togetherWith
+                                (slideOutVertically(PomoMotion.intOffsetFastSpatial) { height -> height / 2 } +
+                                    fadeOut(PomoMotion.fastEffects()))
                         } else {
-                            // Counting up or reset
-                            (slideInVertically(enterSpec) { height -> height / 2 } + fadeIn(alphaEnter)) togetherWith
-                                    (slideOutVertically(exitSpec) { height -> -height / 2 } + fadeOut(alphaExit))
-                        }.using(SizeTransform(clip = false))
+                            // Counting up or reset (Shared Axis Y upward roll)
+                            (slideInVertically(PomoMotion.intOffsetSpatial) { height -> height / 2 } +
+                                fadeIn(PomoMotion.defaultEffects())) togetherWith
+                                (slideOutVertically(PomoMotion.intOffsetFastSpatial) { height -> -height / 2 } +
+                                    fadeOut(PomoMotion.fastEffects()))
+                        }.using(SizeTransform(clip = false) { _, _ -> PomoMotion.intSizeSpatial })
                     },
                     label = "digitAnimation_$index"
                 ) { targetDigit ->
@@ -2046,11 +2321,13 @@ fun TimerDisplay(
     taskName: String,
     currentTask: com.example.data.TaskItem? = null,
     context: android.content.Context,
-    circleSize: androidx.compose.ui.unit.Dp = 260.dp
+    circleSize: androidx.compose.ui.unit.Dp = 260.dp,
+    onChooseTaskClick: (() -> Unit)? = null
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val view = androidx.compose.ui.platform.LocalView.current
     val currentTheme = LocalAppTheme.current
+    val currentFont = LocalAppFont.current
     var animatedText by remember { mutableStateOf("") }
     
     // Typing effect for Task Name
@@ -2063,17 +2340,44 @@ fun TimerDisplay(
     }
 
     val progress = if (totalTime > 0) timeRemaining.toFloat() / totalTime.toFloat() else 0f
-    val animatedProgress = remember { Animatable(1f) }
+    val isTimerRunning = state == TimerManager.TimerState.RUNNING
+    val animatedProgress = remember { Animatable(progress) }
     
-    LaunchedEffect(progress) {
-        animatedProgress.animateTo(progress, animationSpec = tween(1000, easing = LinearEasing))
+    LaunchedEffect(progress, isTimerRunning) {
+        if (isTimerRunning) {
+            animatedProgress.animateTo(progress, animationSpec = tween(950, easing = LinearEasing))
+        } else {
+            animatedProgress.animateTo(progress, animationSpec = PomoMotion.defaultSpatial())
+        }
     }
+
+    val waveAmplitudeState = animateFloatAsState(
+        targetValue = if (isTimerRunning) 1f else 0f,
+        animationSpec = PomoMotion.defaultSpatial(),
+        label = "waveAmplitudeRatio"
+    )
+    val wavePhaseTransition = rememberInfiniteTransition(label = "wavyArcPhase")
+    val wavePhaseState = wavePhaseTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * kotlin.math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "wavePhase"
+    )
+    val activeArcColorState = animateColorAsState(
+        targetValue = if (isBreakMode) currentTheme.secondary else currentTheme.primary,
+        animationSpec = PomoMotion.colorSpec,
+        label = "activeArcColor"
+    )
+    val wavePath = remember { androidx.compose.ui.graphics.Path() }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
         BoxWithConstraints(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .fillMaxWidth(0.65f)
+                .fillMaxWidth(0.70f)
                 .aspectRatio(1f)
                 .shadow(10.dp, CircleShape, spotColor = currentTheme.shadowColor)
                 .clip(CircleShape)
@@ -2090,20 +2394,77 @@ fun TimerDisplay(
             Canvas(modifier = Modifier
                 .fillMaxSize()
                 .padding(if (dynamicCircleSize < 200.dp) 8.dp else 16.dp)) {
-                drawArc(
+                val strokeWidthPx = if (dynamicCircleSize < 200.dp) 4.dp.toPx() else 8.dp.toPx()
+                val maxWaveAmpPx = if (dynamicCircleSize < 200.dp) 2.dp.toPx() else 3.2.dp.toPx()
+                val currentWaveAmpPx = maxWaveAmpPx * waveAmplitudeState.value
+                val wavePhase = wavePhaseState.value
+                val activeArcColor = activeArcColorState.value
+                val centerX = size.width / 2f
+                val centerY = size.height / 2f
+                val baseRadius = (minOf(size.width, size.height) - strokeWidthPx) / 2f - maxWaveAmpPx
+
+                drawCircle(
                     color = currentTheme.cardBorder.copy(alpha = 0.5f),
-                    startAngle = -90f,
-                    sweepAngle = 360f,
-                    useCenter = false,
-                    style = Stroke(width = if (dynamicCircleSize < 200.dp) 4.dp.toPx() else 8.dp.toPx(), cap = StrokeCap.Round)
+                    radius = baseRadius,
+                    center = Offset(centerX, centerY),
+                    style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
                 )
-                drawArc(
-                    color = if (isBreakMode) currentTheme.secondary else currentTheme.primary,
-                    startAngle = -90f,
-                    sweepAngle = animatedProgress.value * 360f,
-                    useCenter = false,
-                    style = Stroke(width = if (dynamicCircleSize < 200.dp) 4.dp.toPx() else 8.dp.toPx(), cap = StrokeCap.Round)
-                )
+
+                val sweepDeg = (animatedProgress.value * 360f).coerceIn(0f, 360f)
+                if (sweepDeg > 0.5f) {
+                    if (currentWaveAmpPx < 0.15f) {
+                        val inset = maxWaveAmpPx + strokeWidthPx / 2f
+                        drawArc(
+                            color = activeArcColor,
+                            startAngle = -90f,
+                            sweepAngle = sweepDeg,
+                            useCenter = false,
+                            topLeft = Offset(inset, inset),
+                            size = Size(size.width - inset * 2f, size.height - inset * 2f),
+                            style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
+                        )
+                    } else {
+                        wavePath.reset()
+                        val stepDeg = 2.5f
+                        val waveCycles = 12f
+                        var deg = 0f
+                        var isFirst = true
+                        while (deg <= sweepDeg) {
+                            val angleRad = Math.toRadians((-90f + deg).toDouble())
+                            val r = baseRadius + currentWaveAmpPx * kotlin.math.sin(
+                                waveCycles * angleRad + wavePhase
+                            ).toFloat()
+                            val x = centerX + r * kotlin.math.cos(angleRad).toFloat()
+                            val y = centerY + r * kotlin.math.sin(angleRad).toFloat()
+                            if (isFirst) {
+                                wavePath.moveTo(x, y)
+                                isFirst = false
+                            } else {
+                                wavePath.lineTo(x, y)
+                            }
+                            deg += stepDeg
+                        }
+                        if (deg - stepDeg < sweepDeg) {
+                            val endRad = Math.toRadians((-90f + sweepDeg).toDouble())
+                            val r = baseRadius + currentWaveAmpPx * kotlin.math.sin(
+                                waveCycles * endRad + wavePhase
+                            ).toFloat()
+                            wavePath.lineTo(
+                                centerX + r * kotlin.math.cos(endRad).toFloat(),
+                                centerY + r * kotlin.math.sin(endRad).toFloat()
+                            )
+                        }
+                        drawPath(
+                            path = wavePath,
+                            color = activeArcColor,
+                            style = Stroke(
+                                width = strokeWidthPx,
+                                cap = StrokeCap.Round,
+                                join = androidx.compose.ui.graphics.StrokeJoin.Round
+                            )
+                        )
+                    }
+                }
             }
             
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -2113,15 +2474,27 @@ fun TimerDisplay(
                 val timerFontSize = baseFontSize.coerceAtMost(if (isLongFormat) 38f else 54f).sp
                 SlidingTimer(timeRemaining = timeRemaining, fontSize = timerFontSize)
                 Spacer(modifier = Modifier.height(if (dynamicCircleSize < 200.dp) 2.dp else 4.dp))
-                val stateBg = if (isBreakMode) currentTheme.secondary.copy(alpha = 0.18f) else currentTheme.primary.copy(alpha = 0.18f)
-                val stateTextCol = if (isBreakMode) currentTheme.secondary else currentTheme.primary
+                val stateBg by animateColorAsState(
+                    targetValue = if (isBreakMode) currentTheme.secondary.copy(alpha = 0.18f) else currentTheme.primary.copy(alpha = 0.18f),
+                    animationSpec = PomoMotion.colorSpec,
+                    label = "modePillBg"
+                )
+                val stateTextCol by animateColorAsState(
+                    targetValue = if (isBreakMode) currentTheme.secondary else currentTheme.primary,
+                    animationSpec = PomoMotion.colorSpec,
+                    label = "modePillTextCol"
+                )
+                val pillAlphaState = animateFloatAsState(
+                    targetValue = if (isTimerRunning) 0.55f else 1f,
+                    animationSpec = PomoMotion.fastEffects(),
+                    label = "modePillAlpha"
+                )
                 val stateText = if (isBreakMode) "BREAK TIME" else "WORK TIME"
-                val isTimerRunning = state == TimerManager.TimerState.RUNNING
                 Box(
                     modifier = Modifier
+                        .graphicsLayer { alpha = pillAlphaState.value }
                         .clip(CircleShape)
                         .background(stateBg)
-                        .alpha(if (isTimerRunning) 0.5f else 1f)
                         .clickable(enabled = !isTimerRunning) {
                             try {
                                 view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
@@ -2142,107 +2515,135 @@ fun TimerDisplay(
                         }
                         .padding(horizontal = if (dynamicCircleSize < 200.dp) 8.dp else 12.dp, vertical = if (dynamicCircleSize < 200.dp) 2.dp else 4.dp)
                 ) {
-                    Text(
-                        text = stateText,
-                        fontSize = if (dynamicCircleSize < 200.dp) 9.scaledSp else 12.scaledSp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = LocalAppFont.current,
-                        color = stateTextCol,
-                        letterSpacing = 1.scaledSp
-                    )
+                    AnimatedContent(
+                        targetState = stateText,
+                        transitionSpec = { PomoMotion.verticalCrossfadeTransition(upward = isBreakMode) },
+                        label = "modePillText"
+                    ) { labelText ->
+                        Text(
+                            text = labelText,
+                            fontSize = if (dynamicCircleSize < 200.dp) 9.scaledSp else 12.scaledSp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = LocalAppFont.current,
+                            color = stateTextCol,
+                            letterSpacing = 1.scaledSp
+                        )
+                    }
                 }
             }
         }
         
         Spacer(modifier = Modifier.height(if (circleSize < 200.dp) 16.dp else if (circleSize < 240.dp) 24.dp else 40.dp))
         
-        if (currentTask != null) {
-            val activeTaskColor = com.example.service.safeParseColor(currentTask.categoryColor, currentTheme.primary)
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = currentTheme.surface.copy(alpha = 0.5f)),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(16.dp))
-                    .clickable { 
-                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch(e: Exception){}
-                        TimerManager.setTask(-1, "Focus Time!")
-                    }
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+        AnimatedContent(
+            targetState = currentTask,
+            transitionSpec = { PomoMotion.verticalCrossfadeTransition(upward = targetState != null) },
+            label = "selectedTaskBadge"
+        ) { activeTask ->
+            if (activeTask != null) {
+                val activeTaskColor = com.example.service.safeParseColor(activeTask.categoryColor, currentTheme.primary)
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = currentTheme.surface.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(16.dp))
+                        .clickable { 
+                            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch(e: Exception){}
+                            TimerManager.setTask(-1, if (isBreakMode) "Break Time!" else "Focus Time!")
+                        }
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(14.dp)
-                            .clip(CircleShape)
-                            .background(activeTaskColor)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = currentTask.name,
-                            fontSize = 15.scaledSp,
-                            color = currentTheme.textPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = LocalAppFont.current
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(14.dp)
+                                .clip(CircleShape)
+                                .background(activeTaskColor)
                         )
-                        Text(
-                            text = currentTask.categoryName,
-                            fontSize = 12.scaledSp,
-                            color = currentTheme.textSecondary,
-                            fontFamily = LocalAppFont.current
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = activeTask.name,
+                                fontSize = 15.scaledSp,
+                                color = currentTheme.textPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = LocalAppFont.current
+                            )
+                            Text(
+                                text = "${activeTask.categoryName} • ${if (activeTask.isBreakCategory) "Break Timer" else "Work Timer"}",
+                                fontSize = 12.scaledSp,
+                                color = currentTheme.textSecondary,
+                                fontFamily = LocalAppFont.current
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Deselect Task",
+                            tint = currentTheme.textSecondary.copy(alpha = 0.5f),
+                            modifier = Modifier.size(16.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = "Deselect Task",
-                        tint = currentTheme.textSecondary.copy(alpha = 0.5f),
-                        modifier = Modifier.size(16.dp)
-                    )
                 }
-            }
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
+            } else {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .size(12.dp)
-                        .clip(CircleShape)
-                        .background(currentTheme.primary)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (isBreakMode) "Break Time!" else "Focus Time!",
-                    fontSize = 16.scaledSp,
-                    color = currentTheme.textSecondary,
-                    fontFamily = LocalAppFont.current,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Choose a task",
-                    fontSize = 24.scaledSp,
-                    fontFamily = LocalAppFont.current,
-                    color = currentTheme.textPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-                val cursorAlpha = rememberInfiniteTransition(label = "cursor").animateFloat(
-                    initialValue = 1f, targetValue = 0f, 
-                    animationSpec = infiniteRepeatable(tween(500), RepeatMode.Reverse),
-                    label = "cursorAlpha"
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Box(
-                    modifier = Modifier
-                        .width(4.dp)
-                        .height(28.dp)
-                        .clip(CircleShape)
-                        .background(currentTheme.primary.copy(alpha = cursorAlpha.value))
-                )
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable(
+                            enabled = state == TimerManager.TimerState.STOPPED && onChooseTaskClick != null
+                        ) {
+                            try {
+                                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                            } catch (_: Exception) {}
+                            onChooseTaskClick?.invoke()
+                        }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .testTag("home_choose_task_badge")
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .clip(CircleShape)
+                                .background(currentTheme.primary)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isBreakMode) "Break Time!" else "Focus Time!",
+                            fontSize = 16.scaledSp,
+                            color = currentTheme.textSecondary,
+                            fontFamily = LocalAppFont.current,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Choose a task",
+                            fontSize = 24.scaledSp,
+                            fontFamily = LocalAppFont.current,
+                            color = currentTheme.textPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val cursorAlpha = rememberInfiniteTransition(label = "cursor").animateFloat(
+                            initialValue = 1f, targetValue = 0f, 
+                            animationSpec = infiniteRepeatable(tween(500), RepeatMode.Reverse),
+                            label = "cursorAlpha"
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(4.dp)
+                                .height(28.dp)
+                                .clip(CircleShape)
+                                .background(currentTheme.primary.copy(alpha = cursorAlpha.value))
+                        )
+                    }
+                }
             }
         }
     }
@@ -2324,11 +2725,7 @@ fun AnimatedQuoteCard(quote: String, isBreak: Boolean) {
                 // Animated text change
                 AnimatedContent(
                     targetState = quote,
-                    transitionSpec = {
-                        (fadeIn(tween(600, easing = FastOutSlowInEasing)) + slideInVertically(animationSpec = tween(600)) { 20 }).togetherWith(
-                            fadeOut(tween(400, easing = FastOutSlowInEasing)) + slideOutVertically(animationSpec = tween(400)) { -20 }
-                        )
-                    },
+                    transitionSpec = { PomoMotion.verticalCrossfadeTransition(upward = true) },
                     modifier = Modifier.fillMaxWidth(),
                     label = "quoteContent"
                 ) { targetQuote ->

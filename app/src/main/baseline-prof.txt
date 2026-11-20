@@ -1,0 +1,20 @@
+# PomoPal ART Baseline Profile (Human-Readable Format)
+# Compiled automatically by AGP into assets/dexopt/baseline.prof on release builds.
+# Wildcard rules include Compose compiler-generated $lambda$ and ComposableSingletons$ classes.
+
+# Cold start, Splash Hold & Dissolve, and root navigation host
+HSPLcom/example/PomoPalApplication;->**(**)**
+HSPLcom/example/MainActivity**;->**(**)**
+HSPLcom/example/ComposableSingletons$MainActivityKt**;->**(**)**
+
+# M3 Expressive motion physics, theme tokens, screens, dialogs, and Compose lambdas
+HSPLcom/example/ui/**;->**(**)**
+
+# Room database, DAOs, and immutable task/session entities
+HSPLcom/example/data/**;->**(**)**
+
+# Timer state manager, settings, sound playback, and app blocker services
+HSPLcom/example/service/**;->**(**)**
+
+# 3D Judy Filament rendering engine and glTF skinning hot paths
+HSPLcom/google/android/filament/**;->**(**)**

@@ -14,23 +14,26 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.LocalAppTheme
 import com.example.ui.theme.LocalAppFont
+import com.example.ui.theme.LocalAppTheme
+import com.example.ui.theme.PomoMotion
 import kotlinx.coroutines.delay
 
 enum class DoodleType { STAR, SPARKLE, BOOK, PENCIL, TARGET, CLOUD, CUP, LEAF, SPROUT }
@@ -276,7 +279,7 @@ fun InteractiveAboutScreen() {
 
     val toneGenerator = remember {
         try {
-            android.media.ToneGenerator(android.media.AudioManager.STREAM_SYSTEM, 30) // Subtle volume
+            android.media.ToneGenerator(android.media.AudioManager.STREAM_SYSTEM, 30)
         } catch (e: Exception) { null }
     }
     DisposableEffect(Unit) {
@@ -286,42 +289,118 @@ fun InteractiveAboutScreen() {
     var step by remember { mutableIntStateOf(0) }
     var charsToDisplay by remember { mutableIntStateOf(0) }
     var skipTyping by remember { mutableStateOf(false) }
+    var patReactionText by remember { mutableStateOf<String?>(null) }
+    var patBurstKey by remember { mutableIntStateOf(0) }
+    var customMoodOverride by remember { mutableStateOf<MascotExpression?>(null) }
+    var customSpeakPulse by remember { mutableStateOf(false) }
 
-    val messages = listOf(
-        "Hey! I'm PomoPal. 👋",
-        "I'm here to help you focus...",
-        "...take meaningful breaks...",
-        "...and make studying a little less painful. 😌",
-        "I was built with one simple goal...",
-        "To help you show up.",
-        "And keep growing. 🌱",
-        "Made with ❤️ by Abhinav Yaduvanshi\n\nPomoPal 3.0 — Momentum"
-    )
+    val messages = remember {
+        listOf(
+            "Hey! I'm Judy, your PomoPal. 🐰",
+            "I'm here to help you lock in & focus...",
+            "...take meaningful, cozy breaks...",
+            "...and make studying feel lighter. 😌",
+            "I was built with one simple goal...",
+            "To help you show up, every day.",
+            "And keep growing, one block at a time. 🌱",
+            "Made with ❤️ by Abhinav Yaduvanshi\n\nPomoPal 3.0 — Momentum"
+        )
+    }
 
-    val expressions = listOf(
-        MascotExpression.HAPPY, // "Hey! I'm PomoPal."
-        MascotExpression.FOCUS, // "I'm here to help you focus..."
-        MascotExpression.RELAX, // "...take meaningful breaks..."
-        MascotExpression.IDLE,  // "...and make studying a little less painful."
-        MascotExpression.FOCUS, // "I was built with one simple goal..."
-        MascotExpression.IDLE,  // "To help you show up."
-        MascotExpression.HAPPY, // "And keep growing."
-        MascotExpression.HAPPY  // Credits
-    )
+    val expressions = remember {
+        listOf(
+            MascotExpression.EXCITED, // "Hey! I'm Judy, your PomoPal."
+            MascotExpression.FOCUS,   // "I'm here to help you lock in & focus..."
+            MascotExpression.RELAX,   // "...take meaningful, cozy breaks..."
+            MascotExpression.CURIOUS, // "...and make studying feel lighter."
+            MascotExpression.FOCUS,   // "I was built with one simple goal..."
+            MascotExpression.IDLE,    // "To help you show up, every day."
+            MascotExpression.HAPPY,   // "And keep growing..."
+            MascotExpression.HAPPY    // Credits
+        )
+    }
+
+    val emotionLabels = remember {
+        listOf(
+            "✨ Excited to meet you",
+            "🎯 Locked In",
+            "🌿 Cozy Break Mode",
+            "💜 Right Beside You",
+            "🌟 Purpose Driven",
+            "💪 Steady Momentum",
+            "🌱 Growing Together",
+            "🐰 Interactive Companion"
+        )
+    }
+
+    val patQuotes = remember {
+        listOf(
+            "Hehe! *ear wiggle* ✨",
+            "You've got this! 🥕",
+            "Cheering for you! 💜",
+            "Let's stay focused! 🌟"
+        )
+    }
 
     val isCredits = step == messages.lastIndex
-    
+    val activeExpression = if (patReactionText != null) {
+        MascotExpression.EXCITED
+    } else if (isCredits && customMoodOverride != null) {
+        customMoodOverride!!
+    } else {
+        expressions[step]
+    }
+
+    val targetAuraColor = when (activeExpression) {
+        MascotExpression.EXCITED -> Color(0xFFFF8A65)
+        MascotExpression.HAPPY -> currentTheme.primary
+        MascotExpression.FOCUS -> Color(0xFF5C9CE6)
+        MascotExpression.RELAX -> Color(0xFF66BB8A)
+        MascotExpression.CURIOUS -> Color(0xFF9C88FF)
+        MascotExpression.IDLE -> currentTheme.secondary
+    }
+    val auraColor by animateColorAsState(
+        targetValue = targetAuraColor,
+        animationSpec = PomoMotion.colorSpec,
+        label = "judyAuraColor"
+    )
+
+    val auraInfinite = rememberInfiniteTransition(label = "aboutAura")
+    val auraPulse by auraInfinite.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "auraPulse"
+    )
+
+    LaunchedEffect(patReactionText) {
+        if (patReactionText != null) {
+            delay(1800)
+            patReactionText = null
+        }
+    }
+
+    LaunchedEffect(customSpeakPulse) {
+        if (customSpeakPulse) {
+            delay(1400)
+            customSpeakPulse = false
+        }
+    }
+
     LaunchedEffect(step) {
         val text = messages[step]
         skipTyping = false
         charsToDisplay = 0
-        
+        customMoodOverride = null
+
         if (isCredits) {
             charsToDisplay = text.length
             return@LaunchedEffect
         }
-        
-        // Typing animation
+
         while (charsToDisplay < text.length) {
             if (skipTyping) {
                 charsToDisplay = text.length
@@ -329,37 +408,37 @@ fun InteractiveAboutScreen() {
             }
             try {
                 toneGenerator?.startTone(android.media.ToneGenerator.TONE_CDMA_KEYPAD_VOLUME_KEY_LITE, 10)
-            } catch (e: Exception) {}
-            delay(40)
+            } catch (_: Exception) {}
+            delay(38)
             charsToDisplay++
         }
-        
-        // Typing completed chime
+
         try {
             toneGenerator?.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 25)
-        } catch (e: Exception) {}
-        
-        // Wait 2 seconds before auto-advance
+        } catch (_: Exception) {}
+
         var waitTime = 0
-        while (waitTime < 2000) {
-            if (skipTyping) {
-                break
-            }
+        while (waitTime < 2200) {
+            if (skipTyping) break
             delay(50)
             waitTime += 50
         }
-        
+
         if (step < messages.lastIndex) {
             step++
         }
     }
 
-    // Scale animation on tap
-    val scale = remember { Animatable(1f) }
-    LaunchedEffect(step) {
-        if (step > 0) {
-            scale.animateTo(1.05f, animationSpec = tween(150))
-            scale.animateTo(1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+    val isCurrentlySpeaking = (!isCredits && charsToDisplay < messages[step].length) || customSpeakPulse || patReactionText != null
+
+    val advanceStory = {
+        if (step < messages.lastIndex) {
+            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+            if (charsToDisplay < messages[step].length) {
+                skipTyping = true
+            } else {
+                step++
+            }
         }
     }
 
@@ -369,115 +448,339 @@ fun InteractiveAboutScreen() {
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
-            ) {
-                if (step < messages.lastIndex) {
-                    try {
-                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                    } catch (e: Exception) {}
-                    
-                    if (charsToDisplay < messages[step].length) {
-                        skipTyping = true // Instantly reveal text
-                    } else {
-                        skipTyping = true // Instantly skip the 2-second delay
-                    }
-                }
-            }
+            ) { advanceStory() }
     ) {
         AmbientDoodles(step = step, theme = currentTheme)
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 80.dp, bottom = 48.dp, start = 32.dp, end = 32.dp)
+                .padding(top = 12.dp, bottom = 24.dp, start = 24.dp, end = 24.dp)
         ) {
-            // Mascot Container (Takes up upper half)
+            // Story progress indicator dots
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 4.dp)
+            ) {
+                messages.indices.forEach { idx ->
+                    val isCurrent = idx == step
+                    val dotWidth by animateDpAsState(
+                        targetValue = if (isCurrent) 22.dp else 7.dp,
+                        animationSpec = PomoMotion.expressiveSpatial(Dp.VisibilityThreshold),
+                        label = "dotWidth_$idx"
+                    )
+                    val dotColor by animateColorAsState(
+                        targetValue = if (idx <= step) auraColor else currentTheme.cardBorder,
+                        animationSpec = PomoMotion.colorSpec,
+                        label = "dotColor_$idx"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .height(7.dp)
+                            .width(dotWidth)
+                            .background(dotColor, RoundedCornerShape(4.dp))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                                step = idx
+                            }
+                    )
+                }
+            }
+
+            // Interactive 3D Judy Stage (seamlessly blended over mood-reactive radial glow)
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .graphicsLayer { 
-                        scaleX = scale.value
-                        scaleY = scale.value
-                    }
             ) {
+                // Mood-reactive glowing aura behind transparent 3D Judy
+                Canvas(
+                    modifier = Modifier
+                        .size(260.dp)
+                        .graphicsLayer {
+                            scaleX = auraPulse
+                            scaleY = auraPulse
+                        }
+                ) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                auraColor.copy(alpha = if (currentTheme.isDark) 0.36f else 0.24f),
+                                auraColor.copy(alpha = 0.10f),
+                                Color.Transparent
+                            ),
+                            center = center,
+                            radius = size.width / 2f
+                        )
+                    )
+                }
+
+                // Live Transparent Interactive 3D Judy (full-body skeleton + spring physics)
                 PomoPalMascot(
-                    expression = expressions[step],
-                    modifier = Modifier.size(240.dp),
-                    isBreathing = !isCredits, // Stop heavy breathing on credits for subtleness
-                    isSpeaking = (!isCredits && charsToDisplay < messages[step].length)
+                    expression = activeExpression,
+                    modifier = Modifier.size(width = 272.dp, height = 286.dp),
+                    isBreathing = true,
+                    isSpeaking = isCurrentlySpeaking,
+                    interactive = true,
+                    onTap = {
+                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                        patBurstKey++
+                        patReactionText = patQuotes[patBurstKey % patQuotes.size]
+                    }
                 )
+
+                // Floating pat reaction toast over Judy
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = patReactionText != null,
+                    enter = fadeIn(PomoMotion.fastEffects()) +
+                        scaleIn(initialScale = 0.72f, animationSpec = PomoMotion.expressiveSpatial()) +
+                        slideInVertically(animationSpec = PomoMotion.intOffsetFastSpatial) { 20 },
+                    exit = fadeOut(PomoMotion.fastEffects()) +
+                        scaleOut(targetScale = 0.85f, animationSpec = PomoMotion.fastSpatial()) +
+                        slideOutVertically(animationSpec = PomoMotion.intOffsetFastSpatial) { -16 },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .shadow(6.dp, RoundedCornerShape(16.dp), spotColor = auraColor.copy(alpha = 0.35f))
+                            .background(currentTheme.surface, RoundedCornerShape(16.dp))
+                            .border(1.dp, auraColor.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                            .padding(horizontal = 14.dp, vertical = 7.dp)
+                    ) {
+                        Text(
+                            text = patReactionText.orEmpty(),
+                            fontFamily = currentFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = currentTheme.textPrimary
+                        )
+                    }
+                }
             }
 
-            // Message Text (Centered in lower half)
+            // Live Emotion Status Pill + Drag hint
+            val moodLabel = if (isCredits && customMoodOverride != null) {
+                when (customMoodOverride) {
+                    MascotExpression.EXCITED -> "🤩 Feeling Excited"
+                    MascotExpression.FOCUS -> "🎯 Focus Mode"
+                    MascotExpression.RELAX -> "🌿 Cozy & Relaxed"
+                    MascotExpression.CURIOUS -> "🤔 Curious Mood"
+                    else -> "😊 Happy & Ready"
+                }
+            } else {
+                emotionLabels[step]
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .padding(bottom = 10.dp)
+                    .background(auraColor.copy(alpha = 0.14f), RoundedCornerShape(20.dp))
+                    .border(1.dp, auraColor.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = moodLabel,
+                    fontFamily = currentFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = currentTheme.textPrimary
+                )
+                if (isCurrentlySpeaking) {
+                    Text(
+                        text = "• speaking",
+                        fontFamily = currentFont,
+                        fontSize = 11.sp,
+                        color = auraColor
+                    )
+                }
+            }
+
+            // Message Text / Credits Mood Playground
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp),
+                    .heightIn(min = 178.dp),
                 contentAlignment = Alignment.TopCenter
             ) {
                 AnimatedContent(
                     targetState = step,
                     transitionSpec = {
-                        (fadeIn(animationSpec = tween(400)) + slideInVertically(animationSpec = tween(400)) { it / 2 }).togetherWith(
-                            fadeOut(animationSpec = tween(200))
-                        )
+                        PomoMotion.verticalCrossfadeTransition(upward = true)
                     },
                     label = "MessageTransition"
                 ) { currentStep ->
                     val text = messages[currentStep]
                     val isCreditsLocal = currentStep == messages.lastIndex
                     if (isCreditsLocal) {
-                        // Final credits style
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 24.dp)) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(currentTheme.surface, RoundedCornerShape(24.dp))
+                                .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(24.dp))
+                                .padding(horizontal = 16.dp, vertical = 16.dp)
+                        ) {
+                            Text(
+                                text = "Try Judy's Moods",
+                                fontFamily = currentFont,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = currentTheme.textSecondary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            val moods = listOf(
+                                "😊 Happy" to MascotExpression.HAPPY,
+                                "🤩 Excited" to MascotExpression.EXCITED,
+                                "🎯 Focus" to MascotExpression.FOCUS,
+                                "🌿 Relax" to MascotExpression.RELAX,
+                                "🤔 Curious" to MascotExpression.CURIOUS
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                moods.forEach { (label, mood) ->
+                                    val selected = activeExpression == mood
+                                    val moodInteraction = remember { MutableInteractionSource() }
+                                    val isMoodPressed by moodInteraction.collectIsPressedAsState()
+                                    val moodScale by animateFloatAsState(
+                                        targetValue = if (isMoodPressed) 0.90f else (if (selected) 1.06f else 1f),
+                                        animationSpec = PomoMotion.expressiveSpatial(),
+                                        label = "moodScale"
+                                    )
+                                    val moodBg by animateColorAsState(
+                                        targetValue = if (selected) auraColor else currentTheme.backgroundSecondary,
+                                        animationSpec = PomoMotion.colorSpec,
+                                        label = "moodBg"
+                                    )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .graphicsLayer {
+                                                scaleX = moodScale
+                                                scaleY = moodScale
+                                            }
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(moodBg)
+                                            .clickable(
+                                                interactionSource = moodInteraction,
+                                                indication = ripple(bounded = true)
+                                            ) {
+                                                try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                                                customMoodOverride = mood
+                                                customSpeakPulse = true
+                                            }
+                                            .padding(vertical = 7.dp, horizontal = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = label.substringBefore(" "),
+                                            fontSize = 15.sp
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = "Made with ❤️ by Abhinav Yaduvanshi",
                                 fontFamily = currentFont,
-                                fontSize = 16.sp,
+                                fontSize = 14.sp,
                                 color = currentTheme.textSecondary,
                                 textAlign = TextAlign.Center
                             )
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "PomoPal 3.0 — Momentum",
                                 fontFamily = currentFont,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
+                                fontSize = 16.sp,
                                 color = currentTheme.textPrimary,
                                 textAlign = TextAlign.Center
                             )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            val replayInteraction = remember { MutableInteractionSource() }
+                            val isReplayPressed by replayInteraction.collectIsPressedAsState()
+                            val replayScale by animateFloatAsState(
+                                targetValue = if (isReplayPressed) 0.93f else 1f,
+                                animationSpec = PomoMotion.pressScaleSpec,
+                                label = "replayScale"
+                            )
+                            Text(
+                                text = "↻ Replay Judy's Story",
+                                fontFamily = currentFont,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = currentTheme.primary,
+                                modifier = Modifier
+                                    .graphicsLayer {
+                                        scaleX = replayScale
+                                        scaleY = replayScale
+                                    }
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(currentTheme.primary.copy(alpha = 0.12f))
+                                    .clickable(
+                                        interactionSource = replayInteraction,
+                                        indication = ripple(bounded = true)
+                                    ) {
+                                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                                        step = 0
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                            )
                         }
                     } else {
-                        // Speech Bubble style
                         val displayedText = if (currentStep == step) text.take(charsToDisplay) else text
-                        
+                        val finishedTyping = currentStep == step && charsToDisplay >= text.length
+
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 8.dp)
-                                .shadow(8.dp, SpeechBubbleShape, ambientColor = currentTheme.primary.copy(alpha = 0.5f), spotColor = currentTheme.primary.copy(alpha = 0.5f))
+                                .padding(horizontal = 4.dp)
+                                .shadow(
+                                    elevation = 8.dp,
+                                    shape = SpeechBubbleShape,
+                                    ambientColor = auraColor.copy(alpha = 0.35f),
+                                    spotColor = auraColor.copy(alpha = 0.35f)
+                                )
                                 .background(currentTheme.surface, SpeechBubbleShape)
-                                .border(1.dp, currentTheme.textPrimary.copy(alpha = 0.05f), SpeechBubbleShape)
-                                .padding(top = 40.dp, bottom = 28.dp, start = 24.dp, end = 24.dp),
+                                .border(1.dp, auraColor.copy(alpha = 0.22f), SpeechBubbleShape)
+                                .clickable { advanceStory() }
+                                .padding(top = 34.dp, bottom = 22.dp, start = 22.dp, end = 22.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = displayedText,
-                                fontFamily = currentFont,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 20.sp,
-                                color = currentTheme.textPrimary,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = displayedText,
+                                    fontFamily = currentFont,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 19.sp,
+                                    color = currentTheme.textPrimary,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = if (finishedTyping) "Tap bubble to continue →" else "Drag Judy to spin • Tap to skip",
+                                    fontFamily = currentFont,
+                                    fontSize = 11.sp,
+                                    color = currentTheme.textSecondary.copy(alpha = 0.7f)
+                                )
+                            }
                         }
                     }
                 }
             }
-            
-            // Interaction hint (Removed, replaced with Spacer)
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }

@@ -6,19 +6,25 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
+import androidx.activity.BackEventCompat
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,10 +35,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -43,15 +51,17 @@ import androidx.core.graphics.drawable.toBitmap
 import com.example.service.AppBlockerManager
 import com.example.service.SettingsManager
 import com.example.service.TimerManager
-import com.example.ui.components.PomoButton
 import com.example.ui.components.pomoShadow
 import com.example.ui.theme.LocalAppFont
 import com.example.ui.theme.LocalAppTheme
 import com.example.ui.theme.PomoMotion
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
+@Immutable
 data class AppItem(val packageName: String, val label: String, val isBlocked: Boolean)
 
 private val POPULAR_DISTRACTION_PACKAGES = setOf(
@@ -115,7 +125,7 @@ fun AppIcon(packageName: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BlockedAppsScreen(onBack: () -> Unit) {
+fun BlockedAppsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val view = LocalView.current
     var appList by remember { mutableStateOf<List<AppItem>>(emptyList()) }
@@ -134,12 +144,27 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
     var isVibrateEnabled by remember { mutableStateOf(AppBlockerManager.isVibrateEnabled(context)) }
     var blockedAttemptsToday by remember { mutableIntStateOf(AppBlockerManager.getBlockAttemptsToday(context)) }
 
-    androidx.activity.compose.BackHandler {
-        try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-        if (searchQuery.isNotEmpty()) {
-            searchQuery = ""
-        } else {
-            onBack()
+    val backProgress = remember { Animatable(0f) }
+    var backEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
+
+    PredictiveBackHandler { progressFlow ->
+        try {
+            progressFlow.collect { event ->
+                backEdge = event.swipeEdge
+                backProgress.snapTo(event.progress.coerceIn(0f, 1f))
+            }
+            try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+            if (searchQuery.isNotEmpty()) {
+                searchQuery = ""
+                backProgress.snapTo(0f)
+            } else {
+                onBack()
+            }
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) {
+                backProgress.animateTo(0f, animationSpec = PomoMotion.fastSpatial())
+            }
+            throw e
         }
     }
 
@@ -192,8 +217,42 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
         }
     }
 
-    Scaffold(
-        topBar = {
+    val isClearingSearch = searchQuery.isNotEmpty()
+    // Strictly keyed on raw app list and filter controls (never timer/ViewModel ticks)
+    val filteredAppList = remember(appList, searchQuery, showOnlyBlocked) {
+        appList.filter { app ->
+            val matchesSearch = searchQuery.isEmpty() || app.label.contains(searchQuery, ignoreCase = true)
+            val matchesBlockedFilter = !showOnlyBlocked || app.isBlocked
+            matchesSearch && matchesBlockedFilter
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .drawBehind {
+                val p = backProgress.value
+                if (p > 0f) {
+                    drawRect(Color.Black.copy(alpha = (p * 0.22f).coerceIn(0f, 0.22f)))
+                }
+            }
+    ) {
+        Scaffold(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val p = backProgress.value
+                    val edgeDirection = if (backEdge == BackEventCompat.EDGE_LEFT) 1f else -1f
+                    val gestureScale = if (isClearingSearch) 1f - (p * 0.03f) else 1f - (p * 0.09f)
+                    val gestureCornerDp = if (isClearingSearch) 0.dp else (p * 28f).dp
+                    scaleX = gestureScale
+                    scaleY = gestureScale
+                    translationX = edgeDirection * p * (if (isClearingSearch) 28.dp.toPx() else 20.dp.toPx())
+                    shape = RoundedCornerShape(gestureCornerDp)
+                    clip = gestureCornerDp > 0.dp
+                    compositingStrategy = CompositingStrategy.Offscreen
+                },
+            topBar = {
             TopAppBar(
                 title = {
                     Column {
@@ -257,7 +316,7 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
             ) {
 
                 // 2. Real-Time Status & Daily Stats Dashboard
-                item {
+                item(key = "blocker_status_dashboard", contentType = "status_dashboard") {
                     val statusText: String
                     val statusColor: Color
                     val statusIcon = when {
@@ -333,11 +392,23 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                                 Spacer(modifier = Modifier.weight(1f))
 
                                 // Test / Preview Pill
+                                val previewInteraction = remember { MutableInteractionSource() }
+                                val isPreviewPressed by previewInteraction.collectIsPressedAsState()
+                                val previewScale by animateFloatAsState(
+                                    targetValue = if (isPreviewPressed) 0.93f else 1f,
+                                    animationSpec = PomoMotion.pressScaleSpec,
+                                    label = "previewScale"
+                                )
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
                                     color = currentTheme.primary.copy(alpha = 0.12f),
+                                    modifier = Modifier.graphicsLayer {
+                                        scaleX = previewScale
+                                        scaleY = previewScale
+                                    },
+                                    interactionSource = previewInteraction,
                                     onClick = {
-                                        try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                                        try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
                                         val previewIntent = Intent(context, BlockedAppActivity::class.java).apply {
                                             putExtra(BlockedAppActivity.EXTRA_PACKAGE_NAME, "com.instagram.android")
                                             putExtra(BlockedAppActivity.EXTRA_PREVIEW_MODE, true)
@@ -457,7 +528,7 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                 }
 
                 // 3. Strict Mode & Haptic Settings Card
-                item {
+                item(key = "blocker_strict_settings", contentType = "settings_card") {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -549,7 +620,7 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                 }
 
                 // 4. Quick Selection Chips & Search
-                item {
+                item(key = "blocker_search_controls", contentType = "search_controls") {
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -649,20 +720,14 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
 
                 // 5. Apps List
                 if (isLoading) {
-                    item {
+                    item(key = "blocker_loading", contentType = "loading_state") {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth().height(200.dp)) {
                             CircularProgressIndicator(color = currentTheme.primary)
                         }
                     }
                 } else {
-                    val filteredAppList = appList.filter { app ->
-                        val matchesSearch = searchQuery.isEmpty() || app.label.contains(searchQuery, ignoreCase = true)
-                        val matchesBlockedFilter = !showOnlyBlocked || app.isBlocked
-                        matchesSearch && matchesBlockedFilter
-                    }
-
                     if (filteredAppList.isEmpty()) {
-                        item {
+                        item(key = "blocker_empty", contentType = "empty_state") {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -687,27 +752,54 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                             }
                         }
                     } else {
-                        items(filteredAppList, key = { it.packageName }) { app ->
+                        itemsIndexed(
+                            items = filteredAppList,
+                            key = { _, app -> app.packageName },
+                            contentType = { _, _ -> "app_row" }
+                        ) { index, app ->
                             val isSelected = app.isBlocked
+                            val revealProgress = remember(app.packageName) { Animatable(0f) }
+                            LaunchedEffect(app.packageName) {
+                                if (index < 10) delay(index * 24L)
+                                revealProgress.animateTo(1f, animationSpec = PomoMotion.defaultSpatial())
+                            }
+                            val rowInteraction = remember { MutableInteractionSource() }
+                            val isRowPressed by rowInteraction.collectIsPressedAsState()
+                            val pressScale by animateFloatAsState(
+                                targetValue = if (isRowPressed) 0.97f else 1f,
+                                animationSpec = PomoMotion.pressScaleSpec,
+                                label = "appRowPressScale"
+                            )
                             val containerColor by animateColorAsState(
                                 targetValue = if (isSelected) currentTheme.primary.copy(alpha = 0.1f) else Color.Transparent,
-                                animationSpec = tween(300),
+                                animationSpec = PomoMotion.colorSpec,
                                 label = "bgColor"
                             )
-                            val checkScale by animateFloatAsState(
-                                targetValue = if (isSelected) 1f else 0f,
-                                animationSpec = PomoMotion.floatSpec,
-                                label = "checkScale"
+                            val circleBgColor by animateColorAsState(
+                                targetValue = if (isSelected) currentTheme.primary else currentTheme.cardBorder.copy(alpha = 0.5f),
+                                animationSpec = PomoMotion.colorSpec,
+                                label = "circleBgColor"
                             )
 
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 4.dp)
+                                    .graphicsLayer {
+                                        val p = revealProgress.value
+                                        alpha = p.coerceIn(0f, 1f)
+                                        val s = (0.95f + 0.05f * p) * pressScale
+                                        scaleX = s
+                                        scaleY = s
+                                        translationY = (1f - p) * 14.dp.toPx()
+                                    }
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(containerColor)
-                                    .clickable {
-                                        try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                                    .clickable(
+                                        interactionSource = rowInteraction,
+                                        indication = ripple(bounded = true)
+                                    ) {
+                                        try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
                                         val currentSet = blockedSet.toMutableSet()
                                         if (currentSet.contains(app.packageName)) {
                                             currentSet.remove(app.packageName)
@@ -748,17 +840,27 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                                     modifier = Modifier
                                         .size(28.dp)
                                         .background(
-                                            color = if (isSelected) currentTheme.primary else currentTheme.cardBorder.copy(alpha = 0.5f),
+                                            color = circleBgColor,
                                             shape = CircleShape
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    if (isSelected || checkScale > 0.05f) {
+                                    androidx.compose.animation.AnimatedVisibility(
+                                        visible = isSelected,
+                                        enter = scaleIn(
+                                            initialScale = 0.3f,
+                                            animationSpec = PomoMotion.expressiveSpatial()
+                                        ) + fadeIn(PomoMotion.fastEffects()),
+                                        exit = scaleOut(
+                                            targetScale = 0.3f,
+                                            animationSpec = PomoMotion.fastSpatial()
+                                        ) + fadeOut(PomoMotion.fastEffects())
+                                    ) {
                                         Icon(
                                             imageVector = Icons.Filled.Check,
                                             contentDescription = "Blocked",
                                             tint = Color.White,
-                                            modifier = Modifier.scale(checkScale).size(18.dp)
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
                                 }
@@ -812,6 +914,7 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
                     }
                 }
             }
+        }
         }
     }
 }

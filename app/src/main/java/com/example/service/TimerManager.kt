@@ -70,10 +70,18 @@ object TimerManager {
         _timeRemainingSeconds.value = seconds
     }
     
-    fun setTask(id: Int, name: String, color: Long? = null) {
+    fun setTask(id: Int, name: String, color: Long? = null, isBreakCategory: Boolean? = null) {
         _currentTaskId.value = id
         _currentTaskName.value = name
         _currentTaskColor.value = color
+        if (id != -1 && isBreakCategory != null && _timerState.value == TimerState.STOPPED) {
+            _isBreakMode.value = isBreakCategory
+            _timeRemainingSeconds.value = if (isBreakCategory) {
+                _breakTimeSeconds.value
+            } else {
+                _focusTimeSeconds.value
+            }
+        }
     }
 
     fun setFocusTimeMins(mins: Int) {

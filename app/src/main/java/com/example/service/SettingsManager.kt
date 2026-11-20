@@ -28,6 +28,7 @@ object SettingsManager {
     private const val KEY_CUSTOM_SECONDARY_COLOR = "custom_secondary_color"
     private const val KEY_CUSTOM_ACCENT_COLOR = "custom_accent_color"
     private const val KEY_APPEARANCE_MODE = "appearance_mode"
+    private const val KEY_DAILY_FOCUS_GOAL_MINS = "daily_focus_goal_mins"
 
     enum class AppearanceMode(val id: String) {
         LIGHT("light"),
@@ -47,6 +48,9 @@ object SettingsManager {
 
     private val _fontState = kotlinx.coroutines.flow.MutableStateFlow(com.example.ui.theme.FontOption.COMIC_NEUE)
     val fontState: kotlinx.coroutines.flow.StateFlow<com.example.ui.theme.FontOption> = _fontState
+
+    private val _dailyFocusGoalState = kotlinx.coroutines.flow.MutableStateFlow(120)
+    val dailyFocusGoalState: kotlinx.coroutines.flow.StateFlow<Int> = _dailyFocusGoalState
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -75,6 +79,7 @@ object SettingsManager {
         _appearanceState.value = getAppearanceMode()
         updateThemeState()
         _fontState.value = com.example.ui.theme.FontOption.fromId(getFontId())
+        _dailyFocusGoalState.value = getDailyFocusGoalMins()
     }
 
     fun getCompletionSound(): Int = getPrefs().getInt(KEY_COMPLETION_SOUND, 0)
@@ -103,6 +108,18 @@ object SettingsManager {
     fun setBreakTimeMins(mins: Int) {
         getPrefs().edit().putInt(KEY_BREAK_TIME, mins).apply()
         TimerManager.setBreakTimeMins(mins)
+    }
+
+    fun getDailyFocusGoalMins(): Int = try {
+        getPrefs().getInt(KEY_DAILY_FOCUS_GOAL_MINS, 120).coerceIn(30, 480)
+    } catch (e: Exception) {
+        120
+    }
+
+    fun setDailyFocusGoalMins(mins: Int) {
+        val clamped = mins.coerceIn(30, 480)
+        getPrefs().edit().putInt(KEY_DAILY_FOCUS_GOAL_MINS, clamped).apply()
+        _dailyFocusGoalState.value = clamped
     }
 
     fun getBlockedApps(): Set<String> {

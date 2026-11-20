@@ -1,29 +1,24 @@
 package com.example.ui.components
 
 import android.view.HapticFeedbackConstants
+import androidx.activity.BackEventCompat
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.LocalIndication
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,8 +40,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -56,7 +53,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,8 +60,13 @@ import com.example.service.SettingsManager
 import com.example.ui.theme.FontOption
 import com.example.ui.theme.LocalAppFont
 import com.example.ui.theme.LocalAppTheme
+import com.example.ui.theme.PomoMotion
 import com.example.ui.theme.blend
 import com.example.ui.theme.luminance
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ThemeFontCustomizer(
@@ -77,52 +78,44 @@ fun ThemeFontCustomizer(
     val view = LocalView.current
 
     var showCustomizer by remember { mutableStateOf(false) }
+    val customizerBackProgress = remember { Animatable(0f) }
+    var customizerBackEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
 
-    androidx.activity.compose.BackHandler(enabled = showCustomizer) {
-        try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-        showCustomizer = false
+    PredictiveBackHandler(enabled = showCustomizer) { progressFlow ->
+        try {
+            progressFlow.collect { event ->
+                customizerBackEdge = event.swipeEdge
+                customizerBackProgress.snapTo(event.progress.coerceIn(0f, 1f))
+            }
+            try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+            showCustomizer = false
+            customizerBackProgress.snapTo(0f)
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) {
+                customizerBackProgress.animateTo(0f, animationSpec = PomoMotion.fastSpatial())
+            }
+            throw e
+        }
     }
 
     AnimatedContent(
         targetState = showCustomizer,
         transitionSpec = {
-            if (targetState) {
-                (slideInHorizontally(
-                    initialOffsetX = { fullWidth -> (fullWidth * 0.15f).toInt() },
-                    animationSpec = tween(320, easing = FastOutSlowInEasing)
-                ) + fadeIn(
-                    animationSpec = tween(280, delayMillis = 40, easing = LinearOutSlowInEasing)
-                )).togetherWith(
-                    slideOutHorizontally(
-                        targetOffsetX = { fullWidth -> -(fullWidth * 0.15f).toInt() },
-                        animationSpec = tween(260, easing = FastOutSlowInEasing)
-                    ) + fadeOut(
-                        animationSpec = tween(200, easing = FastOutSlowInEasing)
-                    )
-                ).using(
-                    SizeTransform(clip = false) { _, _ ->
-                        tween(300, easing = FastOutSlowInEasing)
-                    }
-                )
-            } else {
-                (slideInHorizontally(
-                    initialOffsetX = { fullWidth -> -(fullWidth * 0.15f).toInt() },
-                    animationSpec = tween(320, easing = FastOutSlowInEasing)
-                ) + fadeIn(
-                    animationSpec = tween(280, delayMillis = 40, easing = LinearOutSlowInEasing)
-                )).togetherWith(
-                    slideOutHorizontally(
-                        targetOffsetX = { fullWidth -> (fullWidth * 0.15f).toInt() },
-                        animationSpec = tween(260, easing = FastOutSlowInEasing)
-                    ) + fadeOut(
-                        animationSpec = tween(200, easing = FastOutSlowInEasing)
-                    )
-                ).using(
-                    SizeTransform(clip = false) { _, _ ->
-                        tween(300, easing = FastOutSlowInEasing)
-                    }
-                )
+            PomoMotion.horizontalSlideTransition(forward = targetState)
+        },
+        modifier = Modifier.graphicsLayer {
+            val p = customizerBackProgress.value
+            val edgeDirection = if (customizerBackEdge == BackEventCompat.EDGE_LEFT) 1f else -1f
+            val customizerGestureScale = if (showCustomizer) 1f - (p * 0.06f) else 1f
+            val customizerCornerDp = if (showCustomizer) (p * 24f).dp else 0.dp
+            scaleX = customizerGestureScale
+            scaleY = customizerGestureScale
+            if (showCustomizer) {
+                translationX = edgeDirection * p * 24.dp.toPx()
+                shape = RoundedCornerShape(customizerCornerDp)
+                clip = customizerCornerDp > 0.dp
             }
+            compositingStrategy = CompositingStrategy.Offscreen
         },
         label = "CustomizerTransition"
     ) { isCustomizerOpen ->
@@ -140,15 +133,12 @@ fun ThemeFontCustomizer(
                 val isMakeItYoursPressed by makeItYoursInteraction.collectIsPressedAsState()
                 val makeItYoursScale by animateFloatAsState(
                     targetValue = if (isMakeItYoursPressed) 0.96f else 1f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessLow
-                    ),
+                    animationSpec = PomoMotion.pressScaleSpec,
                     label = "makeItYoursScale"
                 )
                 val makeItYoursElevation by animateDpAsState(
                     targetValue = if (isMakeItYoursPressed) 1.dp else 3.dp,
-                    animationSpec = spring(stiffness = Spring.StiffnessLow),
+                    animationSpec = PomoMotion.elevationSpec,
                     label = "makeItYoursElevation"
                 )
 
@@ -156,12 +146,15 @@ fun ThemeFontCustomizer(
                     onClick = {
                         try {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        } catch (e: Exception) {}
+                        } catch (_: Exception) {}
                         showCustomizer = true
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .scale(makeItYoursScale),
+                        .graphicsLayer {
+                            scaleX = makeItYoursScale
+                            scaleY = makeItYoursScale
+                        },
                     shape = RoundedCornerShape(24.dp),
                     interactionSource = makeItYoursInteraction,
                     colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
@@ -250,11 +243,16 @@ fun ThemeFontCustomizer(
                 Column(
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    FontOption.entries.forEach { font ->
+                    FontOption.entries.forEachIndexed { index, font ->
                         val isSelected = currentFont.id == font.id
+                        val revealProgress = remember { Animatable(0f) }
+                        LaunchedEffect(Unit) {
+                            delay(index * 40L)
+                            revealProgress.animateTo(1f, animationSpec = PomoMotion.defaultSpatial())
+                        }
                         val borderColor by animateColorAsState(
                             targetValue = if (isSelected) currentTheme.primary else currentTheme.cardBorder,
-                            animationSpec = com.example.ui.theme.PomoMotion.colorSpec,
+                            animationSpec = PomoMotion.colorSpec,
                             label = "fontBorder"
                         )
                         val targetBgColor = if (isSelected) {
@@ -268,25 +266,25 @@ fun ThemeFontCustomizer(
                         }
                         val cardBgColor by animateColorAsState(
                             targetValue = targetBgColor,
-                            animationSpec = com.example.ui.theme.PomoMotion.colorSpec,
+                            animationSpec = PomoMotion.colorSpec,
                             label = "fontCardBg"
                         )
                         val cardElevation by animateDpAsState(
                             targetValue = if (isSelected) 4.dp else 1.dp,
-                            animationSpec = com.example.ui.theme.PomoMotion.elevationSpec,
+                            animationSpec = PomoMotion.elevationSpec,
                             label = "fontElevation"
                         )
 
                         val interactionSource = remember { MutableInteractionSource() }
                         val isPressed by interactionSource.collectIsPressedAsState()
                         val scale by animateFloatAsState(
-                            targetValue = if (isPressed) 0.97f else 1f,
-                            animationSpec = com.example.ui.theme.PomoMotion.pressScaleSpec,
+                            targetValue = if (isPressed) 0.97f else (if (isSelected) 1.01f else 1f),
+                            animationSpec = PomoMotion.pressScaleSpec,
                             label = "fontScale"
                         )
                         val elevation by animateDpAsState(
                             targetValue = if (isPressed) 1.dp else cardElevation,
-                            animationSpec = com.example.ui.theme.PomoMotion.elevationSpec,
+                            animationSpec = PomoMotion.elevationSpec,
                             label = "fontElevation"
                         )
 
@@ -294,12 +292,19 @@ fun ThemeFontCustomizer(
                             onClick = {
                                 try {
                                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                } catch (e: Exception) {}
+                                } catch (_: Exception) {}
                                 SettingsManager.setFontId(font.id)
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .scale(scale),
+                                .graphicsLayer {
+                                    val p = revealProgress.value
+                                    alpha = p.coerceIn(0f, 1f)
+                                    val baseScale = 0.95f + (0.05f * p)
+                                    scaleX = scale * baseScale
+                                    scaleY = scale * baseScale
+                                    translationX = (1f - p) * 18.dp.toPx()
+                                },
                             shape = RoundedCornerShape(20.dp),
                             interactionSource = interactionSource,
                             colors = CardDefaults.cardColors(
@@ -352,7 +357,17 @@ fun ThemeFontCustomizer(
                                         }
                                     }
 
-                                    if (isSelected) {
+                                    AnimatedVisibility(
+                                        visible = isSelected,
+                                        enter = scaleIn(
+                                            initialScale = 0.4f,
+                                            animationSpec = PomoMotion.expressiveSpatial()
+                                        ) + fadeIn(animationSpec = PomoMotion.fastEffects()),
+                                        exit = scaleOut(
+                                            targetScale = 0.4f,
+                                            animationSpec = PomoMotion.fastSpatial()
+                                        ) + fadeOut(animationSpec = PomoMotion.fastEffects())
+                                    ) {
                                         Box(
                                             modifier = Modifier
                                                 .size(24.dp)

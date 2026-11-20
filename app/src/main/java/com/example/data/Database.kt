@@ -1,10 +1,12 @@
 package com.example.data
 
+import androidx.compose.runtime.Immutable
 import androidx.room.*
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
+@Immutable
 @Entity(tableName = "tasks")
 data class TaskItem(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -12,9 +14,11 @@ data class TaskItem(
     val categoryName: String,
     val categoryColor: Long, // ARGB format
     val completedPomodoros: Int = 0,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val isBreakCategory: Boolean = false
 )
 
+@Immutable
 @Entity(tableName = "sessions")
 data class TimerSession(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -71,7 +75,7 @@ interface SessionDao {
     suspend fun deleteAllSessions()
 }
 
-@Database(entities = [TaskItem::class, TimerSession::class], version = 8, exportSchema = false)
+@Database(entities = [TaskItem::class, TimerSession::class], version = 9, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun sessionDao(): SessionDao
@@ -87,11 +91,11 @@ object DatabaseProvider {
             db.execSQL("DROP TABLE IF EXISTS `alarms`")
 
             db.execSQL(
-                "CREATE TABLE IF NOT EXISTS `tasks_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `categoryName` TEXT NOT NULL, `categoryColor` INTEGER NOT NULL, `completedPomodoros` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL)"
+                "CREATE TABLE IF NOT EXISTS `tasks_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `categoryName` TEXT NOT NULL, `categoryColor` INTEGER NOT NULL, `completedPomodoros` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `isBreakCategory` INTEGER NOT NULL DEFAULT 0)"
             )
             try {
                 db.execSQL(
-                    "INSERT INTO `tasks_new` (`id`, `name`, `categoryName`, `categoryColor`, `completedPomodoros`, `timestamp`) SELECT `id`, `name`, `categoryName`, `categoryColor`, `completedPomodoros`, `timestamp` FROM `tasks`"
+                    "INSERT INTO `tasks_new` (`id`, `name`, `categoryName`, `categoryColor`, `completedPomodoros`, `timestamp`, `isBreakCategory`) SELECT `id`, `name`, `categoryName`, `categoryColor`, `completedPomodoros`, `timestamp`, CASE WHEN LOWER(`categoryName`) IN ('rest', 'break', 'relax', 'recharge') THEN 1 ELSE 0 END FROM `tasks`"
                 )
             } catch (_: Throwable) {}
             db.execSQL("DROP TABLE IF EXISTS `tasks`")
@@ -140,7 +144,7 @@ object DatabaseProvider {
             db.execSQL("DROP TABLE IF EXISTS `tasks`")
             db.execSQL("DROP TABLE IF EXISTS `sessions`")
             db.execSQL(
-                "CREATE TABLE IF NOT EXISTS `tasks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `categoryName` TEXT NOT NULL, `categoryColor` INTEGER NOT NULL, `completedPomodoros` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL)"
+                "CREATE TABLE IF NOT EXISTS `tasks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `categoryName` TEXT NOT NULL, `categoryColor` INTEGER NOT NULL, `completedPomodoros` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `isBreakCategory` INTEGER NOT NULL DEFAULT 0)"
             )
             db.execSQL(
                 "CREATE TABLE IF NOT EXISTS `sessions` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `taskName` TEXT NOT NULL, `isBreak` INTEGER NOT NULL, `durationMinutes` INTEGER NOT NULL, `startTime` INTEGER NOT NULL, `endTime` INTEGER NOT NULL, `taskColor` INTEGER)"
@@ -148,9 +152,33 @@ object DatabaseProvider {
         }
     }
 
+    private fun migrate8To9(db: SupportSQLiteDatabase) {
+        try {
+            val taskCols = mutableSetOf<String>()
+            db.query("PRAGMA table_info(`tasks`)").use { cursor ->
+                val nameIdx = cursor.getColumnIndex("name")
+                while (cursor.moveToNext()) {
+                    if (nameIdx >= 0) taskCols.add(cursor.getString(nameIdx))
+                }
+            }
+            if (!taskCols.contains("isBreakCategory")) {
+                db.execSQL("ALTER TABLE `tasks` ADD COLUMN `isBreakCategory` INTEGER NOT NULL DEFAULT 0")
+            }
+            db.execSQL(
+                "UPDATE `tasks` SET `isBreakCategory` = 1 WHERE LOWER(`categoryName`) IN ('rest', 'break', 'relax', 'recharge')"
+            )
+        } catch (_: Throwable) {
+            migrateToV8(db)
+        }
+    }
+
     private fun migration(from: Int, to: Int) = object : Migration(from, to) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            migrateToV8(db)
+            if (from == 8 && to == 9) {
+                migrate8To9(db)
+            } else {
+                migrateToV8(db)
+            }
         }
     }
 
@@ -162,13 +190,14 @@ object DatabaseProvider {
                 "pomelo_db_v3_stable"
             )
             .addMigrations(
-                migration(1, 8),
-                migration(2, 8),
-                migration(3, 8),
-                migration(4, 8),
-                migration(5, 8),
-                migration(6, 8),
-                migration(7, 8)
+                migration(1, 9),
+                migration(2, 9),
+                migration(3, 9),
+                migration(4, 9),
+                migration(5, 9),
+                migration(6, 9),
+                migration(7, 9),
+                migration(8, 9)
             )
             .fallbackToDestructiveMigration(true)
             .fallbackToDestructiveMigrationOnDowngrade(true)

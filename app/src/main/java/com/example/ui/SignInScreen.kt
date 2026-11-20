@@ -33,6 +33,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
@@ -51,10 +52,13 @@ import androidx.navigation.NavController
 import com.example.service.SettingsManager
 import com.example.ui.theme.LocalAppTheme
 import com.example.ui.theme.LocalAppFont
+import com.example.ui.theme.PomoMotion
 import com.example.ui.theme.luminance
 import com.example.ui.theme.blend
 import com.example.ui.components.PomoPalMascot
 import com.example.ui.components.MascotExpression
+import com.example.ui.components.LocalMascotRenderMode
+import com.example.ui.components.MascotRenderMode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -137,7 +141,7 @@ fun Interactive3DTile(
     // Interactive press physics
     val pressScale by animateFloatAsState(
         targetValue = if (isPressed) 0.88f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        animationSpec = PomoMotion.expressiveSpatial(),
         label = "pressScale"
     )
     val targetRotX = if (isPressed) -(touchY / 36f).coerceIn(-1f, 1f) * 28f else 0f
@@ -145,17 +149,17 @@ fun Interactive3DTile(
 
     val rotX by animateFloatAsState(
         targetValue = targetRotX,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        animationSpec = PomoMotion.expressiveSpatial(),
         label = "rotX"
     )
     val rotY by animateFloatAsState(
         targetValue = targetRotY,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        animationSpec = PomoMotion.expressiveSpatial(),
         label = "rotY"
     )
     val shadowElev by animateDpAsState(
         targetValue = if (isPressed) 2.dp else 12.dp,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        animationSpec = PomoMotion.elevationSpec,
         label = "shadowElev"
     )
 
@@ -166,8 +170,12 @@ fun Interactive3DTile(
         // Floating reaction speech bubble toast
         AnimatedVisibility(
             visible = showReaction,
-            enter = fadeIn(tween(180)) + scaleIn(tween(220, easing = LinearOutSlowInEasing), initialScale = 0.7f) + slideInVertically(initialOffsetY = { 20 }),
-            exit = fadeOut(tween(250)) + scaleOut(tween(200), targetScale = 0.8f) + slideOutVertically(targetOffsetY = { -20 }),
+            enter = fadeIn(PomoMotion.fastEffects()) +
+                scaleIn(animationSpec = PomoMotion.expressiveSpatial(), initialScale = 0.65f) +
+                slideInVertically(animationSpec = PomoMotion.intOffsetFastSpatial, initialOffsetY = { 20 }),
+            exit = fadeOut(PomoMotion.fastEffects()) +
+                scaleOut(animationSpec = PomoMotion.fastSpatial(), targetScale = 0.8f) +
+                slideOutVertically(animationSpec = PomoMotion.intOffsetFastSpatial, targetOffsetY = { -20 }),
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .offset(y = (-44).dp)
@@ -311,17 +319,17 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
 
     val exitAlpha by animateFloatAsState(
         targetValue = if (isExiting) 0f else 1f,
-        animationSpec = tween(durationMillis = 350, easing = CubicBezierEasing(0.33f, 1f, 0.68f, 1f)),
+        animationSpec = PomoMotion.fastEffects(),
         label = "exitAlpha"
     )
     val exitScale by animateFloatAsState(
-        targetValue = if (isExiting) 0.94f else 1f,
-        animationSpec = tween(durationMillis = 350, easing = CubicBezierEasing(0.33f, 1f, 0.68f, 1f)),
+        targetValue = if (isExiting) 0.90f else 1f,
+        animationSpec = PomoMotion.fastSpatial(),
         label = "exitScale"
     )
     val exitTranslationY by animateFloatAsState(
         targetValue = if (isExiting) -24f else 0f,
-        animationSpec = tween(durationMillis = 350, easing = CubicBezierEasing(0.33f, 1f, 0.68f, 1f)),
+        animationSpec = PomoMotion.fastSpatial(),
         label = "exitTranslationY"
     )
 
@@ -344,80 +352,51 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
 
     val bgElementsAlpha = remember { Animatable(0f) }
 
-    val smoothDecelEasing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
-
     LaunchedEffect(Unit) {
         // 0. 3D Elements Entrance
         launch {
             bgElementsAlpha.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 1200, easing = LinearOutSlowInEasing)
+                animationSpec = PomoMotion.slowEffects()
             )
         }
         
-        // 1. Hero Mascot Entrance: Gentle scale-in and fade-in
+        // 1. Hero Mascot Entrance: Expressive spring scale-in and fade-in
         launch {
-            logoAlpha.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 750, easing = FastOutSlowInEasing)
-            )
+            logoAlpha.animateTo(1f, animationSpec = PomoMotion.defaultEffects())
         }
         launch {
-            logoScale.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 850, easing = smoothDecelEasing)
-            )
+            logoScale.animateTo(1f, animationSpec = PomoMotion.expressiveSpatial())
         }
         launch {
-            logoTranslationY.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 850, easing = smoothDecelEasing)
-            )
+            logoTranslationY.animateTo(0f, animationSpec = PomoMotion.slowSpatial())
         }
 
         // 2. Staggered Title Entrance
-        delay(140)
+        delay(100)
         launch {
-            titleAlpha.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing)
-            )
+            titleAlpha.animateTo(1f, animationSpec = PomoMotion.defaultEffects())
         }
         launch {
-            titleTranslationY.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 700, easing = smoothDecelEasing)
-            )
+            titleTranslationY.animateTo(0f, animationSpec = PomoMotion.defaultSpatial())
         }
 
         // 3. Staggered Input Field Entrance
-        delay(140)
+        delay(100)
         launch {
-            inputAlpha.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing)
-            )
+            inputAlpha.animateTo(1f, animationSpec = PomoMotion.defaultEffects())
         }
         launch {
-            inputTranslationY.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 700, easing = smoothDecelEasing)
-            )
+            inputTranslationY.animateTo(0f, animationSpec = PomoMotion.defaultSpatial())
         }
 
         // 4. Staggered CTA Button Entrance
-        delay(140)
+        delay(100)
         launch {
-            buttonAlpha.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing)
-            )
+            buttonAlpha.animateTo(1f, animationSpec = PomoMotion.defaultEffects())
         }
         launch {
-            buttonTranslationY.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 700, easing = smoothDecelEasing)
-            )
+            buttonTranslationY.animateTo(0f, animationSpec = PomoMotion.defaultSpatial())
         }
     }
 
@@ -514,6 +493,7 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                         scaleX = exitScale
                         scaleY = exitScale
                         translationY = exitTranslationY
+                        compositingStrategy = if (exitAlpha < 0.999f) CompositingStrategy.Offscreen else CompositingStrategy.Auto
                     },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -522,7 +502,10 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp)
-                    .graphicsLayer { alpha = bgElementsAlpha.value }
+                    .graphicsLayer {
+                        alpha = bgElementsAlpha.value
+                        compositingStrategy = if (bgElementsAlpha.value < 0.999f) CompositingStrategy.Offscreen else CompositingStrategy.Auto
+                    }
                     .padding(top = 10.dp)
             ) {
                 // 📚 STUDY - Floating top-left in zero gravity
@@ -580,7 +563,14 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // 2. Hero Mascot with warm breathing aura & crisp depth
+            // 2. Hero 3D Judy Mascot with warm breathing aura & crisp depth
+            var judySignInGreet by remember { mutableStateOf(false) }
+            LaunchedEffect(judySignInGreet) {
+                if (judySignInGreet) {
+                    delay(2200)
+                    judySignInGreet = false
+                }
+            }
             Box(
                 modifier = Modifier
                     .graphicsLayer {
@@ -588,15 +578,16 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                         scaleX = logoScale.value
                         scaleY = logoScale.value
                         translationY = logoTranslationY.value + floatOffsetPx
+                        compositingStrategy = if (logoAlpha.value < 0.999f) CompositingStrategy.Offscreen else CompositingStrategy.Auto
                     }
-                    .size(130.dp),
+                    .size(188.dp),
                 contentAlignment = Alignment.Center
             ) {
                 val primaryColor = currentTheme.primary
-                val glowAlpha = if (currentTheme.isDark) 0.38f else 0.22f
+                val glowAlpha = if (currentTheme.isDark) 0.38f else 0.24f
                 Canvas(
                     modifier = Modifier
-                        .size(130.dp)
+                        .size(164.dp)
                         .graphicsLayer {
                             scaleX = pulseAnim
                             scaleY = pulseAnim
@@ -612,11 +603,50 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                     )
                 }
 
-                // Core Mascot with crisp 3D styling
-                PomoPalMascot(
-                    expression = MascotExpression.HAPPY,
-                    modifier = Modifier.size(76.dp)
-                )
+                // Core 3D Judy Mascot — pauses Choreographer render loop during Sign-In exit
+                CompositionLocalProvider(
+                    LocalMascotRenderMode provides if (isExiting) MascotRenderMode.PAUSED else MascotRenderMode.FULL
+                ) {
+                    PomoPalMascot(
+                        expression = if (judySignInGreet) MascotExpression.EXCITED else MascotExpression.HAPPY,
+                        modifier = Modifier.size(168.dp),
+                        isSpeaking = judySignInGreet,
+                        interactive = true,
+                        onTap = {
+                            try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                            judySignInGreet = true
+                        }
+                    )
+                }
+
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = judySignInGreet,
+                    enter = fadeIn(PomoMotion.fastEffects()) +
+                        scaleIn(initialScale = 0.72f, animationSpec = PomoMotion.expressiveSpatial()) +
+                        slideInVertically(animationSpec = PomoMotion.intOffsetFastSpatial) { 16 },
+                    exit = fadeOut(PomoMotion.fastEffects()) +
+                        scaleOut(targetScale = 0.85f, animationSpec = PomoMotion.fastSpatial()),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = (-12).dp)
+                        .zIndex(10f)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = currentTheme.surface,
+                        border = BorderStroke(1.dp, currentTheme.primary.copy(alpha = 0.45f)),
+                        shadowElevation = 6.dp
+                    ) {
+                        Text(
+                            text = "Hi! Let's focus together! 🐰✨",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = currentFont,
+                            color = currentTheme.textPrimary,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -628,6 +658,7 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                     .graphicsLayer {
                         alpha = titleAlpha.value
                         translationY = titleTranslationY.value
+                        compositingStrategy = CompositingStrategy.ModulateAlpha
                     },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -657,6 +688,7 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                     .graphicsLayer {
                         alpha = inputAlpha.value
                         translationY = inputTranslationY.value
+                        compositingStrategy = CompositingStrategy.ModulateAlpha
                     },
                 horizontalAlignment = Alignment.Start
             ) {
@@ -689,6 +721,7 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                         name.isNotBlank() -> currentTheme.primary.copy(alpha = 0.6f)
                         else -> currentTheme.cardBorder
                     },
+                    animationSpec = PomoMotion.colorSpec,
                     label = "borderColor"
                 )
 
@@ -696,13 +729,25 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                     targetValue = if (isFocused) {
                         currentTheme.surface.blend(currentTheme.primary, if (currentTheme.isDark) 0.14f else 0.06f)
                     } else currentTheme.surface,
+                    animationSpec = PomoMotion.colorSpec,
                     label = "surfaceBgColor"
                 )
 
                 val cardShadowElev by animateDpAsState(
                     targetValue = if (isFocused) 8.dp else 3.dp,
-                    animationSpec = spring(stiffness = Spring.StiffnessLow),
+                    animationSpec = PomoMotion.elevationSpec,
                     label = "cardShadow"
+                )
+
+                val sparkleScale by animateFloatAsState(
+                    targetValue = if (isFocused) 1.18f else 1f,
+                    animationSpec = PomoMotion.expressiveSpatial(),
+                    label = "sparkleScale"
+                )
+                val sparkleRotation by animateFloatAsState(
+                    targetValue = if (isFocused) 18f else 0f,
+                    animationSpec = PomoMotion.expressiveSpatial(),
+                    label = "sparkleRotation"
                 )
 
                 Box(
@@ -719,9 +764,9 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                             text = "✨",
                             fontSize = 20.sp,
                             modifier = Modifier.graphicsLayer {
-                                rotationZ = if (isFocused) 15f else 0f
-                                scaleX = if (isFocused) 1.15f else 1f
-                                scaleY = if (isFocused) 1.15f else 1f
+                                rotationZ = sparkleRotation
+                                scaleX = sparkleScale
+                                scaleY = sparkleScale
                             }
                         )
                         Spacer(modifier = Modifier.width(12.dp))
@@ -787,8 +832,8 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                 // Live Personalized Greeting Feedback
                 AnimatedVisibility(
                     visible = name.isNotBlank(),
-                    enter = fadeIn(tween(220)) + expandVertically(tween(220)),
-                    exit = fadeOut(tween(180)) + shrinkVertically(tween(180))
+                    enter = PomoMotion.expandSection,
+                    exit = PomoMotion.collapseSection
                 ) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
@@ -820,8 +865,8 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                 // Error message area
                 AnimatedVisibility(
                     visible = showError,
-                    enter = fadeIn(tween(250)) + expandVertically(tween(250)),
-                    exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
+                    enter = PomoMotion.expandSection,
+                    exit = PomoMotion.collapseSection
                 ) {
                     Text(
                         "Please enter a name to continue.",
@@ -842,11 +887,16 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                     .graphicsLayer {
                         alpha = buttonAlpha.value
                         translationY = buttonTranslationY.value
+                        compositingStrategy = CompositingStrategy.ModulateAlpha
                     }
             ) {
                 val interactionSource = remember { MutableInteractionSource() }
                 val isPressed by interactionSource.collectIsPressedAsState()
-                val buttonScale by animateFloatAsState(targetValue = if (isPressed) 0.96f else 1f, label = "buttonScale")
+                val buttonScale by animateFloatAsState(
+                    targetValue = if (isPressed) 0.96f else 1f,
+                    animationSpec = PomoMotion.pressScaleSpec,
+                    label = "buttonScale"
+                )
 
                 Button(
                     onClick = {
@@ -854,16 +904,16 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                         keyboardController?.hide()
                         focusManager.clearFocus()
                         if (name.isNotBlank()) {
-                            try { view.performHapticFeedback(HapticFeedbackConstants.CONFIRM) } catch (e: Exception) {}
+                            try { view.performHapticFeedback(HapticFeedbackConstants.CONFIRM) } catch (_: Exception) {}
                             SettingsManager.setUserName(name.trim())
                             isExiting = true
                             coroutineScope.launch {
-                                delay(320)
+                                delay(260)
                                 onSignInSuccess()
                             }
                         } else {
                             showError = true
-                            try { view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) } catch (e: Exception) {}
+                            try { view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) } catch (_: Exception) {}
                         }
                     },
                     enabled = !isExiting,
@@ -871,7 +921,10 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(58.dp)
-                        .scale(buttonScale),
+                        .graphicsLayer {
+                            scaleX = buttonScale
+                            scaleY = buttonScale
+                        },
                     shape = RoundedCornerShape(29.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = currentTheme.primary,
@@ -882,7 +935,7 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                     AnimatedContent(
                         targetState = isExiting to (name.isNotBlank()),
                         transitionSpec = {
-                            fadeIn(tween(220)) togetherWith fadeOut(tween(200))
+                            PomoMotion.fadeThroughTransition()
                         },
                         label = "btn_content"
                     ) { (exiting, hasName) ->

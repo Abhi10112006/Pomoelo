@@ -1,24 +1,435 @@
 package com.example.ui.components
 
-import androidx.compose.animation.core.*
+import android.content.Context
+import android.opengl.Matrix
+import android.view.Choreographer
+import android.view.MotionEvent
+import android.view.Surface
+import android.view.TextureView
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.ui.theme.LocalAppTheme
+import com.google.android.filament.Camera
+import com.google.android.filament.Engine
+import com.google.android.filament.Entity
+import com.google.android.filament.EntityManager
+import com.google.android.filament.IndirectLight
+import com.google.android.filament.LightManager
+import com.google.android.filament.Renderer
+import com.google.android.filament.Scene
+import com.google.android.filament.SwapChain
+import com.google.android.filament.View as FilamentView
+import com.google.android.filament.Viewport
+import com.google.android.filament.android.DisplayHelper
+import com.google.android.filament.android.UiHelper
+import com.google.android.filament.gltfio.Animator
+import com.google.android.filament.gltfio.AssetLoader
+import com.google.android.filament.gltfio.FilamentAsset
+import com.google.android.filament.gltfio.ResourceLoader
+import com.google.android.filament.gltfio.UbershaderProvider
+import com.google.android.filament.utils.Utils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import kotlin.math.abs
+import kotlin.math.exp
 
 enum class MascotExpression {
-    IDLE, FOCUS, RELAX, HAPPY
+    IDLE, FOCUS, RELAX, HAPPY, EXCITED, CURIOUS
+}
+
+enum class MascotRenderMode {
+    FULL,
+    THROTTLED_30FPS,
+    PAUSED
+}
+
+/**
+ * Non-static CompositionLocal governing Judy's 3D Filament cadence so overlay/drag
+ * mode transitions never force full-subtree recomposition or swapchain recreation.
+ */
+val LocalMascotRenderMode = compositionLocalOf { MascotRenderMode.FULL }
+
+private const val THROTTLED_30FPS_INTERVAL_NS = 33_333_333L
+
+private object FilamentRuntime {
+    val isAvailable: Boolean by lazy {
+        try {
+            Utils.init()
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+}
+
+private suspend fun loadJudyGlbBuffer(context: Context): ByteBuffer? = withContext(Dispatchers.IO) {
+    try {
+        context.assets.openFd("models/judy.glb").use { afd ->
+            val size = afd.length.toInt()
+            val buffer = ByteBuffer.allocateDirect(size).order(ByteOrder.nativeOrder())
+            afd.createInputStream().use { input ->
+                val channel = input.channel
+                while (buffer.hasRemaining()) {
+                    if (channel.read(buffer) == -1) break
+                }
+            }
+            buffer.flip()
+            buffer
+        }
+    } catch (_: Throwable) {
+        try {
+            val bytes = context.assets.open("models/judy.glb").use { it.readBytes() }
+            ByteBuffer.allocateDirect(bytes.size)
+                .order(ByteOrder.nativeOrder())
+                .put(bytes)
+                .apply { flip() }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+}
+
+/**
+ * Custom transparent-swapchain Filament host for 3D Judy.
+ * Replaces Filament's ModelViewer (which hardcodes opaque 1-arg createSwapChain) so Judy renders
+ * cleanly with full alpha transparency directly on top of Compose UI with zero black backdrop.
+ */
+private class JudyFilamentHost(
+    private val textureView: TextureView
+) {
+    val engine: Engine = Engine.create()
+    val renderer: Renderer = engine.createRenderer()
+    val scene: Scene = engine.createScene()
+    val view: FilamentView = engine.createView()
+
+    @Entity
+    private val cameraEntity: Int = EntityManager.get().create()
+    val camera: Camera = engine.createCamera(cameraEntity)
+
+    private val materialProvider = UbershaderProvider(engine)
+    private val assetLoader = AssetLoader(engine, materialProvider, EntityManager.get())
+    private val resourceLoader = ResourceLoader(engine, true)
+
+    private val uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK).apply {
+        isOpaque = false
+    }
+    private val displayHelper = DisplayHelper(textureView.context)
+
+    private var swapChain: SwapChain? = null
+    private var asset: FilamentAsset? = null
+    private var animator: Animator? = null
+    private var sourceDataReleased = false
+
+    // Exact 21 joint handles and their rest local matrices
+    private var jointEntities: IntArray = IntArray(0)
+    private var jointRestMatrices: Array<FloatArray> = emptyArray()
+    private var morphRenderables: IntArray = IntArray(0)
+    private val readyRenderables = IntArray(128)
+    private val rootMatrix = FloatArray(16)
+
+    // Studio lighting entities
+    @Entity
+    private val keyLight: Int = EntityManager.get().create()
+    @Entity
+    private val fillLight: Int = EntityManager.get().create()
+    @Entity
+    private val rimLight: Int = EntityManager.get().create()
+    private val indirectLight: IndirectLight
+
+    @Volatile
+    var isDestroyed = false
+        private set
+
+    init {
+        textureView.isOpaque = false
+
+        // True translucent rendering pipeline (alpha = 0 background)
+        scene.skybox = null
+        view.scene = scene
+        view.camera = camera
+        view.blendMode = FilamentView.BlendMode.TRANSLUCENT
+        view.setShadowingEnabled(false)
+
+        renderer.clearOptions = renderer.clearOptions.apply {
+            clear = true
+            discard = true
+            clearColor[0] = 0f
+            clearColor[1] = 0f
+            clearColor[2] = 0f
+            clearColor[3] = 0f
+        }
+
+        // Balanced framing for full-body Judy (0.0m..1.44m) with generous headroom for bunny jumps
+        camera.setExposure(16.0f, 1.0f / 125.0f, 100.0f)
+        camera.lookAt(
+            0.0, 0.78, 2.72,
+            0.0, 0.78, 0.0,
+            0.0, 1.0, 0.0
+        )
+
+        // Studio 3-point lighting + warm spherical harmonics ambient light
+        val sh = FloatArray(27).apply {
+            this[0] = 1.15f; this[1] = 1.10f; this[2] = 1.12f
+            this[6] = 0.36f; this[7] = 0.35f; this[8] = 0.40f
+        }
+        indirectLight = IndirectLight.Builder()
+            .irradiance(3, sh)
+            .intensity(48_000f)
+            .build(engine)
+        scene.indirectLight = indirectLight
+
+        LightManager.Builder(LightManager.Type.DIRECTIONAL)
+            .color(1.0f, 0.98f, 0.95f)
+            .intensity(96_000f)
+            .direction(-0.28f, -0.52f, -0.82f)
+            .castShadows(false)
+            .build(engine, keyLight)
+        scene.addEntity(keyLight)
+
+        LightManager.Builder(LightManager.Type.DIRECTIONAL)
+            .color(0.92f, 0.95f, 1.0f)
+            .intensity(34_000f)
+            .direction(0.45f, -0.15f, -0.88f)
+            .castShadows(false)
+            .build(engine, fillLight)
+        scene.addEntity(fillLight)
+
+        LightManager.Builder(LightManager.Type.DIRECTIONAL)
+            .color(0.86f, 0.92f, 1.0f)
+            .intensity(56_000f)
+            .direction(0.58f, -0.22f, 0.58f)
+            .castShadows(false)
+            .build(engine, rimLight)
+        scene.addEntity(rimLight)
+
+        uiHelper.renderCallback = object : UiHelper.RendererCallback {
+            override fun onNativeWindowChanged(surface: Surface) {
+                if (isDestroyed) return
+                swapChain?.let { engine.destroySwapChain(it) }
+                // CRITICAL: Pass uiHelper.swapChainFlags (CONFIG_TRANSPARENT = 1L) so the surface has an alpha channel!
+                swapChain = engine.createSwapChain(surface, uiHelper.swapChainFlags)
+                textureView.display?.let { displayHelper.attach(renderer, it) }
+            }
+
+            override fun onDetachedFromSurface() {
+                displayHelper.detach()
+                swapChain?.let {
+                    if (!isDestroyed) {
+                        engine.destroySwapChain(it)
+                        engine.flushAndWait()
+                    }
+                    swapChain = null
+                }
+            }
+
+            override fun onResized(width: Int, height: Int) {
+                if (isDestroyed || width <= 0 || height <= 0) return
+                view.viewport = Viewport(0, 0, width, height)
+                val aspect = width.toDouble() / height.toDouble()
+                camera.setProjection(36.0, aspect, 0.1, 20.0, Camera.Fov.VERTICAL)
+            }
+        }
+        uiHelper.attachTo(textureView)
+    }
+
+    fun loadGlb(buffer: ByteBuffer): Boolean {
+        if (isDestroyed) return false
+        destroyAsset()
+
+        val created = assetLoader.createAsset(buffer) ?: return false
+        asset = created
+        sourceDataReleased = false
+
+        // Begin asynchronous texture & vertex buffer upload (do NOT call releaseSourceData yet!)
+        resourceLoader.asyncBeginLoad(created)
+        animator = created.instance.animator
+
+        // Capture exact 21 joint entities & their bind-pose local matrices directly from skin 0
+        val tm = engine.transformManager
+        val joints = if (created.instance.skinCount > 0) {
+            created.instance.getJointsAt(0)
+        } else {
+            IntArray(0)
+        }
+        jointEntities = joints
+        jointRestMatrices = Array(joints.size) { idx ->
+            val mat = FloatArray(16)
+            Matrix.setIdentityM(mat, 0)
+            val tInst = tm.getInstance(joints[idx])
+            if (tInst != 0) tm.getTransform(tInst, mat)
+            mat
+        }
+
+        // Capture all renderables with facial morph targets (6 targets: blink_l, blink_r, mouth_open, smile, brow_up, brow_focus)
+        val rm = engine.renderableManager
+        val morphList = mutableListOf<Int>()
+        for (entity in created.renderableEntities) {
+            val rInst = rm.getInstance(entity)
+            if (rInst != 0 && rm.getMorphTargetCount(rInst) >= JudyMorphs.COUNT) {
+                morphList += entity
+            }
+        }
+        morphRenderables = morphList.toIntArray()
+
+        populateReadyRenderables()
+        return true
+    }
+
+    private fun populateReadyRenderables() {
+        val currentAsset = asset ?: return
+        var count = currentAsset.popRenderables(readyRenderables)
+        while (count > 0) {
+            scene.addEntities(readyRenderables.copyOf(count))
+            count = currentAsset.popRenderables(readyRenderables)
+        }
+        if (!sourceDataReleased && resourceLoader.asyncGetLoadProgress() >= 1f) {
+            sourceDataReleased = true
+            runCatching { currentAsset.releaseSourceData() }
+        }
+    }
+
+    fun updateRimColor(expression: MascotExpression) {
+        if (isDestroyed) return
+        val lm = engine.lightManager
+        val rimInst = lm.getInstance(rimLight)
+        if (rimInst == 0) return
+        when (expression) {
+            MascotExpression.EXCITED, MascotExpression.HAPPY -> lm.setColor(rimInst, 1.0f, 0.87f, 0.78f)
+            MascotExpression.FOCUS -> lm.setColor(rimInst, 0.72f, 0.90f, 1.0f)
+            MascotExpression.RELAX -> lm.setColor(rimInst, 0.78f, 0.97f, 0.88f)
+            MascotExpression.CURIOUS -> lm.setColor(rimInst, 0.88f, 0.84f, 1.0f)
+            MascotExpression.IDLE -> lm.setColor(rimInst, 0.86f, 0.92f, 1.0f)
+        }
+    }
+
+    fun applyPhysicsAndRender(frameTimeNanos: Long, physics: JudyPhysicsEngine) {
+        if (isDestroyed || !uiHelper.isReadyToRender) return
+        val currentSwapChain = swapChain ?: return
+
+        // Pump async texture/buffer uploads and add ready renderables to scene
+        resourceLoader.asyncUpdateLoad()
+        populateReadyRenderables()
+
+        val currentAsset = asset
+        if (currentAsset != null) {
+            val tm = engine.transformManager
+            val rm = engine.renderableManager
+
+            // Batch all 21 joint local transforms + root transform atomically inside a TransformManager transaction
+            tm.openLocalTransformTransaction()
+            val boneCount = minOf(jointEntities.size, JudyBones.COUNT)
+            for (i in 0 until boneCount) {
+                val tInst = tm.getInstance(jointEntities[i])
+                if (tInst != 0) {
+                    val mat = physics.composeBoneMatrix(jointRestMatrices[i], i)
+                    tm.setTransform(tInst, mat)
+                }
+            }
+
+            // Root transform: orbit cleanly around center (y = 0.72) while keeping squash/stretch grounded at feet (y = 0)
+            val rootInst = tm.getInstance(currentAsset.root)
+            if (rootInst != 0) {
+                Matrix.setIdentityM(rootMatrix, 0)
+                Matrix.translateM(rootMatrix, 0, 0f, physics.rootOffsetY + 0.72f, 0f)
+                Matrix.rotateM(rootMatrix, 0, physics.rootYawDeg, 0f, 1f, 0f)
+                Matrix.rotateM(rootMatrix, 0, physics.rootPitchDeg, 1f, 0f, 0f)
+                Matrix.translateM(rootMatrix, 0, 0f, -0.72f, 0f)
+                Matrix.scaleM(rootMatrix, 0, physics.rootScaleX, physics.rootScaleY, physics.rootScaleZ)
+                tm.setTransform(rootInst, rootMatrix)
+            }
+            tm.commitLocalTransformTransaction()
+
+            // Compute and upload all 21 world skin matrices to GPU skinning buffers
+            animator?.updateBoneMatrices()
+
+            // Push all 6 live facial morph weights (blink_l, blink_r, mouth_open, smile, brow_up, brow_focus)
+            val weights = physics.morphWeights
+            for (entity in morphRenderables) {
+                val rInst = rm.getInstance(entity)
+                if (rInst != 0) {
+                    rm.setMorphWeights(rInst, weights, 0)
+                }
+            }
+        }
+
+        if (renderer.beginFrame(currentSwapChain, frameTimeNanos)) {
+            renderer.render(view)
+            renderer.endFrame()
+        }
+    }
+
+    private fun destroyAsset() {
+        asset?.let { current ->
+            runCatching { resourceLoader.asyncCancelLoad() }
+            runCatching { scene.removeEntities(current.entities) }
+            runCatching { assetLoader.destroyAsset(current) }
+        }
+        asset = null
+        animator = null
+        jointEntities = IntArray(0)
+        jointRestMatrices = emptyArray()
+        morphRenderables = IntArray(0)
+        sourceDataReleased = false
+    }
+
+    fun destroy() {
+        if (isDestroyed) return
+        isDestroyed = true
+
+        runCatching { uiHelper.detach() }
+        runCatching { displayHelper.detach() }
+        destroyAsset()
+        runCatching { resourceLoader.evictResourceData() }
+        runCatching { resourceLoader.destroy() }
+        runCatching { assetLoader.destroy() }
+        runCatching { materialProvider.destroyMaterials() }
+        runCatching { materialProvider.destroy() }
+
+        runCatching {
+            scene.removeEntity(keyLight)
+            scene.removeEntity(fillLight)
+            scene.removeEntity(rimLight)
+            scene.indirectLight = null
+            engine.destroyEntity(keyLight)
+            engine.destroyEntity(fillLight)
+            engine.destroyEntity(rimLight)
+            EntityManager.get().destroy(keyLight)
+            EntityManager.get().destroy(fillLight)
+            EntityManager.get().destroy(rimLight)
+            engine.destroyIndirectLight(indirectLight)
+        }
+
+        runCatching {
+            swapChain?.let { engine.destroySwapChain(it) }
+            swapChain = null
+            engine.destroyRenderer(renderer)
+            engine.destroyView(view)
+            engine.destroyScene(scene)
+            engine.destroyCameraComponent(cameraEntity)
+            EntityManager.get().destroy(cameraEntity)
+            engine.destroy()
+        }
+    }
 }
 
 @Composable
@@ -26,486 +437,307 @@ fun PomoPalMascot(
     expression: MascotExpression,
     modifier: Modifier = Modifier,
     isBreathing: Boolean = true,
-    isSpeaking: Boolean = false
+    isSpeaking: Boolean = false,
+    interactive: Boolean = true,
+    isActive: Boolean = true,
+    onTap: (() -> Unit)? = null
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "breathing")
-    
-    val breatheY by infiniteTransition.animateFloat(
-        initialValue = -3f,
-        targetValue = 3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "breatheY"
-    )
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentTheme = LocalAppTheme.current
 
-    val blink by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 4000
-                1f at 3800 // Stay open
-                0f at 3900 // Close eyes
-                1f at 4000 // Open eyes
-            },
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "blink"
-    )
-
-    // Expressions driving animations
-    val targetSquash = if (expression == MascotExpression.HAPPY) 0.9f else 1f
-    val squash by animateFloatAsState(
-        targetValue = targetSquash,
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessLow),
-        label = "squash"
-    )
-
-    // Hand Animation Targets
-    val targetLeftHandX = when (expression) {
-        MascotExpression.HAPPY -> -0.45f
-        MascotExpression.FOCUS -> -0.22f
-        MascotExpression.RELAX -> -0.4f
-        else -> -0.45f // IDLE
-    }
-    val targetLeftHandY = when (expression) {
-        MascotExpression.HAPPY -> -0.3f
-        MascotExpression.FOCUS -> 0.05f
-        MascotExpression.RELAX -> 0.35f
-        else -> 0.2f // IDLE
-    }
-    
-    val leftHandX by animateFloatAsState(targetLeftHandX, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessLow), label = "lhX")
-    val leftHandY by animateFloatAsState(targetLeftHandY, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessLow), label = "lhY")
-
-    val speakingTransition = rememberInfiniteTransition(label = "speaking")
-    val talkPulse by speakingTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 600
-                0f at 0
-                0.8f at 150
-                0.2f at 300
-                0.9f at 450
-                0f at 600
-            },
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "talkPulse"
-    )
-    val speakIntensity by animateFloatAsState(
-        targetValue = if (isSpeaking) 1f else 0f,
-        animationSpec = tween(150),
-        label = "speakIntensity"
-    )
-
-    Canvas(modifier = modifier) {
-        val mouthOpen = talkPulse * speakIntensity
-        if (size.width <= 0f || size.height <= 0f) return@Canvas
-        val yOffset = if (isBreathing) breatheY * (size.height / 100f) else 0f
-        
-        // 1. Draw Floor Shadow (Anchors the 3D object, stays still while object floats)
-        drawFloorShadow(yOffset)
-        
-        // Translate the whole character for breathing
-        withTransform({
-            translate(top = yOffset)
-            scale(scaleX = 1f, scaleY = squash, pivot = Offset(size.width / 2f, size.height))
-        }) {
-            // 2. Draw Back elements (stem/leaves)
-            drawStemAndLeaves()
-            
-            // 3. Draw Main Body (Premium 3D clay look)
-            drawTomatoBody()
-            
-            // 4. Draw Hands
-            drawHands(leftHandX, leftHandY, -leftHandX, leftHandY)
-            
-            // 5. Draw Face (Eyes, mouth, accessories)
-            drawFace(expression, if (expression == MascotExpression.RELAX) 0f else blink, mouthOpen)
-        }
-    }
-}
-
-private fun DrawScope.drawFloorShadow(yOffset: Float) {
-    val centerX = size.width / 2f
-    val shadowY = size.height * 0.9f
-    val shadowRadiusX = size.width * 0.35f
-    val shadowRadiusY = size.height * 0.08f
-    
-    // Shadow scales down when the character floats up
-    val liftFactor = (yOffset / (size.height / 100f) + 3f) / 6f // 0 to 1 based on breatheY
-    val shadowScale = 1f - (liftFactor * 0.2f)
-    val shadowAlpha = 0.4f - (liftFactor * 0.15f)
-
-    drawOval(
-        brush = Brush.radialGradient(
-            colors = listOf(Color.Black.copy(alpha = shadowAlpha), Color.Transparent),
-            center = Offset(centerX, shadowY),
-            radius = shadowRadiusX
-        ),
-        topLeft = Offset(centerX - shadowRadiusX * shadowScale, shadowY - shadowRadiusY * shadowScale),
-        size = Size(shadowRadiusX * 2f * shadowScale, shadowRadiusY * 2f * shadowScale)
-    )
-}
-
-private fun DrawScope.drawTomatoBody() {
-    val centerX = size.width / 2f
-    val centerY = size.height / 2f
-    val radiusX = size.width * 0.42f
-    val radiusY = size.height * 0.38f
-
-    // 1. Main body 3D gradient (Highlight -> Base -> Core Shadow -> Edge Shadow)
-    val bodyGradient = Brush.radialGradient(
-        colors = listOf(
-            Color(0xFFFF9494), // Bright highlight (top left)
-            Color(0xFFE03131), // Base rich red
-            Color(0xFFA11B1B), // Core shadow
-            Color(0xFF5C0707)  // Deep edge shadow
-        ),
-        center = Offset(centerX - radiusX * 0.3f, centerY - radiusY * 0.3f),
-        radius = radiusX * 1.6f
-    )
-    drawOval(
-        brush = bodyGradient,
-        topLeft = Offset(centerX - radiusX, centerY - radiusY),
-        size = Size(radiusX * 2f, radiusY * 2f)
-    )
-
-    // 2. Glossy Specular Highlight (The "shiny clay" reflection)
-    val highlightPath = Path().apply {
-        addOval(Rect(
-            Offset(centerX - radiusX * 0.6f, centerY - radiusY * 0.65f),
-            Size(radiusX * 0.6f, radiusY * 0.4f)
-        ))
-    }
-    withTransform({
-        rotate(-25f, Offset(centerX - radiusX * 0.5f, centerY - radiusY * 0.65f))
-    }) {
-        drawPath(
-            path = highlightPath,
-            brush = Brush.verticalGradient(
-                colors = listOf(Color.White.copy(alpha = 0.7f), Color.White.copy(alpha = 0.0f)),
-                startY = centerY - radiusY * 0.65f,
-                endY = centerY - radiusY * 0.25f
-            )
-        )
+    if (!FilamentRuntime.isAvailable) {
+        JudyAvatarBadge(modifier = modifier, isBreathing = isBreathing)
+        return
     }
 
-    // 3. Bounce Light / Rim Light (Bottom right edge reflection)
-    val bounceLightGradient = Brush.radialGradient(
-        colors = listOf(Color(0xFFFFD4D4).copy(alpha = 0.35f), Color.Transparent),
-        center = Offset(centerX + radiusX * 0.6f, centerY + radiusY * 0.7f),
-        radius = radiusX * 0.9f
-    )
-    drawOval(
-        brush = bounceLightGradient,
-        topLeft = Offset(centerX - radiusX, centerY - radiusY),
-        size = Size(radiusX * 2f, radiusY * 2f)
-    )
-}
+    var isModelReady by remember { mutableStateOf(false) }
+    var loadFailed by remember { mutableStateOf(false) }
+    var isLifecycleResumed by remember { mutableStateOf(true) }
+    var isViewReleased by remember { mutableStateOf(false) }
+    var shadowJumpScale by remember { mutableFloatStateOf(1f) }
 
-private fun DrawScope.drawStemAndLeaves() {
-    val centerX = size.width / 2f
-    val centerY = size.height * 0.18f
-    
-    // Rich green 3D gradient
-    val leafGradient = Brush.radialGradient(
-        colors = listOf(Color(0xFF8CE99A), Color(0xFF2B8A3E), Color(0xFF0B4215)),
-        center = Offset(centerX - size.width * 0.05f, centerY - size.height * 0.05f),
-        radius = size.width * 0.3f
-    )
+    val currentExpression by rememberUpdatedState(expression)
+    val currentBreathing by rememberUpdatedState(isBreathing)
+    val currentSpeaking by rememberUpdatedState(isSpeaking)
+    val currentInteractive by rememberUpdatedState(interactive)
+    val currentOnTap by rememberUpdatedState(onTap)
+    val shouldRender by rememberUpdatedState(isActive && isLifecycleResumed && !isViewReleased)
 
-    // Draw central stem
-    val stemPath = Path().apply {
-        moveTo(centerX - size.width * 0.02f, centerY)
-        quadraticTo(
-            centerX - size.width * 0.05f, centerY - size.height * 0.08f,
-            centerX + size.width * 0.02f, centerY - size.height * 0.1f
-        )
-        quadraticTo(
-            centerX + size.width * 0.05f, centerY - size.height * 0.04f,
-            centerX + size.width * 0.02f, centerY
-        )
-        close()
-    }
-    drawPath(path = stemPath, brush = leafGradient)
-
-    // Draw 3D-looking leaves
-    val drawLeaf = { angle: Float, scale: Float ->
-        withTransform({
-            translate(centerX, centerY)
-            rotate(angle)
-            scale(scale, scale)
-        }) {
-            val leaf = Path().apply {
-                moveTo(0f, 0f)
-                quadraticTo(
-                    size.width * 0.1f, -size.height * 0.04f,
-                    size.width * 0.22f, 0f
-                )
-                quadraticTo(
-                    size.width * 0.1f, size.height * 0.04f,
-                    0f, 0f
-                )
-                close()
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> isLifecycleResumed = true
+                Lifecycle.Event.ON_PAUSE -> isLifecycleResumed = false
+                else -> Unit
             }
-            drawPath(path = leaf, brush = leafGradient)
-            // Leaf center crease
-            drawLine(
-                color = Color(0xFF19712B),
-                start = Offset(0f, 0f),
-                end = Offset(size.width * 0.18f, 0f),
-                strokeWidth = size.width * 0.005f
-            )
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            isViewReleased = true
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
-    
-    drawLeaf(-25f, 1f)
-    drawLeaf(45f, 0.9f)
-    drawLeaf(160f, 0.8f)
-    drawLeaf(210f, 0.85f)
-}
 
-private fun DrawScope.drawHands(lx: Float, ly: Float, rx: Float, ry: Float) {
-    val centerX = size.width / 2f
-    val centerY = size.height / 2f
-    val handRadius = size.width * 0.08f
+    var hostHolder by remember { mutableStateOf<JudyFilamentHost?>(null) }
+    var textureViewHolder by remember { mutableStateOf<TextureView?>(null) }
+    val physicsEngine = remember { JudyPhysicsEngine() }
 
-    val handGradient = Brush.radialGradient(
-        colors = listOf(
-            Color(0xFFFF9494), // Highlight
-            Color(0xFFE03131), // Base
-            Color(0xFFA11B1B)  // Shadow
-        ),
-        radius = handRadius * 1.5f
-    )
-
-    // Left Hand
-    val leftCenter = Offset(centerX + lx * size.width, centerY + ly * size.height)
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(Color(0xFFFF9494), Color(0xFFE03131), Color(0xFFA11B1B)),
-            center = Offset(leftCenter.x - handRadius * 0.3f, leftCenter.y - handRadius * 0.3f),
-            radius = handRadius * 1.5f
-        ),
-        radius = handRadius,
-        center = leftCenter
-    )
-
-    // Right Hand
-    val rightCenter = Offset(centerX + rx * size.width, centerY + ry * size.height)
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(Color(0xFFFF9494), Color(0xFFE03131), Color(0xFFA11B1B)),
-            center = Offset(rightCenter.x - handRadius * 0.3f, rightCenter.y - handRadius * 0.3f),
-            radius = handRadius * 1.5f
-        ),
-        radius = handRadius,
-        center = rightCenter
-    )
-}
-
-private fun DrawScope.drawFace(expression: MascotExpression, blinkScale: Float, mouthOpen: Float = 0f) {
-    val centerX = size.width / 2f
-    val centerY = size.height * 0.55f
-    
-    val eyeColor = Color(0xFF210F04) // Very dark brown (warmer than pure black)
-    val eyeRadius = size.width * 0.045f
-    val eyeSpacing = size.width * 0.16f
-    
-    val leftEyeCenter = Offset(centerX - eyeSpacing / 2f, centerY)
-    val rightEyeCenter = Offset(centerX + eyeSpacing / 2f, centerY)
-
-    if (expression == MascotExpression.RELAX) {
-        // Draw closed happy eyes (arcs)
-        val arcWidth = eyeRadius * 2.2f
-        drawArc(
-            color = eyeColor,
-            startAngle = 180f,
-            sweepAngle = -180f,
-            useCenter = false,
-            topLeft = Offset(leftEyeCenter.x - arcWidth/2, leftEyeCenter.y),
-            size = Size(arcWidth, arcWidth/2),
-            style = Stroke(width = size.width * 0.015f, cap = StrokeCap.Round)
-        )
-        drawArc(
-            color = eyeColor,
-            startAngle = 180f,
-            sweepAngle = -180f,
-            useCenter = false,
-            topLeft = Offset(rightEyeCenter.x - arcWidth/2, rightEyeCenter.y),
-            size = Size(arcWidth, arcWidth/2),
-            style = Stroke(width = size.width * 0.015f, cap = StrokeCap.Round)
-        )
-        
-        // Relaxed small smile
-        drawArc(
-            color = eyeColor,
-            startAngle = 10f,
-            sweepAngle = 160f,
-            useCenter = false,
-            topLeft = Offset(centerX - eyeSpacing * 0.25f, centerY + size.height * 0.05f),
-            size = Size(eyeSpacing * 0.5f, size.height * 0.03f),
-            style = Stroke(width = size.width * 0.015f, cap = StrokeCap.Round)
-        )
-        
-    } else {
-        // Blinking logic for open eyes
-        withTransform({
-            scale(1f, blinkScale, leftEyeCenter)
-        }) {
-            // Base eye
-            drawOval(
-                color = eyeColor,
-                topLeft = Offset(leftEyeCenter.x - eyeRadius, leftEyeCenter.y - eyeRadius * (if (expression == MascotExpression.FOCUS) 0.8f else 1.2f)),
-                size = Size(eyeRadius * 2f, eyeRadius * (if (expression == MascotExpression.FOCUS) 1.6f else 2.4f))
-            )
-            // Primary Catch-light (Cute 3D reflection)
-            drawOval(
-                color = Color.White,
-                topLeft = Offset(leftEyeCenter.x - eyeRadius * 0.4f, leftEyeCenter.y - eyeRadius * 0.6f),
-                size = Size(eyeRadius * 0.8f, eyeRadius * 0.8f)
-            )
-            // Secondary tiny Catch-light
-            drawOval(
-                color = Color.White,
-                topLeft = Offset(leftEyeCenter.x + eyeRadius * 0.3f, leftEyeCenter.y + eyeRadius * 0.2f),
-                size = Size(eyeRadius * 0.3f, eyeRadius * 0.3f)
-            )
+    // Smooth 3D touch orbit & tap impulse state
+    val orbitState = remember {
+        object {
+            var userYawDeg = 0f
+            var userPitchDeg = 0f
+            var yawVelocity = 0f
+            var isDragging = false
+            var lastInteractionNs = 0L
+            var tapImpulseStartNs = 0L
         }
-        
-        withTransform({
-            scale(1f, blinkScale, rightEyeCenter)
-        }) {
-            // Base eye
-            drawOval(
-                color = eyeColor,
-                topLeft = Offset(rightEyeCenter.x - eyeRadius, rightEyeCenter.y - eyeRadius * (if (expression == MascotExpression.FOCUS) 0.8f else 1.2f)),
-                size = Size(eyeRadius * 2f, eyeRadius * (if (expression == MascotExpression.FOCUS) 1.6f else 2.4f))
-            )
-            // Primary Catch-light
-            drawOval(
-                color = Color.White,
-                topLeft = Offset(rightEyeCenter.x - eyeRadius * 0.4f, rightEyeCenter.y - eyeRadius * 0.6f),
-                size = Size(eyeRadius * 0.8f, eyeRadius * 0.8f)
-            )
-            // Secondary tiny Catch-light
-            drawOval(
-                color = Color.White,
-                topLeft = Offset(rightEyeCenter.x + eyeRadius * 0.3f, rightEyeCenter.y + eyeRadius * 0.2f),
-                size = Size(eyeRadius * 0.3f, eyeRadius * 0.3f)
-            )
+    }
+
+    // Load Judy 21-bone GLB off the main thread once the custom transparent host is ready
+    LaunchedEffect(hostHolder) {
+        val host = hostHolder ?: return@LaunchedEffect
+        val glbBuffer = loadJudyGlbBuffer(context)
+        if (isViewReleased || host.isDestroyed) return@LaunchedEffect
+        if (glbBuffer == null) {
+            loadFailed = true
+            return@LaunchedEffect
         }
-        
-        // Face Accessories and Mouths
-        if (expression == MascotExpression.FOCUS) {
-            // Cute reading glasses
-            val glassesWidth = eyeRadius * 4.5f
-            val glassesHeight = eyeRadius * 3.5f
-            
-            // Glass tint
-            val glassTint = Color(0x334DABF7) // Semi-transparent blue
-            drawRoundRect(
-                color = glassTint,
-                topLeft = Offset(leftEyeCenter.x - glassesWidth/2, leftEyeCenter.y - glassesHeight/2),
-                size = Size(glassesWidth, glassesHeight),
-                cornerRadius = CornerRadius(16f)
-            )
-            drawRoundRect(
-                color = glassTint,
-                topLeft = Offset(rightEyeCenter.x - glassesWidth/2, rightEyeCenter.y - glassesHeight/2),
-                size = Size(glassesWidth, glassesHeight),
-                cornerRadius = CornerRadius(16f)
-            )
-            
-            // Frames
-            drawRoundRect(
-                color = Color(0xFF343A40),
-                topLeft = Offset(leftEyeCenter.x - glassesWidth/2, leftEyeCenter.y - glassesHeight/2),
-                size = Size(glassesWidth, glassesHeight),
-                cornerRadius = CornerRadius(16f),
-                style = Stroke(width = size.width * 0.015f)
-            )
-            drawRoundRect(
-                color = Color(0xFF343A40),
-                topLeft = Offset(rightEyeCenter.x - glassesWidth/2, rightEyeCenter.y - glassesHeight/2),
-                size = Size(glassesWidth, glassesHeight),
-                cornerRadius = CornerRadius(16f),
-                style = Stroke(width = size.width * 0.015f)
-            )
-            // Bridge
-            drawLine(
-                color = Color(0xFF343A40),
-                start = Offset(leftEyeCenter.x + glassesWidth/2, leftEyeCenter.y),
-                end = Offset(rightEyeCenter.x - glassesWidth/2, rightEyeCenter.y),
-                strokeWidth = size.width * 0.015f
-            )
-            
-            // Focused mouth (tiny 'o')
-            drawOval(
-                color = eyeColor,
-                topLeft = Offset(centerX - eyeRadius*0.5f, centerY + size.height * 0.06f),
-                size = Size(eyeRadius, eyeRadius + (eyeRadius * 0.8f * mouthOpen))
-            )
-        } else if (expression == MascotExpression.HAPPY) {
-            // Big open happy mouth
-            val mouthPath = Path().apply {
-                moveTo(centerX - eyeSpacing * 0.4f, centerY + size.height * 0.04f)
-                quadraticTo(
-                    centerX, centerY + (size.height * 0.14f + size.height * 0.06f * mouthOpen),
-                    centerX + eyeSpacing * 0.4f, centerY + size.height * 0.04f
-                )
-                close()
-            }
-            drawPath(path = mouthPath, color = eyeColor)
-            
-            // Tongue
-            val tonguePath = Path().apply {
-                moveTo(centerX - eyeSpacing * 0.25f, centerY + size.height * 0.08f)
-                quadraticTo(
-                    centerX, centerY + (size.height * 0.11f + size.height * 0.04f * mouthOpen),
-                    centerX + eyeSpacing * 0.25f, centerY + size.height * 0.08f
-                )
-                close()
-            }
-            drawPath(path = tonguePath, color = Color(0xFFFF8787))
-        } else {
-            if (expression == MascotExpression.RELAX && mouthOpen == 0f) {
-                // Relaxed small smile
-                drawArc(
-                    color = eyeColor,
-                    startAngle = 10f,
-                    sweepAngle = 160f,
-                    useCenter = false,
-                    topLeft = Offset(centerX - eyeSpacing * 0.2f, centerY + size.height * 0.05f),
-                    size = Size(eyeSpacing * 0.4f, size.height * 0.02f),
-                    style = Stroke(width = size.width * 0.015f, cap = StrokeCap.Round)
-                )
-            } else if (mouthOpen > 0.05f) {
-                // Speaking open mouth
-                val mWidth = eyeSpacing * 0.4f
-                val mHeight = size.height * 0.015f + (size.height * 0.035f * mouthOpen)
-                drawOval(
-                    color = eyeColor,
-                    topLeft = Offset(centerX - mWidth/2, centerY + size.height * 0.04f),
-                    size = Size(mWidth, mHeight)
-                )
+        val attached = textureViewHolder?.isAttachedToWindow ?: true
+        if (!attached || isViewReleased || host.isDestroyed) return@LaunchedEffect
+
+        try {
+            val loaded = host.loadGlb(glbBuffer)
+            if (loaded) {
+                isModelReady = true
             } else {
-                // Idle smile
-                drawArc(
-                    color = eyeColor,
-                    startAngle = 10f,
-                    sweepAngle = 160f,
-                    useCenter = false,
-                    topLeft = Offset(centerX - eyeSpacing * 0.25f, centerY + size.height * 0.04f),
-                    size = Size(eyeSpacing * 0.5f, size.height * 0.03f),
-                    style = Stroke(width = size.width * 0.015f, cap = StrokeCap.Round)
+                loadFailed = true
+            }
+        } catch (_: Throwable) {
+            loadFailed = true
+        }
+    }
+
+    // Drive Choreographer real-time physics, skeleton skinning, facial morphs & rendering.
+    // PAUSED unregisters Choreographer completely (zero 120Hz wakeups).
+    // Resuming resets lastRenderNanos = 0L & lastFrameNs = 0L for an immediate, jump-free first frame.
+    // THROTTLED_30FPS gates rendering via nanosecond interval (refresh-rate independent 60/90/120/144Hz)
+    // without restarting the effect or recreating the TextureView swapchain.
+    val renderMode = LocalMascotRenderMode.current
+    val currentRenderMode by rememberUpdatedState(renderMode)
+    val isLoopActive = shouldRender && renderMode != MascotRenderMode.PAUSED
+
+    DisposableEffect(hostHolder, isLoopActive, isModelReady) {
+        val host = hostHolder
+        if (host == null || !isLoopActive || !isModelReady) {
+            return@DisposableEffect onDispose {}
+        }
+
+        val choreographer = Choreographer.getInstance()
+        val startTimeNs = System.nanoTime()
+        var lastFrameNs = 0L
+        var lastRenderNanos = 0L
+        var lastRimExpr: MascotExpression? = null
+
+        val callback = object : Choreographer.FrameCallback {
+            override fun doFrame(frameTimeNanos: Long) {
+                if (isViewReleased || host.isDestroyed || textureViewHolder?.isAttachedToWindow == false) return
+                choreographer.postFrameCallback(this)
+
+                val mode = currentRenderMode
+                if (mode == MascotRenderMode.PAUSED) return
+
+                if (mode == MascotRenderMode.THROTTLED_30FPS &&
+                    lastRenderNanos != 0L &&
+                    (frameTimeNanos - lastRenderNanos) < THROTTLED_30FPS_INTERVAL_NS
+                ) {
+                    return
+                }
+                lastRenderNanos = frameTimeNanos
+
+                val dt = if (lastFrameNs == 0L) {
+                    0.016f
+                } else {
+                    ((frameTimeNanos - lastFrameNs) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
+                }
+                lastFrameNs = frameTimeNanos
+                val elapsedSec = (frameTimeNanos - startTimeNs) / 1_000_000_000f
+
+                val expr = currentExpression
+                if (expr != lastRimExpr) {
+                    lastRimExpr = expr
+                    host.updateRimColor(expr)
+                }
+
+                // Update drag inertia & smooth auto-return to front after 2.6s idle
+                if (!orbitState.isDragging) {
+                    orbitState.userYawDeg += orbitState.yawVelocity * dt
+                    orbitState.yawVelocity *= exp(-5.0f * dt)
+                    val idleSec = (frameTimeNanos - orbitState.lastInteractionNs) / 1_000_000_000f
+                    if (orbitState.lastInteractionNs > 0L && idleSec > 2.6f) {
+                        val returnBlend = 1f - exp(-2.6f * dt)
+                        orbitState.userYawDeg += (0f - orbitState.userYawDeg) * returnBlend
+                        orbitState.userPitchDeg += (0f - orbitState.userPitchDeg) * returnBlend
+                    }
+                }
+
+                val tapElapsedSec = if (orbitState.tapImpulseStartNs > 0L) {
+                    (frameTimeNanos - orbitState.tapImpulseStartNs) / 1_000_000_000f
+                } else 99f
+
+                physicsEngine.step(
+                    dt = dt,
+                    elapsedSec = elapsedSec,
+                    expression = expr,
+                    isBreathing = currentBreathing,
+                    isSpeaking = currentSpeaking,
+                    tapElapsedSec = tapElapsedSec,
+                    userYawDeg = orbitState.userYawDeg,
+                    userPitchDeg = orbitState.userPitchDeg,
+                    userYawVelocityDeg = orbitState.yawVelocity
                 )
+
+                // Ground shadow dynamically shrinks & softens as Judy leaps into the air
+                val airScale = (1f - (physicsEngine.rootOffsetY / 0.45f)).coerceIn(0.55f, 1.05f)
+                if (abs(airScale - shadowJumpScale) > 0.01f) {
+                    shadowJumpScale = airScale
+                }
+
+                try {
+                    host.applyPhysicsAndRender(frameTimeNanos, physicsEngine)
+                } catch (_: Throwable) {
+                }
+            }
+        }
+
+        choreographer.postFrameCallback(callback)
+        onDispose {
+            choreographer.removeFrameCallback(callback)
+        }
+    }
+
+    Box(
+        modifier = modifier.testTag("judy_3d_mascot"),
+        contentAlignment = Alignment.Center
+    ) {
+        if (loadFailed) {
+            JudyAvatarBadge(modifier = Modifier.fillMaxSize(), isBreathing = isBreathing)
+        } else {
+            // Soft jump-reactive ground contact shadow directly on the app surface
+            Canvas(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(0.46f)
+                    .height(14.dp)
+                    .graphicsLayer {
+                        scaleX = shadowJumpScale
+                        scaleY = shadowJumpScale
+                        alpha = shadowJumpScale
+                    }
+            ) {
+                drawOval(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = if (currentTheme.isDark) 0.32f else 0.16f),
+                            Color.Transparent
+                        )
+                    )
+                )
+            }
+
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    TextureView(ctx).apply {
+                        isOpaque = false
+                        val host = JudyFilamentHost(this)
+
+                        addOnAttachStateChangeListener(object : android.view.View.OnAttachStateChangeListener {
+                            override fun onViewAttachedToWindow(v: android.view.View) = Unit
+                            override fun onViewDetachedFromWindow(v: android.view.View) {
+                                isViewReleased = true
+                                host.destroy()
+                            }
+                        })
+
+                        var downX = 0f
+                        var downY = 0f
+                        var lastX = 0f
+                        var lastY = 0f
+                        var downTime = 0L
+                        var lastMoveTime = 0L
+
+                        setOnTouchListener { v, event ->
+                            if (!currentInteractive) {
+                                return@setOnTouchListener false
+                            }
+                            when (event.actionMasked) {
+                                MotionEvent.ACTION_DOWN -> {
+                                    downX = event.x
+                                    downY = event.y
+                                    lastX = event.x
+                                    lastY = event.y
+                                    downTime = event.eventTime
+                                    lastMoveTime = event.eventTime
+                                    orbitState.isDragging = true
+                                    orbitState.yawVelocity = 0f
+                                    orbitState.lastInteractionNs = System.nanoTime()
+                                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                                }
+                                MotionEvent.ACTION_MOVE -> {
+                                    val dx = event.x - lastX
+                                    val dy = event.y - lastY
+                                    val dtMs = (event.eventTime - lastMoveTime).coerceAtLeast(1L)
+                                    orbitState.userYawDeg += dx * 0.50f
+                                    orbitState.userPitchDeg = (orbitState.userPitchDeg + dy * 0.22f).coerceIn(-18f, 18f)
+                                    orbitState.yawVelocity = ((dx * 0.50f) / (dtMs / 1000f)).coerceIn(-380f, 380f)
+                                    orbitState.lastInteractionNs = System.nanoTime()
+                                    lastX = event.x
+                                    lastY = event.y
+                                    lastMoveTime = event.eventTime
+                                }
+                                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                    orbitState.isDragging = false
+                                    orbitState.lastInteractionNs = System.nanoTime()
+                                    v.parent?.requestDisallowInterceptTouchEvent(false)
+                                    if (event.actionMasked == MotionEvent.ACTION_UP) {
+                                        val totalDx = abs(event.x - downX)
+                                        val totalDy = abs(event.y - downY)
+                                        if (totalDx < 22f && totalDy < 22f && (event.eventTime - downTime) < 280L) {
+                                            orbitState.tapImpulseStartNs = System.nanoTime()
+                                            orbitState.userYawDeg *= 0.20f
+                                            orbitState.userPitchDeg *= 0.20f
+                                            orbitState.yawVelocity = 0f
+                                            physicsEngine.triggerTapImpulse()
+                                            currentOnTap?.invoke()
+                                        }
+                                    }
+                                }
+                            }
+                            true
+                        }
+
+                        textureViewHolder = this
+                        hostHolder = host
+                    }
+                },
+                onRelease = {
+                    isViewReleased = true
+                    hostHolder?.destroy()
+                    hostHolder = null
+                }
+            )
+
+            if (!isModelReady) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    JudyAvatarBadge(modifier = Modifier.fillMaxSize(0.72f), isBreathing = true)
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                        color = currentTheme.primary.copy(alpha = 0.7f)
+                    )
+                }
             }
         }
     }

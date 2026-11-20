@@ -27,19 +27,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import com.example.ui.components.scaledSp
 import com.example.ui.theme.LocalAppTheme
+import com.example.ui.theme.PomoMotion
+import kotlinx.coroutines.delay
 
 
 
@@ -47,7 +46,6 @@ import com.example.ui.theme.LocalAppTheme
 fun SystemProtectionScreen() {
     val context = LocalContext.current
     val view = LocalView.current
-    val lifecycleOwner = LocalLifecycleOwner.current
 
     val currentTheme = LocalAppTheme.current
     
@@ -69,102 +67,109 @@ fun SystemProtectionScreen() {
         // Overall Status Header
         OverallStatusCard(readyCount = readyCount, applicableCount = applicableCount, requiredCount = requiredCount)
 
-            // Intro text
-            Text(
-                text = "These settings ensure PomoPal can wake up your screen, bypass battery killers, and block distracting notifications when your timer finishes.",
-                fontSize = 12.scaledSp,
-                color = currentTheme.textSecondary,
-                lineHeight = 16.scaledSp,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
+        // Intro text
+        Text(
+            text = "These settings ensure PomoPal can wake up your screen, bypass battery killers, and block distracting notifications when your timer finishes.",
+            fontSize = 12.scaledSp,
+            color = currentTheme.textSecondary,
+            lineHeight = 16.scaledSp,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
 
-            // Cards
-            ProtectionCard(
-                title = "Notification Delivery",
-                description = "Allows PomoPal to show full-screen alerts when your session completes.",
-                icon = Icons.Rounded.Notifications,
-                state = notificationsState,
-                onClick = {
-                    try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+        // Cards (staggered with gentle scale + horizontal micro-shift so tab entry stays strictly horizontal)
+        ProtectionCard(
+            title = "Notification Delivery",
+            description = "Allows PomoPal to show full-screen alerts when your session completes.",
+            icon = Icons.Rounded.Notifications,
+            state = notificationsState,
+            staggerIndex = 0,
+            onClick = {
+                try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                val intent = Intent().apply {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    } else {
+                        action = "android.settings.APP_NOTIFICATION_SETTINGS"
+                        putExtra("app_package", context.packageName)
+                        putExtra("app_uid", context.applicationInfo.uid)
+                    }
+                }
+                try {
+                    context.startActivity(intent)
+                } catch (e: ActivityNotFoundException) {
+                    Toast.makeText(context, "Notification settings unavailable", Toast.LENGTH_SHORT).show()
+                } catch (e: SecurityException) {
+                    Toast.makeText(context, "Permission denied to open settings", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Unable to open settings", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+
+        ProtectionCard(
+            title = "Background Reliability",
+            description = "Allow unrestricted usage for better performance. Prevents the system from silently killing your timer.",
+            icon = Icons.Rounded.BatteryStd,
+            state = batteryState,
+            staggerIndex = 1,
+            onClick = {
+                try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     val intent = Intent().apply {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
-                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                        if (pm.isIgnoringBatteryOptimizations(context.packageName)) {
+                            action = Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS
                         } else {
-                            action = "android.settings.APP_NOTIFICATION_SETTINGS"
-                            putExtra("app_package", context.packageName)
-                            putExtra("app_uid", context.applicationInfo.uid)
+                            action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                            data = android.net.Uri.parse("package:${context.packageName}")
                         }
                     }
                     try {
                         context.startActivity(intent)
                     } catch (e: ActivityNotFoundException) {
-                        Toast.makeText(context, "Notification settings unavailable", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Battery settings unavailable on this device", Toast.LENGTH_SHORT).show()
                     } catch (e: SecurityException) {
-                        Toast.makeText(context, "Permission denied to open settings", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Permission denied to open battery settings", Toast.LENGTH_SHORT).show()
                     } catch (e: Exception) {
-                        Toast.makeText(context, "Unable to open settings", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Unable to open battery settings", Toast.LENGTH_SHORT).show()
                     }
+                } else {
+                    Toast.makeText(context, "Not required on this Android version", Toast.LENGTH_SHORT).show()
                 }
-            )
+            }
+        )
 
-            ProtectionCard(
-                title = "Background Reliability",
-                description = "Allow unrestricted usage for better performance. Prevents the system from silently killing your timer.",
-                icon = Icons.Rounded.BatteryStd,
-                state = batteryState,
-                onClick = {
-                    try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        val intent = Intent().apply {
-                            val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-                            if (pm.isIgnoringBatteryOptimizations(context.packageName)) {
-                                action = Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS
-                            } else {
-                                action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-                                data = android.net.Uri.parse("package:${context.packageName}")
-                            }
-                        }
-                        try {
-                            context.startActivity(intent)
-                        } catch (e: ActivityNotFoundException) {
-                            Toast.makeText(context, "Battery settings unavailable on this device", Toast.LENGTH_SHORT).show()
-                        } catch (e: SecurityException) {
-                            Toast.makeText(context, "Permission denied to open battery settings", Toast.LENGTH_SHORT).show()
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Unable to open battery settings", Toast.LENGTH_SHORT).show()
-                        }
-                    } else {
-                        Toast.makeText(context, "Not required on this Android version", Toast.LENGTH_SHORT).show()
+        ProtectionCard(
+            title = "Deep Focus (DND)",
+            description = "Requires Notification Policy Access to silence incoming calls and app notifications during a session.",
+            icon = Icons.Rounded.DoNotDisturbOn,
+            state = dndState,
+            staggerIndex = 2,
+            onClick = {
+                try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                    try {
+                        context.startActivity(intent)
+                    } catch (e: ActivityNotFoundException) {
+                        Toast.makeText(context, "DND settings unavailable on this device", Toast.LENGTH_SHORT).show()
+                    } catch (e: SecurityException) {
+                        Toast.makeText(context, "Permission denied to open DND settings", Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Unable to open DND settings", Toast.LENGTH_SHORT).show()
                     }
+                } else {
+                    Toast.makeText(context, "Not required on this Android version", Toast.LENGTH_SHORT).show()
                 }
-            )
+            }
+        )
 
-            ProtectionCard(
-                title = "Deep Focus (DND)",
-                description = "Requires Notification Policy Access to silence incoming calls and app notifications during a session.",
-                icon = Icons.Rounded.DoNotDisturbOn,
-                state = dndState,
-                onClick = {
-                    try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-                        try {
-                            context.startActivity(intent)
-                        } catch (e: ActivityNotFoundException) {
-                            Toast.makeText(context, "DND settings unavailable on this device", Toast.LENGTH_SHORT).show()
-                        } catch (e: SecurityException) {
-                            Toast.makeText(context, "Permission denied to open DND settings", Toast.LENGTH_SHORT).show()
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Unable to open DND settings", Toast.LENGTH_SHORT).show()
-                        }
-                    } else {
-                        Toast.makeText(context, "Not required on this Android version", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            )
-
-        if (dndState == PermissionState.ACTION_REQUIRED) {
+        AnimatedVisibility(
+            visible = dndState == PermissionState.ACTION_REQUIRED,
+            enter = PomoMotion.expandSection,
+            exit = PomoMotion.collapseSection
+        ) {
             SideloadedAppTip()
         }
     }
@@ -174,8 +179,16 @@ fun SystemProtectionScreen() {
 fun OverallStatusCard(readyCount: Int, applicableCount: Int, requiredCount: Int) {
     val currentTheme = LocalAppTheme.current
     val allGranted = requiredCount == 0 && applicableCount > 0
-    val bgColor = if (allGranted) Color(0xFF4CAF50).copy(alpha = 0.15f) else currentTheme.primary.copy(alpha = 0.15f)
-    val contentColor = if (allGranted) Color(0xFF388E3C) else currentTheme.primary
+    val bgColor by animateColorAsState(
+        targetValue = if (allGranted) Color(0xFF4CAF50).copy(alpha = 0.15f) else currentTheme.primary.copy(alpha = 0.15f),
+        animationSpec = PomoMotion.colorSpec,
+        label = "overallStatusBg"
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (allGranted) Color(0xFF388E3C) else currentTheme.primary,
+        animationSpec = PomoMotion.colorSpec,
+        label = "overallStatusContent"
+    )
 
     val statusTitle = if (allGranted) "You're all set" else "Almost there"
     val statusText = if (allGranted) {
@@ -199,12 +212,18 @@ fun OverallStatusCard(readyCount: Int, applicableCount: Int, requiredCount: Int)
                 .background(contentColor.copy(alpha = 0.2f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = if (allGranted) Icons.Rounded.VerifiedUser else Icons.Rounded.Shield,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(24.dp)
-            )
+            AnimatedContent(
+                targetState = allGranted,
+                transitionSpec = { PomoMotion.fadeThroughTransition() },
+                label = "overallStatusIcon"
+            ) { granted ->
+                Icon(
+                    imageVector = if (granted) Icons.Rounded.VerifiedUser else Icons.Rounded.Shield,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
         Spacer(modifier = Modifier.width(16.dp))
         Column {
@@ -230,14 +249,21 @@ fun ProtectionCard(
     description: String,
     icon: ImageVector,
     state: PermissionState,
+    staggerIndex: Int = 0,
     onClick: () -> Unit
 ) {
     val currentTheme = LocalAppTheme.current
+    val revealProgress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay(staggerIndex * 45L)
+        revealProgress.animateTo(1f, animationSpec = PomoMotion.defaultSpatial())
+    }
+
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.98f else 1f,
-        animationSpec = com.example.ui.theme.PomoMotion.pressScaleSpec,
+        animationSpec = PomoMotion.pressScaleSpec,
         label = "protectionCardScale"
     )
 
@@ -246,22 +272,44 @@ fun ProtectionCard(
 
     val containerColor by animateColorAsState(
         targetValue = if (isGranted) currentTheme.surface else currentTheme.background,
-        animationSpec = com.example.ui.theme.PomoMotion.colorSpec,
+        animationSpec = PomoMotion.colorSpec,
         label = "protectionContainerColor"
     )
     val borderColor by animateColorAsState(
         targetValue = if (isGranted) Color(0xFF4CAF50).copy(alpha = 0.5f) else currentTheme.cardBorder,
-        animationSpec = com.example.ui.theme.PomoMotion.colorSpec,
+        animationSpec = PomoMotion.colorSpec,
         label = "protectionBorderColor"
+    )
+    val badgeBgColor by animateColorAsState(
+        targetValue = when {
+            isGranted -> Color(0xFF4CAF50).copy(alpha = 0.15f)
+            isUnknown -> currentTheme.surface
+            else -> currentTheme.primary
+        },
+        animationSpec = PomoMotion.colorSpec,
+        label = "protectionBadgeBg"
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (isGranted) Color(0xFF4CAF50) else currentTheme.textSecondary,
+        animationSpec = PomoMotion.colorSpec,
+        label = "protectionIconTint"
     )
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .scale(scale)
+            .graphicsLayer {
+                val p = revealProgress.value
+                alpha = p.coerceIn(0f, 1f)
+                val s = (0.96f + 0.04f * p) * scale
+                scaleX = s
+                scaleY = s
+                translationX = (1f - p) * 14.dp.toPx()
+                compositingStrategy = if (p < 0.999f) CompositingStrategy.Offscreen else CompositingStrategy.Auto
+            }
             .clickable(
                 interactionSource = interactionSource,
-                indication = androidx.compose.material3.ripple(color = currentTheme.primary),
+                indication = ripple(color = currentTheme.primary),
                 onClick = onClick
             ),
         shape = RoundedCornerShape(16.dp),
@@ -282,7 +330,7 @@ fun ProtectionCard(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = if (isGranted) Color(0xFF4CAF50) else currentTheme.textSecondary,
+                    tint = iconTint,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -306,13 +354,7 @@ fun ProtectionCard(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        when {
-                            isGranted -> Color(0xFF4CAF50).copy(alpha = 0.15f)
-                            isUnknown -> currentTheme.surface
-                            else -> currentTheme.primary
-                        }
-                    )
+                    .background(badgeBgColor)
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {

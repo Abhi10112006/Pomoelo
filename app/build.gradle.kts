@@ -59,6 +59,9 @@ android {
     compose = true
     buildConfig = true
   }
+  androidResources {
+    noCompress += "glb"
+  }
   testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
@@ -99,6 +102,9 @@ dependencies {
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.compose.ui.text.google.fonts)
   implementation(libs.androidx.core.ktx)
+  implementation(libs.androidx.core.splashscreen)
+  implementation(libs.androidx.dynamicanimation)
+  implementation(libs.androidx.profileinstaller)
   // implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -116,6 +122,9 @@ dependencies {
   implementation(libs.okhttp)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
+  implementation(libs.filament.android)
+  implementation(libs.gltfio.android)
+  implementation(libs.filament.utils.android)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

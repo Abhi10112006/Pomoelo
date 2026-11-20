@@ -38,9 +38,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.service.SettingsManager
@@ -51,6 +50,7 @@ import com.example.ui.theme.LocalAppTheme
 import com.example.ui.theme.PomoMotion
 import com.example.ui.theme.ThemeOption
 import com.example.ui.theme.luminance
+import kotlinx.coroutines.delay
 
 val backgroundOptions = listOf(
     Color(0xFFFAF9F6), // Default Ivory
@@ -111,11 +111,6 @@ fun AppCustomizerScreen(
             // Header
             val view = LocalView.current
             var showResetDialog by remember { mutableStateOf(false) }
-
-            androidx.activity.compose.BackHandler(enabled = true) {
-                try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-                onNavigateBack()
-            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -264,7 +259,7 @@ fun AppCustomizerScreen(
                         // Start Button
                         val startBtnTextColor by animateColorAsState(
                             targetValue = if (currentTheme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
-                            animationSpec = tween(450, easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)),
+                            animationSpec = PomoMotion.colorSpec,
                             label = "startBtnTextColor"
                         )
                         Box(
@@ -335,29 +330,21 @@ fun AppCustomizerScreen(
             CustomizationSection(
                 title = "Appearance",
                 subtitle = "System-wide theme setting",
-                theme = currentTheme
+                theme = currentTheme,
+                staggerIndex = 0
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AppearanceOption("System", SettingsManager.AppearanceMode.SYSTEM, currentMode) {
-                        handleAppearanceSelect(SettingsManager.AppearanceMode.SYSTEM)
-                    }
-                    AppearanceOption("Light", SettingsManager.AppearanceMode.LIGHT, currentMode) {
-                        handleAppearanceSelect(SettingsManager.AppearanceMode.LIGHT)
-                    }
-                    AppearanceOption("Dark", SettingsManager.AppearanceMode.DARK, currentMode) {
-                        handleAppearanceSelect(SettingsManager.AppearanceMode.DARK)
-                    }
-                }
+                AppearanceSegmentedPill(
+                    currentMode = currentMode,
+                    onSelect = handleAppearanceSelect
+                )
             }
 
             // Section: Background Customization
             CustomizationSection(
                 title = "Background Color",
                 subtitle = "Main app canvas",
-                theme = currentTheme
+                theme = currentTheme,
+                staggerIndex = 1
             ) {
                 ColorPickerRow(
                     options = backgroundOptions,
@@ -382,7 +369,8 @@ fun AppCustomizerScreen(
             CustomizationSection(
                 title = "Primary",
                 subtitle = "Buttons & main actions",
-                theme = currentTheme
+                theme = currentTheme,
+                staggerIndex = 2
             ) {
                 ColorPickerRow(
                     options = primaryOptions,
@@ -395,7 +383,8 @@ fun AppCustomizerScreen(
             CustomizationSection(
                 title = "Secondary",
                 subtitle = "Supporting elements",
-                theme = currentTheme
+                theme = currentTheme,
+                staggerIndex = 3
             ) {
                 ColorPickerRow(
                     options = secondaryOptions,
@@ -408,7 +397,8 @@ fun AppCustomizerScreen(
             CustomizationSection(
                 title = "Accent",
                 subtitle = "Small highlights & details",
-                theme = currentTheme
+                theme = currentTheme,
+                staggerIndex = 4
             ) {
                 ColorPickerRow(
                     options = accentOptions,
@@ -486,54 +476,94 @@ fun AppCustomizerScreen(
 }
 
 @Composable
-fun RowScope.AppearanceOption(
-    label: String,
-    mode: SettingsManager.AppearanceMode,
+fun AppearanceSegmentedPill(
     currentMode: SettingsManager.AppearanceMode,
-    onSelect: () -> Unit
+    onSelect: (SettingsManager.AppearanceMode) -> Unit
 ) {
     val theme = LocalAppTheme.current
-    val isSelected = mode == currentMode
-    val onSelectedColor = if (theme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
-    val animSpec = tween<Color>(450, easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f))
-    val bgColor by animateColorAsState(if (isSelected) theme.primary else theme.surface, animSpec, label = "bg")
-    val textColor by animateColorAsState(if (isSelected) onSelectedColor else theme.textPrimary, animSpec, label = "text")
-    val borderColor by animateColorAsState(if (isSelected) theme.primary else theme.cardBorder, animSpec, label = "border")
-
     val view = LocalView.current
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = PomoMotion.pressScaleSpec,
-        label = "appearanceScale"
-    )
-    val elevation by animateDpAsState(
-        targetValue = if (isPressed) 1.dp else (if (isSelected) 3.dp else 1.dp),
-        animationSpec = PomoMotion.elevationSpec,
-        label = "appearanceElevation"
-    )
+    val options = remember {
+        listOf(
+            "System" to SettingsManager.AppearanceMode.SYSTEM,
+            "Light" to SettingsManager.AppearanceMode.LIGHT,
+            "Dark" to SettingsManager.AppearanceMode.DARK
+        )
+    }
+    val selectedIndex = options.indexOfFirst { it.second == currentMode }.coerceAtLeast(0)
+    val onSelectedColor = if (theme.primary.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White
 
-    Surface(
-        onClick = { 
-            try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
-            onSelect() 
-        },
+    BoxWithConstraints(
         modifier = Modifier
-            .weight(1f)
-            .heightIn(min = 48.dp)
-            .scale(scale),
-        shape = RoundedCornerShape(12.dp),
-        color = bgColor,
-        border = BorderStroke(1.dp, borderColor),
-        shadowElevation = elevation.coerceAtLeast(0.dp),
-        interactionSource = interactionSource
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(theme.background)
+            .border(1.dp, theme.cardBorder.copy(alpha = 0.7f), RoundedCornerShape(14.dp))
+            .padding(4.dp)
     ) {
-        Box(
-            modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(text = label, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        val segmentWidth = maxWidth / options.size
+        val indicatorOffset by animateDpAsState(
+            targetValue = segmentWidth * selectedIndex,
+            animationSpec = PomoMotion.expressiveSpatial(Dp.VisibilityThreshold),
+            label = "appearancePillOffset"
+        )
+
+        Box(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            Box(
+                modifier = Modifier
+                    .offset(x = indicatorOffset)
+                    .width(segmentWidth)
+                    .fillMaxHeight()
+                    .shadow(3.dp, RoundedCornerShape(10.dp), spotColor = theme.primary.copy(alpha = 0.4f))
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(theme.primary)
+            )
+
+            Row(modifier = Modifier.fillMaxWidth()) {
+                options.forEach { (label, mode) ->
+                    val isSelected = mode == currentMode
+                    val interactionSource = remember { MutableInteractionSource() }
+                    val isPressed by interactionSource.collectIsPressedAsState()
+                    val pressScale by animateFloatAsState(
+                        targetValue = if (isPressed) 0.94f else 1f,
+                        animationSpec = PomoMotion.pressScaleSpec,
+                        label = "appearanceItemScale"
+                    )
+                    val textColor by animateColorAsState(
+                        targetValue = if (isSelected) onSelectedColor else theme.textPrimary,
+                        animationSpec = PomoMotion.colorSpec,
+                        label = "appearanceTextColor"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .graphicsLayer {
+                                scaleX = pressScale
+                                scaleY = pressScale
+                            }
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(
+                                interactionSource = interactionSource,
+                                indication = ripple(bounded = true),
+                                role = Role.Tab,
+                                onClick = {
+                                    try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                                    onSelect(mode)
+                                }
+                            )
+                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            color = textColor,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -546,9 +576,6 @@ fun ColorPickerRow(
 ) {
     val view = LocalView.current
     val currentTheme = LocalAppTheme.current
-    val colorChangeAnimSpec = tween<Color>(450, easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f))
-    val dpAnimSpec = tween<androidx.compose.ui.unit.Dp>(350, easing = FastOutSlowInEasing)
-    val floatAnimSpec = tween<Float>(350, easing = FastOutSlowInEasing)
 
     Box(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -561,23 +588,23 @@ fun ColorPickerRow(
                 val isSelected = selectedColor.toArgb() == color.toArgb()
                 val targetBorderWidth = if (isSelected) 3.dp else 1.dp
                 val targetBorderColor = if (isSelected) currentTheme.primary else currentTheme.cardBorder
-                val borderWidth by animateDpAsState(targetBorderWidth, dpAnimSpec, label = "borderWidth")
-                val borderColor by animateColorAsState(targetBorderColor, colorChangeAnimSpec, label = "borderColor")
+                val borderWidth by animateDpAsState(targetBorderWidth, PomoMotion.dpSpatial, label = "borderWidth")
+                val borderColor by animateColorAsState(targetBorderColor, PomoMotion.colorSpec, label = "borderColor")
                 val itemInteraction = remember { MutableInteractionSource() }
                 val isItemPressed by itemInteraction.collectIsPressedAsState()
                 val scale by animateFloatAsState(
-                    targetValue = if (isItemPressed) 0.94f else (if (isSelected) 1.06f else 1f),
-                    animationSpec = PomoMotion.floatSpec,
+                    targetValue = if (isItemPressed) 0.90f else (if (isSelected) 1.08f else 1f),
+                    animationSpec = PomoMotion.expressiveSpatial(),
                     label = "scale"
                 )
                 val elevation by animateDpAsState(
                     targetValue = if (isItemPressed) 1.dp else (if (isSelected) 6.dp else 1.dp),
-                    dpAnimSpec,
+                    animationSpec = PomoMotion.elevationSpec,
                     label = "elevation"
                 )
                 val iconTintColor by animateColorAsState(
                     if (color.luminance() > 0.5f) Color(0xFF1E1E1E) else Color.White,
-                    colorChangeAnimSpec,
+                    animationSpec = PomoMotion.colorSpec,
                     label = "iconTint"
                 )
 
@@ -602,11 +629,11 @@ fun ColorPickerRow(
                         )
                         .clickable(
                             interactionSource = itemInteraction,
-                            indication = androidx.compose.material3.ripple(bounded = true, radius = 24.dp),
+                            indication = ripple(bounded = true, radius = 24.dp),
                             onClickLabel = "Select color",
                             role = Role.RadioButton,
                             onClick = { 
-                                try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (e: Exception) {}
+                                try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
                                 onColorSelected(color) 
                             }
                         ),
@@ -614,8 +641,14 @@ fun ColorPickerRow(
                 ) {
                     androidx.compose.animation.AnimatedVisibility(
                         visible = isSelected,
-                        enter = scaleIn(tween(250, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
-                        exit = scaleOut(tween(200, easing = FastOutSlowInEasing)) + fadeOut(tween(150))
+                        enter = scaleIn(
+                            initialScale = 0.4f,
+                            animationSpec = PomoMotion.expressiveSpatial()
+                        ) + fadeIn(PomoMotion.fastEffects()),
+                        exit = scaleOut(
+                            targetScale = 0.4f,
+                            animationSpec = PomoMotion.fastSpatial()
+                        ) + fadeOut(PomoMotion.fastEffects())
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Check,
@@ -655,9 +688,24 @@ fun CustomizationSection(
     title: String,
     subtitle: String,
     theme: ThemeOption,
+    staggerIndex: Int = 0,
     content: @Composable () -> Unit
 ) {
+    val revealProgress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        if (staggerIndex > 0) delay(staggerIndex * 35L)
+        revealProgress.animateTo(1f, animationSpec = PomoMotion.defaultSpatial())
+    }
+
     Column(
+        modifier = Modifier.graphicsLayer {
+            val p = revealProgress.value
+            alpha = p.coerceIn(0f, 1f)
+            val s = 0.96f + (0.04f * p)
+            scaleX = s
+            scaleY = s
+            translationX = (1f - p) * 16.dp.toPx()
+        },
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Column {
@@ -691,4 +739,3 @@ fun CustomizationSection(
         }
     }
 }
-
