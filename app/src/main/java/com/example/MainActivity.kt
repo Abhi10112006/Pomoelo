@@ -742,7 +742,52 @@ fun PomoPalApp(viewModel: TimerViewModel) {
                     }
                 })
             }
-            composable(route = "home") {
+            composable(
+                route = "home",
+                enterTransition = {
+                    val fromSignIn = initialState.destination.route == "signin"
+                    if (fromSignIn) {
+                        fadeIn(animationSpec = PomoMotion.defaultEffects()) +
+                            scaleIn(initialScale = 0.94f, animationSpec = PomoMotion.defaultSpatial()) +
+                            slideInHorizontally(animationSpec = PomoMotion.intOffsetSpatial) { width -> width / 8 }
+                    } else {
+                        fadeIn(
+                            animationSpec = tween(
+                                durationMillis = 220,
+                                delayMillis = 30,
+                                easing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1.0f)
+                            )
+                        ) + scaleIn(
+                            initialScale = 0.96f,
+                            animationSpec = PomoMotion.smoothSpring(stiffness = 460f)
+                        ) + slideInHorizontally(
+                            animationSpec = PomoMotion.smoothSpring(stiffness = 460f)
+                        ) { width -> -width / 18 }
+                    }
+                },
+                exitTransition = {
+                    fadeOut(animationSpec = PomoMotion.fastEffects()) +
+                        scaleOut(targetScale = 0.97f, animationSpec = PomoMotion.fastEffects())
+                },
+                popEnterTransition = {
+                    fadeIn(
+                        animationSpec = tween(
+                            durationMillis = 220,
+                            delayMillis = 30,
+                            easing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1.0f)
+                        )
+                    ) + scaleIn(
+                        initialScale = 0.96f,
+                        animationSpec = PomoMotion.smoothSpring(stiffness = 460f)
+                    ) + slideInHorizontally(
+                        animationSpec = PomoMotion.smoothSpring(stiffness = 460f)
+                    ) { width -> -width / 18 }
+                },
+                popExitTransition = {
+                    fadeOut(animationSpec = PomoMotion.fastEffects()) +
+                        scaleOut(targetScale = 0.97f, animationSpec = PomoMotion.fastEffects())
+                }
+            ) {
                 HomeScreen(viewModel, navController, bottomPadding)
             }
             composable(route = "tasks") {
@@ -821,6 +866,24 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
     val currentTheme = LocalAppTheme.current
     val currentFont = LocalAppFont.current
 
+    // Choreographed 3-wave GPU-composited entrance (header -> centerpiece dial -> controls)
+    val headerEntrance = remember { Animatable(0f) }
+    val dialEntrance = remember { Animatable(0f) }
+    val controlsEntrance = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        launch {
+            headerEntrance.animateTo(1f, animationSpec = PomoMotion.smoothSpring(stiffness = 460f))
+        }
+        launch {
+            delay(35)
+            dialEntrance.animateTo(1f, animationSpec = PomoMotion.defaultSpatial())
+        }
+        launch {
+            delay(85)
+            controlsEntrance.animateTo(1f, animationSpec = PomoMotion.defaultSpatial())
+        }
+    }
+
     val stateColor by animateColorAsState(
         targetValue = when {
             isBreakMode -> currentTheme.breakBg
@@ -893,7 +956,19 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 16.scaledDp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.scaledDp)
+                    .graphicsLayer {
+                        val p = headerEntrance.value
+                        alpha = p.coerceIn(0f, 1f)
+                        translationY = -(1f - p) * 12.dp.toPx()
+                        compositingStrategy = if (p < 0.999f) {
+                            CompositingStrategy.Offscreen
+                        } else {
+                            CompositingStrategy.Auto
+                        }
+                    },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1000,44 +1075,82 @@ fun HomeScreen(viewModel: TimerViewModel, navController: androidx.navigation.Nav
                 Spacer(modifier = Modifier.weight(0.32f))
             }
 
-            // Clean centered timer display
-            TimerDisplay(
-                timeRemaining = timeRemaining,
-                totalTime = if (isBreakMode) SettingsManager.getBreakTimeMins() * 60 else SettingsManager.getFocusTimeMins() * 60,
-                state = timerState,
-                isBreakMode = isBreakMode,
-                taskName = currentTaskName,
-                currentTask = allTasks.find { it.id == currentTaskId },
-                context = context,
-                circleSize = circleSize,
-                onChooseTaskClick = {
-                    navController.navigate("tasks") {
-                        popUpTo(0)
-                        launchSingleTop = true
+            // Clean centered timer display with smooth spatial bloom entrance
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        val p = dialEntrance.value
+                        alpha = p.coerceIn(0f, 1f)
+                        val s = 0.90f + (0.10f * p)
+                        scaleX = s
+                        scaleY = s
+                        translationY = (1f - p) * 16.dp.toPx()
+                        compositingStrategy = if (p < 0.999f) {
+                            CompositingStrategy.Offscreen
+                        } else {
+                            CompositingStrategy.Auto
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                TimerDisplay(
+                    timeRemaining = timeRemaining,
+                    totalTime = if (isBreakMode) SettingsManager.getBreakTimeMins() * 60 else SettingsManager.getFocusTimeMins() * 60,
+                    state = timerState,
+                    isBreakMode = isBreakMode,
+                    taskName = currentTaskName,
+                    currentTask = allTasks.find { it.id == currentTaskId },
+                    context = context,
+                    circleSize = circleSize,
+                    onChooseTaskClick = {
+                        navController.navigate("tasks") {
+                            popUpTo(0)
+                            launchSingleTop = true
+                        }
                     }
-                }
-            )
+                )
+            }
 
             Spacer(modifier = Modifier.height(verticalSpacing))
 
-            // Controls
-            AppControls(
-                state = timerState, 
-                context = context,
-                onStartAttempt = {
-                    if (protectionStates.needsAttention) {
-                        try {
-                            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS) 
-                        } catch(e: Exception) {}
-                        showJustInTimeSetup = true
-                    } else {
-                        try {
-                            val intent = android.content.Intent(context, com.example.service.TimerService::class.java).apply { action = com.example.service.TimerService.ACTION_START }
-                            androidx.core.content.ContextCompat.startForegroundService(context, intent)
-                        } catch (_: Exception) {}
+            // Controls with smooth upward spring settle
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        val p = controlsEntrance.value
+                        alpha = p.coerceIn(0f, 1f)
+                        val s = 0.93f + (0.07f * p)
+                        scaleX = s
+                        scaleY = s
+                        translationY = (1f - p) * 20.dp.toPx()
+                        compositingStrategy = if (p < 0.999f) {
+                            CompositingStrategy.Offscreen
+                        } else {
+                            CompositingStrategy.Auto
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                AppControls(
+                    state = timerState,
+                    context = context,
+                    onStartAttempt = {
+                        if (protectionStates.needsAttention) {
+                            try {
+                                view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                            } catch (e: Exception) {}
+                            showJustInTimeSetup = true
+                        } else {
+                            try {
+                                val intent = android.content.Intent(context, com.example.service.TimerService::class.java).apply { action = com.example.service.TimerService.ACTION_START }
+                                androidx.core.content.ContextCompat.startForegroundService(context, intent)
+                            } catch (_: Exception) {}
+                        }
                     }
-                }
-            )
+                )
+            }
 
             Spacer(modifier = Modifier.height(verticalSpacing))
 
@@ -2330,19 +2443,25 @@ fun TimerDisplay(
     val currentFont = LocalAppFont.current
     var animatedText by remember { mutableStateOf("") }
     
-    // Typing effect for Task Name
+    // Snappy typing effect for Task Name
     LaunchedEffect(taskName) {
         animatedText = ""
         for (i in taskName.indices) {
             animatedText += taskName[i]
-            delay(50)
+            delay(26)
         }
     }
 
     val progress = if (totalTime > 0) timeRemaining.toFloat() / totalTime.toFloat() else 0f
     val isTimerRunning = state == TimerManager.TimerState.RUNNING
     val animatedProgress = remember { Animatable(progress) }
-    
+    val ringSweepReveal = remember { Animatable(if (isTimerRunning) 0.78f else 0f) }
+
+    LaunchedEffect(Unit) {
+        delay(55)
+        ringSweepReveal.animateTo(1f, animationSpec = PomoMotion.slowSpatial())
+    }
+
     LaunchedEffect(progress, isTimerRunning) {
         if (isTimerRunning) {
             animatedProgress.animateTo(progress, animationSpec = tween(950, easing = LinearEasing))
@@ -2410,7 +2529,7 @@ fun TimerDisplay(
                     style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
                 )
 
-                val sweepDeg = (animatedProgress.value * 360f).coerceIn(0f, 360f)
+                val sweepDeg = (animatedProgress.value * ringSweepReveal.value.coerceIn(0f, 1f) * 360f).coerceIn(0f, 360f)
                 if (sweepDeg > 0.5f) {
                     if (currentWaveAmpPx < 0.15f) {
                         val inset = maxWaveAmpPx + strokeWidthPx / 2f

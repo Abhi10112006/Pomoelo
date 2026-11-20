@@ -71,6 +71,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -122,6 +123,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 private enum class HistoryModeFilter(val label: String) {
     ALL("All"),
@@ -141,20 +143,43 @@ private data class HistoryTimelineData(
     val archiveEntries: List<Pair<String, List<TimerSession>>>
 )
 
+private const val HISTORY_LOGICAL_DAY_CUTOFF_HOUR = 4
+
+private fun sessionLogicalTime(session: TimerSession): Long =
+    if (session.endTime > 0L) session.endTime else session.startTime
+
 fun getStartOfDay(timeStr: Long): Long {
     val cal = Calendar.getInstance()
     cal.timeInMillis = timeStr
-    cal.set(Calendar.HOUR_OF_DAY, 0)
+    if (cal.get(Calendar.HOUR_OF_DAY) < HISTORY_LOGICAL_DAY_CUTOFF_HOUR) {
+        cal.add(Calendar.DAY_OF_YEAR, -1)
+    }
+    cal.set(Calendar.HOUR_OF_DAY, HISTORY_LOGICAL_DAY_CUTOFF_HOUR)
     cal.set(Calendar.MINUTE, 0)
     cal.set(Calendar.SECOND, 0)
     cal.set(Calendar.MILLISECOND, 0)
     return cal.timeInMillis
 }
 
+private fun shiftLogicalDay(logicalDayStart: Long, deltaDays: Int): Long {
+    val cal = Calendar.getInstance()
+    cal.timeInMillis = logicalDayStart
+    cal.add(Calendar.DAY_OF_YEAR, deltaDays)
+    cal.set(Calendar.HOUR_OF_DAY, HISTORY_LOGICAL_DAY_CUTOFF_HOUR)
+    cal.set(Calendar.MINUTE, 0)
+    cal.set(Calendar.SECOND, 0)
+    cal.set(Calendar.MILLISECOND, 0)
+    return cal.timeInMillis
+}
+
+private fun diffLogicalDays(todayStart: Long, dayStart: Long, dayInMillis: Long): Int {
+    return ((todayStart - dayStart).toDouble() / dayInMillis.toDouble()).roundToInt()
+}
+
 fun getDayLabel(startTime: Long, todayStart: Long, dayInMillis: Long): String {
     val startOfDay = getStartOfDay(startTime)
-    val diffDays = ((todayStart - startOfDay) / dayInMillis).toInt()
-    val dateStr = SimpleDateFormat("MMM dd", Locale.getDefault()).format(Date(startTime))
+    val diffDays = diffLogicalDays(todayStart, startOfDay, dayInMillis)
+    val dateStr = SimpleDateFormat("MMM dd", Locale.getDefault()).format(Date(startOfDay))
     return when (diffDays) {
         0 -> "Today ($dateStr)"
         1 -> "Yesterday ($dateStr)"
@@ -230,7 +255,16 @@ fun HistoryScreen(
     val dailyGoalMinutes by SettingsManager.dailyFocusGoalState.collectAsState()
 
     val dayInMillis = 24 * 60 * 60 * 1000L
-    val todayStart = remember(allSessions) { getStartOfDay(System.currentTimeMillis()) }
+    var logicalDayTick by remember { mutableIntStateOf(0) }
+    val todayStart = remember(allSessions, logicalDayTick) { getStartOfDay(System.currentTimeMillis()) }
+    val nextLogicalDayStart = remember(todayStart) { shiftLogicalDay(todayStart, 1) }
+
+    LaunchedEffect(nextLogicalDayStart) {
+        val waitMs = (nextLogicalDayStart - System.currentTimeMillis() + 250L)
+            .coerceAtLeast(1_000L)
+        delay(waitMs)
+        logicalDayTick++
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
     var temporarilyDeletedGroupKeys by remember { mutableStateOf(setOf<String>()) }
@@ -248,17 +282,17 @@ fun HistoryScreen(
     var tier3SessionsToDelete by remember { mutableStateOf<List<TimerSession>>(emptyList()) }
     var tier3InputText by remember { mutableStateOf("") }
 
-    // 1. Dashboard Telemetry (strictly independent of filter mode & timer ticks)
+    // 1. Dashboard Telemetry (4:00 AM -> next 4:00 AM logical day; strictly independent of filter mode & timer ticks)
     val dashboardTelemetry = remember(allSessions, temporarilyDeletedGroupKeys, allTasks, todayStart) {
         val visible = allSessions.filter { session ->
-            val dateMillis = getStartOfDay(session.startTime)
+            val dateMillis = getStartOfDay(sessionLogicalTime(session))
             val groupKey = "${session.taskName}|$dateMillis"
             !temporarilyDeletedGroupKeys.contains(groupKey)
         }
 
-        val byDay = visible.groupBy { getStartOfDay(it.startTime) }
+        val byDay = visible.groupBy { getStartOfDay(sessionLogicalTime(it)) }
         val todaySessions = byDay[todayStart].orEmpty()
-        val yesterdayStart = todayStart - dayInMillis
+        val yesterdayStart = shiftLogicalDay(todayStart, -1)
         val yesterdaySessions = byDay[yesterdayStart].orEmpty()
 
         val todayPomos = todaySessions.count { !it.isBreak }
@@ -266,11 +300,11 @@ fun HistoryScreen(
         val todayBreakMins = todaySessions.filter { it.isBreak }.sumOf { it.durationMinutes }
         val yesterdayFocusMins = yesterdaySessions.filter { !it.isBreak }.sumOf { it.durationMinutes }
 
-        // Trailing 7 days ending Today
+        // Trailing 7 logical days ending Today (4:00 AM -> 4:00 AM)
         val shortFormat = SimpleDateFormat("EEE", Locale.getDefault())
         val fullFormat = SimpleDateFormat("MMM d", Locale.getDefault())
         val weeklyList = (6 downTo 0).map { offset ->
-            val dayStart = todayStart - offset * dayInMillis
+            val dayStart = shiftLogicalDay(todayStart, -offset)
             val daySessions = byDay[dayStart].orEmpty()
             DailyPulseBar(
                 dayStartMillis = dayStart,
@@ -285,16 +319,16 @@ fun HistoryScreen(
         val weeklyFocusTotal = weeklyList.sumOf { it.focusMinutes }
         val weeklyAvg = weeklyFocusTotal / 7
 
-        // Active Focus Streak (consecutive days with >= 1 focus session)
+        // Active Focus Streak (consecutive 4:00 AM–4:00 AM logical days with >= 1 focus session)
         val focusDaySet = visible.asSequence()
             .filter { !it.isBreak }
-            .map { getStartOfDay(it.startTime) }
+            .map { getStartOfDay(sessionLogicalTime(it)) }
             .toHashSet()
         var streak = 0
         var cursorDay = if (focusDaySet.contains(todayStart)) todayStart else yesterdayStart
         while (focusDaySet.contains(cursorDay)) {
             streak++
-            cursorDay -= dayInMillis
+            cursorDay = shiftLogicalDay(cursorDay, -1)
         }
 
         // Today's task/category distribution
@@ -326,10 +360,10 @@ fun HistoryScreen(
         )
     }
 
-    // 2. Filtered Timeline Pipeline
+    // 2. Filtered Timeline Pipeline (aligned to 4:00 AM -> next 4:00 AM logical day)
     val historyTimeline = remember(allSessions, temporarilyDeletedGroupKeys, selectedFilterMode, todayStart) {
         val visible = allSessions.filter { session ->
-            val dateMillis = getStartOfDay(session.startTime)
+            val dateMillis = getStartOfDay(sessionLogicalTime(session))
             val groupKey = "${session.taskName}|$dateMillis"
             !temporarilyDeletedGroupKeys.contains(groupKey)
         }
@@ -342,14 +376,14 @@ fun HistoryScreen(
             HistoryModeFilter.REST -> visible.filter { it.isBreak }
         }
 
-        val byDay = filtered.sortedByDescending { it.startTime }.groupBy { getStartOfDay(it.startTime) }
+        val byDay = filtered.sortedByDescending { sessionLogicalTime(it) }.groupBy { getStartOfDay(sessionLogicalTime(it)) }
         val recent = mutableListOf<Long>()
         val pastMonth = mutableListOf<Long>()
         val archives = LinkedHashMap<String, MutableList<TimerSession>>()
         val monthFormat = SimpleDateFormat("MMM yyyy", Locale.getDefault())
 
         byDay.forEach { (startOfDay, sessions) ->
-            val diffDays = ((todayStart - startOfDay) / dayInMillis).toInt()
+            val diffDays = diffLogicalDays(todayStart, startOfDay, dayInMillis)
             if (diffDays <= 7) {
                 recent.add(startOfDay)
             } else if (diffDays <= 30) {
@@ -512,7 +546,7 @@ fun HistoryScreen(
                                         .background(headerAccentBrush)
                                 )
                                 Text(
-                                    text = todayHeaderDate,
+                                    text = "$todayHeaderDate • 4 AM day",
                                     fontSize = 14.scaledSp,
                                     fontFamily = currentFont,
                                     color = currentTheme.textSecondary
@@ -1308,7 +1342,7 @@ fun MonthSummaryCard(
     )
     val focusSessions = sessions.filter { !it.isBreak }
     val totalFocusMins = focusSessions.sumOf { it.durationMinutes }
-    val totalDays = sessions.groupBy { getStartOfDay(it.startTime) }.size
+    val totalDays = sessions.groupBy { getStartOfDay(sessionLogicalTime(it)) }.size
     val dailyAvg = if (totalDays > 0) totalFocusMins / totalDays else 0
     val currentTheme = LocalAppTheme.current
     val currentFont = LocalAppFont.current

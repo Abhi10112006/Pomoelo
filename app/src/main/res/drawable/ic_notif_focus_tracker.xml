@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- M3 Rounded Focus Timer Tracker Icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M10,2h4c0.55,0 1,0.45 1,1s-0.45,1 -1,1h-4c-0.55,0 -1,-0.45 -1,-1s0.45,-1 1,-1zM19.03,7.39l0.75,-0.75c0.38,-0.38 0.39,-1.01 0,-1.4 -0.39,-0.39 -1.01,-0.38 -1.4,0l-0.75,0.75C16.07,4.74 14.12,4 12,4c-4.8,0 -8.88,3.96 -9,8.76 -0.12,5.08 3.96,9.24 9,9.24 4.98,0 9,-4.03 9,-9 0,-2.12 -0.74,-4.07 -1.97,-5.61zM13,13c0,0.55 -0.45,1 -1,1s-1,-0.45 -1,-1V9c0,-0.55 0.45,-1 1,-1s1,0.45 1,1v4z" />
+</vector>

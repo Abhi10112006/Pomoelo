@@ -53,9 +53,15 @@ fun SystemProtectionScreen() {
     val notificationsState = protectionStates.notificationsState
     val batteryState = protectionStates.batteryState
     val dndState = protectionStates.dndState
+    val liveUpdatesState = protectionStates.liveUpdatesState
     
     // Prepare data for UI
-    val states = listOf(notificationsState, batteryState, dndState)
+    val states = buildList {
+        add(notificationsState)
+        if (Build.VERSION.SDK_INT >= 36) add(liveUpdatesState)
+        add(batteryState)
+        add(dndState)
+    }
     val readyCount = states.count { it == PermissionState.READY }
     val requiredCount = states.count { it == PermissionState.ACTION_REQUIRED }
     val applicableCount = states.count { it != PermissionState.UNKNOWN }
@@ -107,12 +113,40 @@ fun SystemProtectionScreen() {
             }
         )
 
+        if (Build.VERSION.SDK_INT >= 36) {
+            ProtectionCard(
+                title = "Live Updates & Island",
+                description = "Shows your live focus countdown directly in the Android 16 status pill, dynamic island, and lock screen.",
+                icon = Icons.Rounded.Bolt,
+                state = liveUpdatesState,
+                staggerIndex = 1,
+                onClick = {
+                    try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                    val promotedIntent = Intent(Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS).apply {
+                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    }
+                    try {
+                        context.startActivity(promotedIntent)
+                    } catch (_: Exception) {
+                        val fallbackIntent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        }
+                        try {
+                            context.startActivity(fallbackIntent)
+                        } catch (_: Exception) {
+                            Toast.makeText(context, "Live Update settings unavailable", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            )
+        }
+
         ProtectionCard(
             title = "Background Reliability",
             description = "Allow unrestricted usage for better performance. Prevents the system from silently killing your timer.",
             icon = Icons.Rounded.BatteryStd,
             state = batteryState,
-            staggerIndex = 1,
+            staggerIndex = if (Build.VERSION.SDK_INT >= 36) 2 else 1,
             onClick = {
                 try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -145,7 +179,7 @@ fun SystemProtectionScreen() {
             description = "Requires Notification Policy Access to silence incoming calls and app notifications during a session.",
             icon = Icons.Rounded.DoNotDisturbOn,
             state = dndState,
-            staggerIndex = 2,
+            staggerIndex = if (Build.VERSION.SDK_INT >= 36) 3 else 2,
             onClick = {
                 try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {

@@ -45,7 +45,8 @@ enum class PermissionState {
 data class SystemProtectionStates(
     val notificationsState: PermissionState,
     val batteryState: PermissionState,
-    val dndState: PermissionState
+    val dndState: PermissionState,
+    val liveUpdatesState: PermissionState = PermissionState.UNKNOWN
 ) {
     val needsAttention: Boolean
         get() = notificationsState == PermissionState.ACTION_REQUIRED ||
@@ -61,6 +62,7 @@ fun rememberSystemProtectionStates(): SystemProtectionStates {
     var notificationsState by remember { mutableStateOf(PermissionState.UNKNOWN) }
     var batteryState by remember { mutableStateOf(PermissionState.UNKNOWN) }
     var dndState by remember { mutableStateOf(PermissionState.UNKNOWN) }
+    var liveUpdatesState by remember { mutableStateOf(PermissionState.UNKNOWN) }
 
     val checkPermissions = {
         notificationsState = try {
@@ -91,6 +93,17 @@ fun rememberSystemProtectionStates(): SystemProtectionStates {
         } else {
             PermissionState.UNKNOWN
         }
+
+        liveUpdatesState = if (Build.VERSION.SDK_INT >= 36) {
+            try {
+                val systemNotificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                if (systemNotificationManager.canPostPromotedNotifications()) PermissionState.READY else PermissionState.ACTION_REQUIRED
+            } catch (e: Exception) {
+                PermissionState.UNKNOWN
+            }
+        } else {
+            PermissionState.UNKNOWN
+        }
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -112,12 +125,14 @@ fun rememberSystemProtectionStates(): SystemProtectionStates {
     var prevNotif by remember { mutableStateOf(notificationsState) }
     var prevBattery by remember { mutableStateOf(batteryState) }
     var prevDnd by remember { mutableStateOf(dndState) }
+    var prevLiveUpdates by remember { mutableStateOf(liveUpdatesState) }
     
-    androidx.compose.runtime.LaunchedEffect(notificationsState, batteryState, dndState) {
+    androidx.compose.runtime.LaunchedEffect(notificationsState, batteryState, dndState, liveUpdatesState) {
         val becameReady = 
             (prevNotif != PermissionState.READY && notificationsState == PermissionState.READY) ||
             (prevBattery != PermissionState.READY && batteryState == PermissionState.READY) ||
-            (prevDnd != PermissionState.READY && dndState == PermissionState.READY)
+            (prevDnd != PermissionState.READY && dndState == PermissionState.READY) ||
+            (prevLiveUpdates != PermissionState.READY && liveUpdatesState == PermissionState.READY)
             
         if (becameReady) {
             try { view.performHapticFeedback(16) } catch (e: Exception) {}
@@ -126,9 +141,10 @@ fun rememberSystemProtectionStates(): SystemProtectionStates {
         prevNotif = notificationsState
         prevBattery = batteryState
         prevDnd = dndState
+        prevLiveUpdates = liveUpdatesState
     }
 
-    return SystemProtectionStates(notificationsState, batteryState, dndState)
+    return SystemProtectionStates(notificationsState, batteryState, dndState, liveUpdatesState)
 }
 
 

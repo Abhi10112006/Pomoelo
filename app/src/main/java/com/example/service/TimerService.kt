@@ -1,9 +1,7 @@
 package com.example.service
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -14,10 +12,6 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
-import androidx.compose.ui.graphics.toArgb
-import androidx.core.app.NotificationCompat
-import com.example.MainActivity
-import com.example.R
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +35,11 @@ class TimerService : Service() {
     private lateinit var audioManager: AudioManager
     private var focusRequest: AudioFocusRequest? = null
     private var startTimestamp: Long = 0L
+    private var sessionTotalSeconds: Int = 1500
+    private var lastNotificationPercent: Int = -1
+    private var lastNotificationUpdateAtMs: Long = 0L
+    private var liveUpdateDismissedByUser: Boolean = false
+    private var completedFocusCountThisRun: Int = 0
 
     private val afChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
@@ -59,8 +58,8 @@ class TimerService : Service() {
     }
 
     companion object {
-        const val CHANNEL_ID = "TimerServiceChannel"
-        const val COMPLETION_CHANNEL_ID = "TimerCompletionChannel"
+        const val CHANNEL_ID = LiveTimerNotificationManager.LIVE_TIMER_CHANNEL_ID
+        const val COMPLETION_CHANNEL_ID = LiveTimerNotificationManager.COMPLETION_CHANNEL_ID
         const val NOTIFICATION_ID = 1
         const val COMPLETION_NOTIFICATION_ID = 2
 
@@ -68,6 +67,9 @@ class TimerService : Service() {
         const val ACTION_PAUSE = "ACTION_PAUSE"
         const val ACTION_STOP = "ACTION_STOP"
         const val ACTION_TOGGLE_MODE = "ACTION_TOGGLE_MODE"
+        const val ACTION_ADD_FIVE_MIN = "ACTION_ADD_FIVE_MIN"
+        const val ACTION_SKIP_BREAK = "ACTION_SKIP_BREAK"
+        const val ACTION_NOTIFICATION_DISMISSED = "ACTION_NOTIFICATION_DISMISSED"
     }
 
     private lateinit var database: com.example.data.AppDatabase
@@ -152,6 +154,18 @@ class TimerService : Service() {
                 toggleMode()
                 return START_NOT_STICKY
             }
+            ACTION_ADD_FIVE_MIN -> {
+                addFiveMinutes()
+                return if (TimerManager.timerState.value == TimerManager.TimerState.RUNNING) START_STICKY else START_NOT_STICKY
+            }
+            ACTION_SKIP_BREAK -> {
+                skipBreakToFocus()
+                return START_NOT_STICKY
+            }
+            ACTION_NOTIFICATION_DISMISSED -> {
+                liveUpdateDismissedByUser = true
+                return if (TimerManager.timerState.value == TimerManager.TimerState.RUNNING) START_STICKY else START_NOT_STICKY
+            }
         }
         return START_NOT_STICKY
     }
@@ -186,6 +200,57 @@ class TimerService : Service() {
         TimerManager.setTask(-1, if (newIsBreak) "Break Time!" else "Focus Time!")
     }
 
+    private fun addFiveMinutes() {
+        val currentRemaining = TimerManager.timeRemainingSeconds.value.coerceAtLeast(0)
+        val extraSeconds = 5 * 60
+        val updatedRemaining = currentRemaining + extraSeconds
+        val defaultTotal = if (TimerManager.isBreakMode.value) {
+            TimerManager.breakTimeSeconds.value
+        } else {
+            TimerManager.focusTimeSeconds.value
+        }
+        sessionTotalSeconds = maxOf(sessionTotalSeconds, defaultTotal, updatedRemaining)
+        TimerManager.updateTime(updatedRemaining)
+
+        // Extend wake lock if currently running
+        if (TimerManager.timerState.value == TimerManager.TimerState.RUNNING) {
+            try {
+                if (wakeLock?.isHeld == true) {
+                    wakeLock?.release()
+                }
+                wakeLock?.acquire((updatedRemaining + 60) * 1000L)
+            } catch (_: Exception) {}
+        }
+
+        // User interacted with the notification -> allow immediate refresh
+        liveUpdateDismissedByUser = false
+        updateProgressNotification(force = true)
+    }
+
+    private fun skipBreakToFocus() {
+        timerJob?.cancel()
+        quoteJob?.cancel()
+        SoundGenerator.stop()
+        abandonAudioFocus()
+        restoreDndIfModified()
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+            }
+        } catch (_: Exception) {}
+        TimerManager.setBreakMode(false)
+        TimerManager.updateState(TimerManager.TimerState.STOPPED)
+        TimerManager.updateTime(TimerManager.focusTimeSeconds.value)
+        TimerManager.setTask(-1, "Focus Time!")
+        try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancel(NOTIFICATION_ID)
+        } catch (_: Exception) {}
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        InactivityScheduler.schedule(applicationContext)
+        stopSelf()
+    }
+
     private fun startTimer() {
         try {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -193,23 +258,33 @@ class TimerService : Service() {
         } catch (_: Exception) {}
 
         InactivityScheduler.cancel(applicationContext)
+        liveUpdateDismissedByUser = false
 
+        val wasPaused = TimerManager.timerState.value == TimerManager.TimerState.PAUSED
         if (TimerManager.timerState.value == TimerManager.TimerState.RUNNING) {
             promoteToForeground()
             return
         }
 
+        val defaultDuration = if (TimerManager.isBreakMode.value) {
+            TimerManager.breakTimeSeconds.value
+        } else {
+            TimerManager.focusTimeSeconds.value
+        }.coerceAtLeast(1)
+
         if (TimerManager.timeRemainingSeconds.value <= 0) {
-            val initialSeconds = if (TimerManager.isBreakMode.value) {
-                TimerManager.breakTimeSeconds.value
-            } else {
-                TimerManager.focusTimeSeconds.value
-            }
-            TimerManager.updateTime(initialSeconds)
+            TimerManager.updateTime(defaultDuration)
+            sessionTotalSeconds = defaultDuration
+        } else if (!wasPaused) {
+            sessionTotalSeconds = maxOf(defaultDuration, TimerManager.timeRemainingSeconds.value)
+        } else {
+            sessionTotalSeconds = maxOf(sessionTotalSeconds, defaultDuration, TimerManager.timeRemainingSeconds.value)
         }
 
         TimerManager.updateState(TimerManager.TimerState.RUNNING)
-        startTimestamp = System.currentTimeMillis()
+        if (!wasPaused || startTimestamp <= 0L) {
+            startTimestamp = System.currentTimeMillis()
+        }
         enableDndIfPermitted()
 
         try {
@@ -219,6 +294,8 @@ class TimerService : Service() {
             }
         } catch (_: Exception) {}
 
+        lastNotificationPercent = -1
+        lastNotificationUpdateAtMs = System.currentTimeMillis()
         promoteToForeground()
 
         if (!TimerManager.isBreakMode.value) {
@@ -236,7 +313,7 @@ class TimerService : Service() {
                 delay(1000L)
                 val nextValue = TimerManager.timeRemainingSeconds.value - 1
                 TimerManager.updateTime(nextValue)
-                updateProgressNotification()
+                updateProgressNotification(force = false)
 
                 if (nextValue <= 0) {
                     handleTimerCompletion()
@@ -271,7 +348,8 @@ class TimerService : Service() {
                 wakeLock?.release()
             }
         } catch (_: Exception) {}
-        updateProgressNotification()
+        liveUpdateDismissedByUser = false
+        updateProgressNotification(force = true)
         stopForeground(STOP_FOREGROUND_DETACH)
     }
 
@@ -319,6 +397,7 @@ class TimerService : Service() {
 
         val taskId = TimerManager.currentTaskId.value
         if (!completedWasBreak) {
+            completedFocusCountThisRun++
             TimerManager.notifyTaskCompleted()
             serviceScope.launch {
                 try {
@@ -419,106 +498,60 @@ class TimerService : Service() {
         }
     }
 
-    private fun updateProgressNotification() {
+    private fun updateProgressNotification(force: Boolean = false) {
+        if (!force && liveUpdateDismissedByUser) return
+
+        val totalSecs = sessionTotalSeconds.coerceAtLeast(1)
+        val remaining = TimerManager.timeRemainingSeconds.value.coerceIn(0, totalSecs)
+        val elapsed = (totalSecs - remaining).coerceIn(0, totalSecs)
+        val currentPercent = ((elapsed.toFloat() / totalSecs.toFloat()) * 100f).toInt().coerceIn(0, 100)
+        val now = System.currentTimeMillis()
+
+        // SystemUI's native Chronometer ticks every second smoothly in the Island / Pill / Shade.
+        // Refresh the ProgressStyle bar / M3 ring badge when forced, on phase milestones (20/50/65/80%),
+        // or smoothly when progress moves >= 1% with at least a 5s cooldown (or every 15s max) to avoid
+        // Android 15/16 notification rate limiting.
+        if (!force) {
+            val elapsedSinceLast = now - lastNotificationUpdateAtMs
+            val percentChanged = currentPercent != lastNotificationPercent
+            val crossedMilestone = (lastNotificationPercent < 20 && currentPercent >= 20) ||
+                (lastNotificationPercent < 50 && currentPercent >= 50) ||
+                (lastNotificationPercent < 65 && currentPercent >= 65) ||
+                (lastNotificationPercent < 80 && currentPercent >= 80)
+            val shouldUpdate = crossedMilestone ||
+                (percentChanged && elapsedSinceLast >= 5_000L) ||
+                elapsedSinceLast >= 15_000L
+            if (!shouldUpdate) return
+        }
+
+        lastNotificationPercent = currentPercent
+        lastNotificationUpdateAtMs = now
         try {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.notify(NOTIFICATION_ID, createProgressNotification())
         } catch (_: Exception) {}
     }
 
-    private fun resolveNotificationColor(taskColor: Long?, isBreak: Boolean): Int {
-        val theme = SettingsManager.themeState.value
-        val defaultArgb = if (isBreak) theme.secondary.toArgb() else theme.primary.toArgb()
-        return if (!isBreak && taskColor != null) {
-            safeParseColorArgb(taskColor, defaultArgb)
-        } else {
-            defaultArgb
-        }
-    }
-
     private fun createProgressNotification(): Notification {
-        val notificationIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            notificationIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val timeRemaining = TimerManager.timeRemainingSeconds.value.coerceAtLeast(0)
-        val minutes = timeRemaining / 60
-        val seconds = timeRemaining % 60
-        val timeString = String.format("%02d:%02d", minutes, seconds)
         val isBreak = TimerManager.isBreakMode.value
-        val state = TimerManager.timerState.value
-
-        val rawTaskName = TimerManager.currentTaskName.value
-        val cleanTaskName = when {
-            isBreak -> "Mindful Break"
-            rawTaskName.isBlank() || rawTaskName == "Focus Time!" -> "Deep Focus Session"
-            else -> rawTaskName
-        }
-
-        val totalSeconds = (if (isBreak) TimerManager.breakTimeSeconds.value else TimerManager.focusTimeSeconds.value)
+        val defaultTotal = (if (isBreak) TimerManager.breakTimeSeconds.value else TimerManager.focusTimeSeconds.value)
             .coerceAtLeast(1)
-        val elapsedSeconds = (totalSeconds - timeRemaining).coerceIn(0, totalSeconds)
+        val effectiveTotal = maxOf(sessionTotalSeconds, defaultTotal, TimerManager.timeRemainingSeconds.value)
+            .coerceAtLeast(1)
 
-        val subText = when {
-            state == TimerManager.TimerState.PAUSED -> "Session Paused"
-            isBreak -> "Rest • Mindful Break"
-            else -> "Focus • Deep Work"
-        }
-
-        val titleText = "$cleanTaskName  •  $timeString"
-        val bodyText = when {
-            state == TimerManager.TimerState.PAUSED -> "Paused with $timeString remaining. Tap Resume to continue."
-            isBreak -> "Step away from the screen, breathe deeply, and recharge."
-            else -> "Stay present with your goal. Distraction Shield is standing by."
-        }
-
-        val toggleIntent = Intent(this, TimerService::class.java).apply {
-            action = if (state == TimerManager.TimerState.RUNNING) ACTION_PAUSE else ACTION_START
-        }
-        val togglePendingIntent = PendingIntent.getService(
-            this,
-            1,
-            toggleIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        return LiveTimerNotificationManager.buildLiveTimerNotification(
+            context = this,
+            snapshot = LiveTimerNotificationManager.LiveTimerSnapshot(
+                taskName = TimerManager.currentTaskName.value,
+                isBreak = isBreak,
+                state = TimerManager.timerState.value,
+                timeRemainingSeconds = TimerManager.timeRemainingSeconds.value.coerceAtLeast(0),
+                totalSeconds = effectiveTotal,
+                taskColor = TimerManager.currentTaskColor.value,
+                isDndActive = dndModifiedByUs,
+                focusCompletedToday = completedFocusCountThisRun
+            )
         )
-        val toggleLabel = if (state == TimerManager.TimerState.RUNNING) "Pause" else "Resume"
-
-        val stopIntent = Intent(this, TimerService::class.java).apply {
-            action = ACTION_STOP
-        }
-        val stopPendingIntent = PendingIntent.getService(
-            this,
-            2,
-            stopIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val accentColor = resolveNotificationColor(TimerManager.currentTaskColor.value, isBreak)
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher_round)
-            .setSubText(subText)
-            .setContentTitle(titleText)
-            .setContentText(bodyText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(bodyText).setBigContentTitle(titleText))
-            .setContentIntent(pendingIntent)
-            .setOngoing(state == TimerManager.TimerState.RUNNING)
-            .setOnlyAlertOnce(true)
-            .setShowWhen(false)
-            .setColor(accentColor)
-            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setProgress(totalSeconds, elapsedSeconds, false)
-            .addAction(0, toggleLabel, togglePendingIntent)
-            .addAction(0, "End Session", stopPendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
     }
 
     private fun postCompletionNotification(
@@ -528,109 +561,20 @@ class TimerService : Service() {
         taskColor: Long?
     ) {
         try {
-            val openAppIntent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            val openPendingIntent = PendingIntent.getActivity(
-                this,
-                10,
-                openAppIntent,
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            val notification = LiveTimerNotificationManager.buildCompletionNotification(
+                context = this,
+                completedWasBreak = completedWasBreak,
+                completedTaskName = completedTaskName,
+                completedDurationMins = completedDurationMins,
+                taskColor = taskColor
             )
-
-            val nextSessionIntent = Intent(this, TimerService::class.java).apply {
-                action = ACTION_START
-            }
-            val nextSessionPendingIntent = PendingIntent.getService(
-                this,
-                11,
-                nextSessionIntent,
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-            )
-
-            val subText = if (completedWasBreak) {
-                "Break Complete • Recharged"
-            } else {
-                "Focus Complete • ${completedDurationMins}m Logged"
-            }
-
-            val cleanTask = if (completedTaskName == "Focus Time!" || completedTaskName.isBlank()) {
-                "your focus session"
-            } else {
-                completedTaskName
-            }
-
-            val title = if (completedWasBreak) {
-                "Break finished — ready to focus?"
-            } else {
-                "Session complete • Well done"
-            }
-
-            val nextMins = if (completedWasBreak) {
-                SettingsManager.getFocusTimeMins()
-            } else {
-                SettingsManager.getBreakTimeMins()
-            }
-
-            val body = if (completedWasBreak) {
-                "Your mindful break is complete. Start your next ${nextMins}-minute focus block whenever you're ready."
-            } else {
-                "You completed ${completedDurationMins}m on $cleanTask. Take a ${nextMins}-minute break to rest and reset."
-            }
-
-            val actionLabel = if (completedWasBreak) "Start Focus (${nextMins}m)" else "Start Break (${nextMins}m)"
-            val accentColor = resolveNotificationColor(taskColor, completedWasBreak)
-
-            val notification = NotificationCompat.Builder(this, COMPLETION_CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher_round)
-                .setSubText(subText)
-                .setContentTitle(title)
-                .setContentText(body)
-                .setStyle(
-                    NotificationCompat.BigTextStyle()
-                        .setBigContentTitle(title)
-                        .bigText(body)
-                )
-                .setContentIntent(openPendingIntent)
-                .setAutoCancel(true)
-                .setOngoing(false)
-                .setColor(accentColor)
-                .setCategory(NotificationCompat.CATEGORY_REMINDER)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .addAction(0, actionLabel, nextSessionPendingIntent)
-                .build()
-
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.notify(COMPLETION_NOTIFICATION_ID, notification)
         } catch (_: Exception) {}
     }
 
     private fun createNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val manager = getSystemService(NotificationManager::class.java) ?: return
-
-            val progressChannel = NotificationChannel(
-                CHANNEL_ID,
-                "Active Focus Timer",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Displays real-time countdown and controls during active focus and break sessions."
-                setShowBadge(false)
-            }
-            manager.createNotificationChannel(progressChannel)
-
-            val completionChannel = NotificationChannel(
-                COMPLETION_CHANNEL_ID,
-                "Session Completion Alerts",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Notifies you when a focus or break session finishes."
-                enableVibration(true)
-                setShowBadge(true)
-            }
-            manager.createNotificationChannel(completionChannel)
-        }
+        LiveTimerNotificationManager.createChannels(this)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
