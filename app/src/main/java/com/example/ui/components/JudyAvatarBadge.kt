@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -30,16 +31,23 @@ fun JudyAvatarBadge(
     modifier: Modifier = Modifier,
     isBreathing: Boolean = false
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "judyBadgeBreath")
-    val earWiggle by infiniteTransition.animateFloat(
-        initialValue = -2.5f,
-        targetValue = 2.5f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "earWiggle"
-    )
+    val wiggle = if (isBreathing) {
+        val infiniteTransition = rememberInfiniteTransition(label = "judyBadgeBreath")
+        val animatedWiggle by infiniteTransition.animateFloat(
+            initialValue = -2.5f,
+            targetValue = 2.5f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2200, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "earWiggle"
+        )
+        animatedWiggle
+    } else {
+        0f
+    }
+
+    val nosePath = remember { Path() }
 
     Canvas(modifier = modifier) {
         if (size.width <= 0f || size.height <= 0f) return@Canvas
@@ -47,7 +55,6 @@ fun JudyAvatarBadge(
         val h = size.height
         val cx = w / 2f
         val cy = h * 0.58f
-        val wiggle = if (isBreathing) earWiggle else 0f
 
         // Soft floor shadow
         drawOval(
@@ -117,12 +124,11 @@ fun JudyAvatarBadge(
         }
 
         // Cute Pink Nose
-        val nosePath = Path().apply {
-            moveTo(cx - w * 0.035f, cy + headRy * 0.16f)
-            lineTo(cx + w * 0.035f, cy + headRy * 0.16f)
-            lineTo(cx, cy + headRy * 0.30f)
-            close()
-        }
+        nosePath.reset()
+        nosePath.moveTo(cx - w * 0.035f, cy + headRy * 0.16f)
+        nosePath.lineTo(cx + w * 0.035f, cy + headRy * 0.16f)
+        nosePath.lineTo(cx, cy + headRy * 0.30f)
+        nosePath.close()
         drawPath(nosePath, Color(0xFFF06292))
 
         // Gentle Smile

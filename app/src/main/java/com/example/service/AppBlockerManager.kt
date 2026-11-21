@@ -110,7 +110,7 @@ object AppBlockerManager {
     }
 
     private fun getTodayDateKey(): String {
-        return SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+        return AppUsageLimitManager.getLogicalDayKey()
     }
 
     fun getFreshMotivation(context: Context): String {

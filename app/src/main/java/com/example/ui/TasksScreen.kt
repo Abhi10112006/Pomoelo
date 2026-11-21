@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.view.HapticFeedbackConstants
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -26,14 +27,22 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -91,6 +100,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -118,7 +128,10 @@ import androidx.navigation.NavController
 import com.example.data.TaskItem
 import com.example.service.TimerManager
 import com.example.service.safeParseColor
+import com.example.ui.components.PinnedSearchHeader
 import com.example.ui.components.PomoButton
+import com.example.ui.components.SearchTriggerPill
+import com.example.ui.components.rememberDismissKeyboardOnScrollConnection
 import com.example.ui.components.resolveCategoryIcon
 import com.example.ui.components.scaledSp
 import com.example.ui.theme.LocalAppFont
@@ -155,6 +168,13 @@ private data class TasksDashboardSummary(
     val completedTodayTotal: Int,
     val dailyCountByTaskId: Map<Int, Int>,
     val categories: List<CategoryChipSummary>
+)
+
+@Immutable
+private data class IndexedTaskEntry(
+    val task: TaskItem,
+    val lowerName: String,
+    val lowerCategory: String
 )
 
 private fun computeLogicalDayWindow(
@@ -208,7 +228,12 @@ fun TasksScreen(
 
     var selectedTimerFilter by remember { mutableStateOf("All") }
     var selectedCategory by remember { mutableStateOf("All") }
+    var isSearchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+
+    val searchFocusRequester = remember { FocusRequester() }
+    val searchListState = rememberLazyListState()
+    val dismissKeyboardOnScroll = rememberDismissKeyboardOnScrollConnection()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -291,25 +316,88 @@ fun TasksScreen(
         allTasks.find { it.id == currentTaskId }
     }
 
-    val filteredTasks = remember(allTasks, selectedTimerFilter, selectedCategory, searchQuery) {
-        val query = searchQuery.trim()
-        allTasks.filter { task ->
+    val indexedTasks = remember(allTasks) {
+        allTasks.map { task ->
+            IndexedTaskEntry(
+                task = task,
+                lowerName = task.name.lowercase(Locale.getDefault()),
+                lowerCategory = task.categoryName.lowercase(Locale.getDefault())
+            )
+        }
+    }
+
+    val baseFilteredTasks = remember(indexedTasks, selectedTimerFilter, selectedCategory) {
+        indexedTasks.filter { entry ->
             val matchesMode = when (selectedTimerFilter) {
-                "Work" -> !task.isBreakCategory
-                "Break" -> task.isBreakCategory
+                "Work" -> !entry.task.isBreakCategory
+                "Break" -> entry.task.isBreakCategory
                 else -> true
             }
-            val matchesCategory = selectedCategory == "All" || task.categoryName == selectedCategory
-            val matchesQuery = query.isEmpty() ||
-                task.name.contains(query, ignoreCase = true) ||
-                task.categoryName.contains(query, ignoreCase = true)
-            matchesMode && matchesCategory && matchesQuery
+            val matchesCategory = selectedCategory == "All" || entry.task.categoryName == selectedCategory
+            matchesMode && matchesCategory
+        }
+    }
+
+    // Prefix-first ranked search results (startsWith name -> contains name -> category match)
+    val normalizedQuery = remember(searchQuery) { searchQuery.trim().lowercase(Locale.getDefault()) }
+    val searchResults = remember(baseFilteredTasks, normalizedQuery) {
+        if (normalizedQuery.isEmpty()) {
+            baseFilteredTasks.map { it.task }
+        } else {
+            val startsWithMatches = ArrayList<TaskItem>(12)
+            val containsNameMatches = ArrayList<TaskItem>(16)
+            val categoryMatches = ArrayList<TaskItem>(12)
+            for (entry in baseFilteredTasks) {
+                val nameIdx = entry.lowerName.indexOf(normalizedQuery)
+                when {
+                    nameIdx == 0 -> startsWithMatches.add(entry.task)
+                    nameIdx > 0 -> containsNameMatches.add(entry.task)
+                    entry.lowerCategory.contains(normalizedQuery) -> categoryMatches.add(entry.task)
+                }
+            }
+            if (containsNameMatches.isEmpty() && categoryMatches.isEmpty()) {
+                startsWithMatches
+            } else {
+                startsWithMatches.addAll(containsNameMatches)
+                startsWithMatches.addAll(categoryMatches)
+                startsWithMatches
+            }
         }
     }
 
     // Scroll-driven Bottom Nav Collapse (Silent, Bidirectional, with Bottom-of-List Bounce Guard)
     val listState = rememberLazyListState()
     val latestCollapseCallback by rememberUpdatedState(onBottomNavCollapseChange)
+
+    val exitSearchMode: () -> Unit = {
+        keyboardController?.hide()
+        focusManager.clearFocus()
+        searchQuery = ""
+        isSearchActive = false
+        latestCollapseCallback(false)
+    }
+
+    BackHandler(enabled = isSearchActive) {
+        try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+        exitSearchMode()
+    }
+
+    LaunchedEffect(isSearchActive) {
+        if (isSearchActive) {
+            latestCollapseCallback(true)
+            delay(80)
+            try {
+                searchFocusRequester.requestFocus()
+                keyboardController?.show()
+            } catch (_: Exception) {}
+        }
+    }
+
+    LaunchedEffect(isSearchActive, normalizedQuery, selectedTimerFilter, selectedCategory) {
+        if (isSearchActive) {
+            searchListState.scrollToItem(0)
+        }
+    }
 
     LaunchedEffect(scrollToTopTrigger) {
         if (scrollToTopTrigger > 0) {
@@ -369,10 +457,11 @@ fun TasksScreen(
         ) {
             Scaffold(
                 containerColor = Color.Transparent,
+                contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
                 snackbarHost = {
                     SnackbarHost(
                         hostState = snackbarHostState,
-                        modifier = Modifier.padding(bottom = bottomPadding + 84.dp)
+                        modifier = Modifier.padding(bottom = if (isSearchActive) 16.dp else bottomPadding + 84.dp)
                     ) { data ->
                         Snackbar(
                             snackbarData = data,
@@ -390,252 +479,431 @@ fun TasksScreen(
                         .padding(innerPadding),
                     contentAlignment = Alignment.TopCenter
                 ) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .widthIn(max = 600.dp)
-                            .fillMaxSize()
-                            .nestedScroll(tasksNestedScroll),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(
-                            start = 24.dp,
-                            end = 24.dp,
-                            top = 24.dp,
-                            bottom = bottomPadding + 96.dp
-                        )
-                    ) {
-                        // 1. Editorial Header + Rounded M3 New Task CTA
-                        item(key = "tasks_hero_header", contentType = "hero_header") {
-                            Row(
+                    AnimatedContent(
+                        targetState = isSearchActive,
+                        transitionSpec = { PomoMotion.asymmetricFadeThroughTransition() },
+                        label = "TasksSearchModeTransition"
+                    ) { searching ->
+                        if (searching) {
+                            Column(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 4.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                    .widthIn(max = 600.dp)
+                                    .fillMaxSize()
+                                    .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Focus Tasks",
-                                        fontSize = 28.scaledSp,
-                                        fontFamily = currentFont,
-                                        fontWeight = FontWeight.Bold,
-                                        color = currentTheme.textPrimary
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    if (dashboardSummary.totalTasks == 0) {
-                                        Text(
-                                            text = "Organize your goals cleanly",
-                                            fontSize = 14.scaledSp,
-                                            fontFamily = currentFont,
-                                            color = currentTheme.textSecondary
-                                        )
-                                    } else {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Text(
-                                                text = "${dashboardSummary.totalTasks} saved",
-                                                fontSize = 13.scaledSp,
-                                                fontFamily = currentFont,
-                                                color = currentTheme.textSecondary
-                                            )
-                                            Text(
-                                                text = "•",
-                                                fontSize = 13.scaledSp,
-                                                color = currentTheme.textSecondary.copy(alpha = 0.6f)
-                                            )
-                                            Icon(
-                                                imageVector = Icons.Rounded.CheckCircle,
-                                                contentDescription = null,
-                                                tint = ensureContrast(currentTheme.secondary, currentTheme.background, minContrast = 3.0),
-                                                modifier = Modifier.size(15.dp)
-                                            )
-                                            Text(
-                                                text = "${dashboardSummary.completedTodayTotal} today",
-                                                fontSize = 13.scaledSp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontFamily = currentFont,
-                                                color = currentTheme.textSecondary
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                PomoButton(
-                                    onClick = { viewModel.setAddingTask(true) },
-                                    modifier = Modifier.testTag("tasks_add_button"),
-                                    containerColor = currentTheme.primary,
-                                    contentColor = primaryContentColor,
-                                    shape = RoundedCornerShape(20.dp),
-                                    elevation = 5.dp,
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Add,
-                                        contentDescription = null,
-                                        tint = primaryContentColor,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "New Task",
-                                        color = primaryContentColor,
-                                        fontSize = 14.scaledSp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = currentFont
-                                    )
-                                }
-                            }
-                        }
-
-                        // 2. Active Task Spotlight & Today's Overview Card
-                        item(key = "tasks_spotlight", contentType = "spotlight_card") {
-                            Box(modifier = Modifier.padding(top = 4.dp)) {
-                                ActiveTaskSpotlightCard(
-                                    activeTask = activeTask,
-                                    activeTaskTodayCount = activeTask?.let { dashboardSummary.dailyCountByTaskId[it.id] ?: 0 } ?: 0,
-                                    summary = dashboardSummary,
-                                    entranceProgress = { spotlightEntrance.value },
-                                    onGoToTimer = {
-                                        try {
-                                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        } catch (_: Exception) {}
-                                        navController.navigate("home") {
-                                            popUpTo(0)
-                                            launchSingleTop = true
-                                        }
+                                PinnedSearchHeader(
+                                    query = searchQuery,
+                                    onQueryChange = { searchQuery = it },
+                                    onCloseSearch = exitSearchMode,
+                                    onSubmitSearch = {
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus()
                                     },
-                                    onClearActive = {
-                                        try {
-                                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        } catch (_: Exception) {}
-                                        val isBreak = TimerManager.isBreakMode.value
-                                        TimerManager.setTask(-1, if (isBreak) "Break Time!" else "Focus Time!")
-                                    }
+                                    focusRequester = searchFocusRequester,
+                                    placeholder = "Search tasks or categories...",
+                                    applyStatusBarPadding = false,
+                                    backTestTag = "tasks_search_back_button",
+                                    inputTestTag = "tasks_pinned_search_input",
+                                    clearTestTag = "tasks_search_clear"
                                 )
-                            }
-                        }
 
-                        // 3. Mode Filter Strip, Category Chips & Search Bar (scrolls cleanly with list)
-                        if (allTasks.isNotEmpty()) {
-                            item(key = "tasks_mode_filter", contentType = "mode_filter") {
-                                TaskTimerModeFilterRow(
-                                    selectedMode = selectedTimerFilter,
-                                    onSelectMode = { mode ->
-                                        try {
-                                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        } catch (_: Exception) {}
-                                        selectedTimerFilter = mode
-                                    }
-                                )
-                            }
-
-                            item(key = "tasks_category_chips", contentType = "category_chips_row") {
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 2.dp)
+                                // Compact Filter Strip + Live Count right beneath the Pinned Search Bar
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 20.dp, vertical = 4.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    items(
-                                        items = dashboardSummary.categories,
-                                        key = { it.name },
-                                        contentType = { "category_chip" }
-                                    ) { chip ->
-                                        CategoryFilterChip(
-                                            chip = chip,
-                                            isSelected = selectedCategory == chip.name,
-                                            onClick = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Box(modifier = Modifier.weight(1f)) {
+                                            TaskTimerModeFilterRow(
+                                                selectedMode = selectedTimerFilter,
+                                                onSelectMode = { mode ->
+                                                    try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                                                    selectedTimerFilter = mode
+                                                }
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = "${searchResults.size} found",
+                                            fontSize = 11.5.scaledSp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = currentTheme.textSecondary,
+                                            fontFamily = MonospaceFontFamily
+                                        )
+                                    }
+
+                                    if (dashboardSummary.categories.size > 1) {
+                                        LazyRow(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 2.dp)
+                                        ) {
+                                            items(
+                                                items = dashboardSummary.categories,
+                                                key = { it.name },
+                                                contentType = { "category_chip" }
+                                            ) { chip ->
+                                                CategoryFilterChip(
+                                                    chip = chip,
+                                                    isSelected = selectedCategory == chip.name,
+                                                    onClick = {
+                                                        try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                                                        selectedCategory = chip.name
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Keyboard-proof search results list (sits above IME + scroll dismisses keyboard)
+                                LazyColumn(
+                                    state = searchListState,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxWidth()
+                                        .nestedScroll(dismissKeyboardOnScroll),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    contentPadding = PaddingValues(
+                                        start = 24.dp,
+                                        end = 24.dp,
+                                        top = 8.dp,
+                                        bottom = 36.dp
+                                    )
+                                ) {
+                                    if (searchResults.isEmpty()) {
+                                        item(key = "tasks_search_empty", contentType = "empty_filter_state") {
+                                            TasksEmptyState(
+                                                isFilterEmpty = true,
+                                                onPrimaryAction = {
+                                                    selectedTimerFilter = "All"
+                                                    selectedCategory = "All"
+                                                    searchQuery = ""
+                                                }
+                                            )
+                                        }
+                                    } else {
+                                        items(
+                                            items = searchResults,
+                                            key = { task -> task.id },
+                                            contentType = { "task_card" }
+                                        ) { task ->
+                                            val todayCount = dashboardSummary.dailyCountByTaskId[task.id] ?: 0
+                                            PremiumTaskCard(
+                                                task = task,
+                                                todayCompletedCount = todayCount,
+                                                ageLabel = formatTaskAgeLabel(task.timestamp, logicalDayWindow.startMillis),
+                                                isSelected = currentTaskId == task.id,
+                                                onSelect = {
+                                                    keyboardController?.hide()
+                                                    focusManager.clearFocus()
+                                                    viewModel.setTask(task.id, task.name, task.categoryColor, task.isBreakCategory)
+                                                },
+                                                onFocusNow = {
+                                                    keyboardController?.hide()
+                                                    focusManager.clearFocus()
+                                                    latestCollapseCallback(false)
+                                                    viewModel.setTask(task.id, task.name, task.categoryColor, task.isBreakCategory)
+                                                    navController.navigate("home") {
+                                                        popUpTo(0)
+                                                        launchSingleTop = true
+                                                    }
+                                                },
+                                                onDelete = {
+                                                    val deletedTask = task
+                                                    viewModel.deleteTask(deletedTask)
+                                                    coroutineScope.launch {
+                                                        snackbarHostState.currentSnackbarData?.dismiss()
+                                                        val res = snackbarHostState.showSnackbar(
+                                                            message = "Removed \"${deletedTask.name}\"",
+                                                            actionLabel = "Undo",
+                                                            duration = SnackbarDuration.Short
+                                                        )
+                                                        if (res == SnackbarResult.ActionPerformed) {
+                                                            viewModel.restoreTask(deletedTask)
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier
+                                    .widthIn(max = 600.dp)
+                                    .fillMaxSize()
+                                    .nestedScroll(tasksNestedScroll),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                contentPadding = PaddingValues(
+                                    start = 24.dp,
+                                    end = 24.dp,
+                                    top = 24.dp,
+                                    bottom = bottomPadding + 96.dp
+                                )
+                            ) {
+                                // 1. Editorial Header + Quick Search + Rounded M3 New Task CTA
+                                item(key = "tasks_hero_header", contentType = "hero_header") {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Focus Tasks",
+                                                fontSize = 28.scaledSp,
+                                                fontFamily = currentFont,
+                                                fontWeight = FontWeight.Bold,
+                                                color = currentTheme.textPrimary
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            if (dashboardSummary.totalTasks == 0) {
+                                                Text(
+                                                    text = "Organize your goals cleanly",
+                                                    fontSize = 14.scaledSp,
+                                                    fontFamily = currentFont,
+                                                    color = currentTheme.textSecondary
+                                                )
+                                            } else {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "${dashboardSummary.totalTasks} saved",
+                                                        fontSize = 13.scaledSp,
+                                                        fontFamily = currentFont,
+                                                        color = currentTheme.textSecondary
+                                                    )
+                                                    Text(
+                                                        text = "•",
+                                                        fontSize = 13.scaledSp,
+                                                        color = currentTheme.textSecondary.copy(alpha = 0.6f)
+                                                    )
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.CheckCircle,
+                                                        contentDescription = null,
+                                                        tint = ensureContrast(currentTheme.secondary, currentTheme.background, minContrast = 3.0),
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
+                                                    Text(
+                                                        text = "${dashboardSummary.completedTodayTotal} today",
+                                                        fontSize = 13.scaledSp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontFamily = currentFont,
+                                                        color = currentTheme.textSecondary
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        if (allTasks.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Surface(
+                                                onClick = {
+                                                    try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                                                    isSearchActive = true
+                                                },
+                                                shape = CircleShape,
+                                                color = currentTheme.surface,
+                                                border = BorderStroke(1.dp, currentTheme.cardBorder),
+                                                modifier = Modifier
+                                                    .size(44.dp)
+                                                    .testTag("tasks_top_search_button")
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.Search,
+                                                        contentDescription = "Search tasks",
+                                                        tint = currentTheme.textPrimary,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        PomoButton(
+                                            onClick = { viewModel.setAddingTask(true) },
+                                            modifier = Modifier.testTag("tasks_add_button"),
+                                            containerColor = currentTheme.primary,
+                                            contentColor = primaryContentColor,
+                                            shape = RoundedCornerShape(20.dp),
+                                            elevation = 5.dp,
+                                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Add,
+                                                contentDescription = null,
+                                                tint = primaryContentColor,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "New Task",
+                                                color = primaryContentColor,
+                                                fontSize = 14.scaledSp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = currentFont
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 2. Active Task Spotlight & Today's Overview Card
+                                item(key = "tasks_spotlight", contentType = "spotlight_card") {
+                                    Box(modifier = Modifier.padding(top = 4.dp)) {
+                                        ActiveTaskSpotlightCard(
+                                            activeTask = activeTask,
+                                            activeTaskTodayCount = activeTask?.let { dashboardSummary.dailyCountByTaskId[it.id] ?: 0 } ?: 0,
+                                            summary = dashboardSummary,
+                                            entranceProgress = { spotlightEntrance.value },
+                                            onGoToTimer = {
                                                 try {
                                                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                                 } catch (_: Exception) {}
-                                                selectedCategory = chip.name
+                                                navController.navigate("home") {
+                                                    popUpTo(0)
+                                                    launchSingleTop = true
+                                                }
+                                            },
+                                            onClearActive = {
+                                                try {
+                                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                                } catch (_: Exception) {}
+                                                val isBreak = TimerManager.isBreakMode.value
+                                                TimerManager.setTask(-1, if (isBreak) "Break Time!" else "Focus Time!")
                                             }
                                         )
                                     }
                                 }
-                            }
 
-                            item(key = "tasks_search_bar", contentType = "search_bar") {
-                                TaskSearchField(
-                                    query = searchQuery,
-                                    onQueryChange = { searchQuery = it },
-                                    onClear = {
-                                        searchQuery = ""
-                                        keyboardController?.hide()
-                                        focusManager.clearFocus()
-                                    },
-                                    onDone = {
-                                        keyboardController?.hide()
-                                        focusManager.clearFocus()
+                                // 3. Mode Filter Strip, Category Chips & Search Trigger Pill (scrolls cleanly with list)
+                                if (allTasks.isNotEmpty()) {
+                                    item(key = "tasks_mode_filter", contentType = "mode_filter") {
+                                        TaskTimerModeFilterRow(
+                                            selectedMode = selectedTimerFilter,
+                                            onSelectMode = { mode ->
+                                                try {
+                                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                                } catch (_: Exception) {}
+                                                selectedTimerFilter = mode
+                                            }
+                                        )
                                     }
-                                )
-                            }
-                        }
 
-                        // 4. Persistent Task Rows with PomoMotion.defaultSpatial Insertion & Reordering
-                        if (allTasks.isEmpty()) {
-                            item(key = "tasks_empty", contentType = "empty_state") {
-                                TasksEmptyState(
-                                    isFilterEmpty = false,
-                                    onPrimaryAction = { viewModel.setAddingTask(true) }
-                                )
-                            }
-                        } else if (filteredTasks.isEmpty()) {
-                            item(key = "tasks_filter_empty", contentType = "empty_filter_state") {
-                                TasksEmptyState(
-                                    isFilterEmpty = true,
-                                    onPrimaryAction = {
-                                        selectedTimerFilter = "All"
-                                        selectedCategory = "All"
-                                        searchQuery = ""
-                                    }
-                                )
-                            }
-                        } else {
-                            items(
-                                items = filteredTasks,
-                                key = { task -> task.id },
-                                contentType = { "task_card" }
-                            ) { task ->
-                                val todayCount = dashboardSummary.dailyCountByTaskId[task.id] ?: 0
-                                PremiumTaskCard(
-                                    task = task,
-                                    todayCompletedCount = todayCount,
-                                    ageLabel = formatTaskAgeLabel(task.timestamp, logicalDayWindow.startMillis),
-                                    isSelected = currentTaskId == task.id,
-                                    onSelect = {
-                                        viewModel.setTask(task.id, task.name, task.categoryColor, task.isBreakCategory)
-                                    },
-                                    onFocusNow = {
-                                        viewModel.setTask(task.id, task.name, task.categoryColor, task.isBreakCategory)
-                                        navController.navigate("home") {
-                                            popUpTo(0)
-                                            launchSingleTop = true
-                                        }
-                                    },
-                                    onDelete = {
-                                        val deletedTask = task
-                                        viewModel.deleteTask(deletedTask)
-                                        coroutineScope.launch {
-                                            snackbarHostState.currentSnackbarData?.dismiss()
-                                            val res = snackbarHostState.showSnackbar(
-                                                message = "Removed \"${deletedTask.name}\"",
-                                                actionLabel = "Undo",
-                                                duration = SnackbarDuration.Short
-                                            )
-                                            if (res == SnackbarResult.ActionPerformed) {
-                                                viewModel.restoreTask(deletedTask)
+                                    item(key = "tasks_category_chips", contentType = "category_chips_row") {
+                                        LazyRow(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 2.dp)
+                                        ) {
+                                            items(
+                                                items = dashboardSummary.categories,
+                                                key = { it.name },
+                                                contentType = { "category_chip" }
+                                            ) { chip ->
+                                                CategoryFilterChip(
+                                                    chip = chip,
+                                                    isSelected = selectedCategory == chip.name,
+                                                    onClick = {
+                                                        try {
+                                                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                                        } catch (_: Exception) {}
+                                                        selectedCategory = chip.name
+                                                    }
+                                                )
                                             }
                                         }
-                                    },
-                                    modifier = Modifier.animateItem(
-                                        fadeInSpec = PomoMotion.defaultSpatial(),
-                                        placementSpec = PomoMotion.intOffsetSpatial,
-                                        fadeOutSpec = PomoMotion.fastEffects()
-                                    )
-                                )
+                                    }
+
+                                    item(key = "tasks_search_bar", contentType = "search_bar") {
+                                        SearchTriggerPill(
+                                            placeholder = "Search ${allTasks.size} saved tasks...",
+                                            onClick = {
+                                                try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                                                isSearchActive = true
+                                            },
+                                            testTagName = "tasks_search_input"
+                                        )
+                                    }
+                                }
+
+                                // 4. Persistent Task Rows with PomoMotion.defaultSpatial Insertion & Reordering
+                                if (allTasks.isEmpty()) {
+                                    item(key = "tasks_empty", contentType = "empty_state") {
+                                        TasksEmptyState(
+                                            isFilterEmpty = false,
+                                            onPrimaryAction = { viewModel.setAddingTask(true) }
+                                        )
+                                    }
+                                } else if (baseFilteredTasks.isEmpty()) {
+                                    item(key = "tasks_filter_empty", contentType = "empty_filter_state") {
+                                        TasksEmptyState(
+                                            isFilterEmpty = true,
+                                            onPrimaryAction = {
+                                                selectedTimerFilter = "All"
+                                                selectedCategory = "All"
+                                                searchQuery = ""
+                                            }
+                                        )
+                                    }
+                                } else {
+                                    items(
+                                        items = baseFilteredTasks,
+                                        key = { entry -> entry.task.id },
+                                        contentType = { "task_card" }
+                                    ) { entry ->
+                                        val task = entry.task
+                                        val todayCount = dashboardSummary.dailyCountByTaskId[task.id] ?: 0
+                                        PremiumTaskCard(
+                                            task = task,
+                                            todayCompletedCount = todayCount,
+                                            ageLabel = formatTaskAgeLabel(task.timestamp, logicalDayWindow.startMillis),
+                                            isSelected = currentTaskId == task.id,
+                                            onSelect = {
+                                                viewModel.setTask(task.id, task.name, task.categoryColor, task.isBreakCategory)
+                                            },
+                                            onFocusNow = {
+                                                viewModel.setTask(task.id, task.name, task.categoryColor, task.isBreakCategory)
+                                                navController.navigate("home") {
+                                                    popUpTo(0)
+                                                    launchSingleTop = true
+                                                }
+                                            },
+                                            onDelete = {
+                                                val deletedTask = task
+                                                viewModel.deleteTask(deletedTask)
+                                                coroutineScope.launch {
+                                                    snackbarHostState.currentSnackbarData?.dismiss()
+                                                    val res = snackbarHostState.showSnackbar(
+                                                        message = "Removed \"${deletedTask.name}\"",
+                                                        actionLabel = "Undo",
+                                                        duration = SnackbarDuration.Short
+                                                    )
+                                                    if (res == SnackbarResult.ActionPerformed) {
+                                                        viewModel.restoreTask(deletedTask)
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.animateItem(
+                                                fadeInSpec = PomoMotion.defaultSpatial(),
+                                                placementSpec = PomoMotion.intOffsetSpatial,
+                                                fadeOutSpec = PomoMotion.fastEffects()
+                                            )
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -643,18 +911,20 @@ fun TasksScreen(
             }
 
             // Subtle 32.dp Bottom Scrim so scrolled task cards dissolve cleanly behind the floating pill
-            val bottomScrimBrush = remember(currentTheme.background) {
-                Brush.verticalGradient(
-                    colors = listOf(Color.Transparent, currentTheme.background)
+            if (!isSearchActive) {
+                val bottomScrimBrush = remember(currentTheme.background) {
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, currentTheme.background)
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .background(bottomScrimBrush)
                 )
             }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(32.dp)
-                    .background(bottomScrimBrush)
-            )
         }
     }
 }
@@ -1118,86 +1388,6 @@ private fun CategoryFilterChip(
             fontFamily = MonospaceFontFamily,
             color = if (isSelected) chipColor else currentTheme.textSecondary.copy(alpha = 0.7f)
         )
-    }
-}
-
-@Composable
-private fun TaskSearchField(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onClear: () -> Unit,
-    onDone: () -> Unit
-) {
-    val currentTheme = LocalAppTheme.current
-    val currentFont = LocalAppFont.current
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .shadow(2.dp, RoundedCornerShape(16.dp), spotColor = currentTheme.shadowColor)
-            .clip(RoundedCornerShape(16.dp))
-            .background(currentTheme.surface)
-            .border(1.dp, currentTheme.cardBorder, RoundedCornerShape(16.dp))
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.Search,
-            contentDescription = "Search tasks",
-            tint = currentTheme.textSecondary,
-            modifier = Modifier.size(19.dp)
-        )
-        Spacer(modifier = Modifier.width(10.dp))
-        Box(
-            modifier = Modifier.weight(1f),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            if (query.isEmpty()) {
-                Text(
-                    text = "Search saved tasks...",
-                    fontSize = 14.scaledSp,
-                    fontFamily = currentFont,
-                    color = currentTheme.textSecondary.copy(alpha = 0.65f)
-                )
-            }
-            BasicTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                singleLine = true,
-                textStyle = TextStyle(
-                    fontSize = 14.scaledSp,
-                    fontFamily = currentFont,
-                    fontWeight = FontWeight.Medium,
-                    color = currentTheme.textPrimary
-                ),
-                cursorBrush = SolidColor(currentTheme.primary),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { onDone() }),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("tasks_search_input")
-            )
-        }
-        AnimatedVisibility(
-            visible = query.isNotEmpty(),
-            enter = fadeIn(PomoMotion.fastEffects()) + scaleIn(initialScale = 0.8f, animationSpec = PomoMotion.fastSpatial()),
-            exit = fadeOut(PomoMotion.fastEffects()) + scaleOut(targetScale = 0.8f, animationSpec = PomoMotion.fastSpatial())
-        ) {
-            IconButton(
-                onClick = onClear,
-                modifier = Modifier
-                    .size(48.dp)
-                    .testTag("tasks_search_clear")
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Close,
-                    contentDescription = "Clear search",
-                    tint = currentTheme.textSecondary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
     }
 }
 

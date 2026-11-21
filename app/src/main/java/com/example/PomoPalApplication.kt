@@ -31,27 +31,10 @@ class PomoPalApplication : Application() {
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
+                com.example.service.LiveTimerNotificationManager.createChannels(this)
+                com.example.service.AppLimitNotificationHelper.createChannel(this)
+
                 val manager = getSystemService(NotificationManager::class.java) ?: return
-
-                val progressChannel = NotificationChannel(
-                    TimerService.CHANNEL_ID,
-                    "Active Focus Timer",
-                    NotificationManager.IMPORTANCE_LOW
-                ).apply {
-                    description = "Displays real-time countdown and controls during active focus and break sessions."
-                    setShowBadge(false)
-                }
-
-                val completionChannel = NotificationChannel(
-                    TimerService.COMPLETION_CHANNEL_ID,
-                    "Session Completion Alerts",
-                    NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = "Notifies you when a focus or break session finishes."
-                    enableVibration(true)
-                    setShowBadge(true)
-                }
-
                 val reminderChannel = NotificationChannel(
                     InactivityReceiver.CHANNEL_ID,
                     "Mindful Focus Reminders",
@@ -62,9 +45,7 @@ class PomoPalApplication : Application() {
                     setShowBadge(true)
                 }
 
-                manager.createNotificationChannels(
-                    listOf(progressChannel, completionChannel, reminderChannel)
-                )
+                manager.createNotificationChannel(reminderChannel)
             } catch (_: Exception) {}
         }
     }

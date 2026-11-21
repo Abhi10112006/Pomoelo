@@ -98,6 +98,9 @@ fun AmbientDoodles(step: Int, theme: com.example.ui.theme.ThemeOption) {
         progress
     }
 
+    val primaryPath = remember { Path() }
+    val secondaryPath = remember { Path() }
+
     Canvas(modifier = Modifier.fillMaxSize()) {
         doodles.forEachIndexed { index, doodle ->
             val p = progresses[index].value
@@ -113,58 +116,67 @@ fun AmbientDoodles(step: Int, theme: com.example.ui.theme.ThemeOption) {
                     translate(left = x, top = y)
                     rotate(rotation)
                 }) {
-                    drawDoodle(doodle.type, doodleSize, theme.textPrimary.copy(alpha = alpha * 0.35f))
+                    drawDoodle(
+                        type = doodle.type,
+                        dSize = doodleSize,
+                        color = theme.textPrimary.copy(alpha = alpha * 0.35f),
+                        primaryPath = primaryPath,
+                        secondaryPath = secondaryPath
+                    )
                 }
             }
         }
     }
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDoodle(type: DoodleType, dSize: Float, color: Color) {
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDoodle(
+    type: DoodleType,
+    dSize: Float,
+    color: Color,
+    primaryPath: Path,
+    secondaryPath: Path
+) {
     val s = dSize / 2f
     when (type) {
         DoodleType.STAR -> {
-            val path = Path().apply {
-                moveTo(0f, -s)
-                quadraticTo(s*0.2f, -s*0.2f, s, 0f)
-                quadraticTo(s*0.2f, s*0.2f, 0f, s)
-                quadraticTo(-s*0.2f, s*0.2f, -s, 0f)
-                quadraticTo(-s*0.2f, -s*0.2f, 0f, -s)
-                close()
-            }
-            drawPath(path, color)
+            primaryPath.reset()
+            primaryPath.moveTo(0f, -s)
+            primaryPath.quadraticTo(s * 0.2f, -s * 0.2f, s, 0f)
+            primaryPath.quadraticTo(s * 0.2f, s * 0.2f, 0f, s)
+            primaryPath.quadraticTo(-s * 0.2f, s * 0.2f, -s, 0f)
+            primaryPath.quadraticTo(-s * 0.2f, -s * 0.2f, 0f, -s)
+            primaryPath.close()
+            drawPath(primaryPath, color)
         }
         DoodleType.SPARKLE -> {
-            drawCircle(color, radius = s * 0.15f, center = Offset(0f, -s*0.7f))
-            drawCircle(color, radius = s * 0.15f, center = Offset(0f, s*0.7f))
-            drawCircle(color, radius = s * 0.15f, center = Offset(-s*0.7f, 0f))
-            drawCircle(color, radius = s * 0.15f, center = Offset(s*0.7f, 0f))
+            drawCircle(color, radius = s * 0.15f, center = Offset(0f, -s * 0.7f))
+            drawCircle(color, radius = s * 0.15f, center = Offset(0f, s * 0.7f))
+            drawCircle(color, radius = s * 0.15f, center = Offset(-s * 0.7f, 0f))
+            drawCircle(color, radius = s * 0.15f, center = Offset(s * 0.7f, 0f))
             drawCircle(color, radius = s * 0.3f, center = Offset(0f, 0f))
         }
         DoodleType.BOOK -> {
-            val path = Path().apply {
-                moveTo(-s*0.8f, -s*0.6f)
-                lineTo(s*0.8f, -s*0.6f)
-                lineTo(s*0.8f, s*0.6f)
-                lineTo(-s*0.8f, s*0.6f)
-                close()
-                moveTo(0f, -s*0.6f)
-                lineTo(0f, s*0.6f)
-            }
-            drawPath(path, color, style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            primaryPath.reset()
+            primaryPath.moveTo(-s * 0.8f, -s * 0.6f)
+            primaryPath.lineTo(s * 0.8f, -s * 0.6f)
+            primaryPath.lineTo(s * 0.8f, s * 0.6f)
+            primaryPath.lineTo(-s * 0.8f, s * 0.6f)
+            primaryPath.close()
+            primaryPath.moveTo(0f, -s * 0.6f)
+            primaryPath.lineTo(0f, s * 0.6f)
+            drawPath(primaryPath, color, style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
         DoodleType.PENCIL -> {
-            val path = Path().apply {
-                moveTo(-s*0.7f, s*0.7f)
-                lineTo(-s*0.4f, s*0.7f)
-                lineTo(s*0.6f, -s*0.3f)
-                lineTo(s*0.3f, -s*0.6f)
-                lineTo(-s*0.7f, s*0.4f)
-                close()
-                moveTo(-s*0.7f, s*0.7f)
-                lineTo(-s*0.55f, s*0.55f)
-            }
-            drawPath(path, color, style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            primaryPath.reset()
+            primaryPath.moveTo(-s * 0.7f, s * 0.7f)
+            primaryPath.lineTo(-s * 0.4f, s * 0.7f)
+            primaryPath.lineTo(s * 0.6f, -s * 0.3f)
+            primaryPath.lineTo(s * 0.3f, -s * 0.6f)
+            primaryPath.lineTo(-s * 0.7f, s * 0.4f)
+            primaryPath.close()
+            primaryPath.moveTo(-s * 0.7f, s * 0.7f)
+            primaryPath.lineTo(-s * 0.55f, s * 0.55f)
+            drawPath(primaryPath, color, style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
         DoodleType.TARGET -> {
             drawCircle(color, radius = s * 0.8f, style = Stroke(width = dSize * 0.1f))
@@ -172,57 +184,52 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDoodle(type: Do
             drawCircle(color, radius = dSize * 0.1f)
         }
         DoodleType.CLOUD -> {
-            val path = Path().apply {
-                moveTo(-s*0.5f, s*0.3f)
-                arcTo(androidx.compose.ui.geometry.Rect(-s, -s*0.3f, 0f, s*0.3f), 180f, 180f, false)
-                arcTo(androidx.compose.ui.geometry.Rect(-s*0.4f, -s*0.7f, s*0.4f, s*0.1f), 180f, 180f, false)
-                arcTo(androidx.compose.ui.geometry.Rect(0f, -s*0.4f, s, s*0.4f), 180f, 180f, false)
-            }
-            drawPath(path, color, style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round))
-            drawLine(color, start = Offset(-s*0.5f, s*0.3f), end = Offset(s*0.5f, s*0.3f), strokeWidth = dSize * 0.1f, cap = StrokeCap.Round)
+            primaryPath.reset()
+            primaryPath.moveTo(-s * 0.5f, s * 0.3f)
+            primaryPath.arcTo(androidx.compose.ui.geometry.Rect(-s, -s * 0.3f, 0f, s * 0.3f), 180f, 180f, false)
+            primaryPath.arcTo(androidx.compose.ui.geometry.Rect(-s * 0.4f, -s * 0.7f, s * 0.4f, s * 0.1f), 180f, 180f, false)
+            primaryPath.arcTo(androidx.compose.ui.geometry.Rect(0f, -s * 0.4f, s, s * 0.4f), 180f, 180f, false)
+            drawPath(primaryPath, color, style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round))
+            drawLine(color, start = Offset(-s * 0.5f, s * 0.3f), end = Offset(s * 0.5f, s * 0.3f), strokeWidth = dSize * 0.1f, cap = StrokeCap.Round)
         }
         DoodleType.CUP -> {
-            val path = Path().apply {
-                moveTo(-s*0.5f, -s*0.5f)
-                lineTo(s*0.5f, -s*0.5f)
-                lineTo(s*0.4f, s*0.5f)
-                lineTo(-s*0.4f, s*0.5f)
-                close()
-            }
-            drawPath(path, color, style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-            drawArc(color, startAngle = -90f, sweepAngle = 180f, useCenter = false, topLeft = Offset(s*0.4f, -s*0.2f), size = Size(s*0.4f, s*0.5f), style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round))
-            val steam = Path().apply {
-                moveTo(-s*0.2f, -s*0.7f)
-                quadraticTo(-s*0.4f, -s*0.9f, -s*0.2f, -s*1.1f)
-                moveTo(s*0.2f, -s*0.6f)
-                quadraticTo(0f, -s*0.8f, s*0.2f, -s*1.0f)
-            }
-            drawPath(steam, color, style = Stroke(width = dSize * 0.08f, cap = StrokeCap.Round))
+            primaryPath.reset()
+            primaryPath.moveTo(-s * 0.5f, -s * 0.5f)
+            primaryPath.lineTo(s * 0.5f, -s * 0.5f)
+            primaryPath.lineTo(s * 0.4f, s * 0.5f)
+            primaryPath.lineTo(-s * 0.4f, s * 0.5f)
+            primaryPath.close()
+            drawPath(primaryPath, color, style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            drawArc(color, startAngle = -90f, sweepAngle = 180f, useCenter = false, topLeft = Offset(s * 0.4f, -s * 0.2f), size = Size(s * 0.4f, s * 0.5f), style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round))
+            secondaryPath.reset()
+            secondaryPath.moveTo(-s * 0.2f, -s * 0.7f)
+            secondaryPath.quadraticTo(-s * 0.4f, -s * 0.9f, -s * 0.2f, -s * 1.1f)
+            secondaryPath.moveTo(s * 0.2f, -s * 0.6f)
+            secondaryPath.quadraticTo(0f, -s * 0.8f, s * 0.2f, -s * 1.0f)
+            drawPath(secondaryPath, color, style = Stroke(width = dSize * 0.08f, cap = StrokeCap.Round))
         }
         DoodleType.LEAF -> {
-            val path = Path().apply {
-                moveTo(0f, s*0.8f)
-                quadraticTo(-s, s*0.2f, 0f, -s*0.8f)
-                quadraticTo(s, s*0.2f, 0f, s*0.8f)
-                close()
-                moveTo(0f, s*0.8f)
-                lineTo(0f, -s*0.6f)
-            }
-            drawPath(path, color, style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            primaryPath.reset()
+            primaryPath.moveTo(0f, s * 0.8f)
+            primaryPath.quadraticTo(-s, s * 0.2f, 0f, -s * 0.8f)
+            primaryPath.quadraticTo(s, s * 0.2f, 0f, s * 0.8f)
+            primaryPath.close()
+            primaryPath.moveTo(0f, s * 0.8f)
+            primaryPath.lineTo(0f, -s * 0.6f)
+            drawPath(primaryPath, color, style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
         DoodleType.SPROUT -> {
-            val path = Path().apply {
-                moveTo(0f, s*0.8f)
-                quadraticTo(0f, s*0.2f, -s*0.5f, 0f)
-                quadraticTo(-s*0.8f, -s*0.5f, -s*0.2f, -s*0.5f)
-                quadraticTo(0f, -s*0.2f, 0f, s*0.2f)
-                
-                moveTo(0f, s*0.4f)
-                quadraticTo(s*0.3f, 0f, s*0.8f, -s*0.2f)
-                quadraticTo(s*0.4f, -s*0.7f, s*0.2f, -s*0.3f)
-                quadraticTo(0f, -s*0.1f, 0f, s*0.2f)
-            }
-            drawPath(path, color, style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            primaryPath.reset()
+            primaryPath.moveTo(0f, s * 0.8f)
+            primaryPath.quadraticTo(0f, s * 0.2f, -s * 0.5f, 0f)
+            primaryPath.quadraticTo(-s * 0.8f, -s * 0.5f, -s * 0.2f, -s * 0.5f)
+            primaryPath.quadraticTo(0f, -s * 0.2f, 0f, s * 0.2f)
+
+            primaryPath.moveTo(0f, s * 0.4f)
+            primaryPath.quadraticTo(s * 0.3f, 0f, s * 0.8f, -s * 0.2f)
+            primaryPath.quadraticTo(s * 0.4f, -s * 0.7f, s * 0.2f, -s * 0.3f)
+            primaryPath.quadraticTo(0f, -s * 0.1f, 0f, s * 0.2f)
+            drawPath(primaryPath, color, style = Stroke(width = dSize * 0.1f, cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
     }
 }
@@ -293,6 +300,7 @@ fun InteractiveAboutScreen() {
     var patBurstKey by remember { mutableIntStateOf(0) }
     var customMoodOverride by remember { mutableStateOf<MascotExpression?>(null) }
     var customSpeakPulse by remember { mutableStateOf(false) }
+    var customSpeakKey by remember { mutableIntStateOf(0) }
 
     val messages = remember {
         listOf(
@@ -376,15 +384,15 @@ fun InteractiveAboutScreen() {
         label = "auraPulse"
     )
 
-    LaunchedEffect(patReactionText) {
-        if (patReactionText != null) {
+    LaunchedEffect(patBurstKey) {
+        if (patBurstKey > 0 && patReactionText != null) {
             delay(1800)
             patReactionText = null
         }
     }
 
-    LaunchedEffect(customSpeakPulse) {
-        if (customSpeakPulse) {
+    LaunchedEffect(customSpeakKey) {
+        if (customSpeakKey > 0 && customSpeakPulse) {
             delay(1400)
             customSpeakPulse = false
         }
@@ -494,16 +502,20 @@ fun InteractiveAboutScreen() {
             }
 
             // Interactive 3D Judy Stage (seamlessly blended over mood-reactive radial glow)
-            Box(
+            BoxWithConstraints(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
+                val stageHeight = maxHeight.coerceIn(224.dp, 364.dp)
+                val stageWidth = (stageHeight * 0.93f).coerceAtMost(maxWidth)
+                val auraSize = (stageHeight * 0.88f).coerceAtMost(312.dp)
+
                 // Mood-reactive glowing aura behind transparent 3D Judy
                 Canvas(
                     modifier = Modifier
-                        .size(260.dp)
+                        .size(auraSize)
                         .graphicsLayer {
                             scaleX = auraPulse
                             scaleY = auraPulse
@@ -522,10 +534,10 @@ fun InteractiveAboutScreen() {
                     )
                 }
 
-                // Live Transparent Interactive 3D Judy (full-body skeleton + spring physics)
+                // Live Transparent Interactive 3D Judy (full-body 30-bone skeleton + 8-morph lip-sync)
                 PomoPalMascot(
                     expression = activeExpression,
-                    modifier = Modifier.size(width = 272.dp, height = 286.dp),
+                    modifier = Modifier.size(width = stageWidth, height = stageHeight),
                     isBreathing = true,
                     isSpeaking = isCurrentlySpeaking,
                     interactive = true,
@@ -681,6 +693,7 @@ fun InteractiveAboutScreen() {
                                                 try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
                                                 customMoodOverride = mood
                                                 customSpeakPulse = true
+                                                customSpeakKey++
                                             }
                                             .padding(vertical = 7.dp, horizontal = 2.dp)
                                     ) {

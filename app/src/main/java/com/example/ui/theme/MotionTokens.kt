@@ -135,6 +135,36 @@ object PomoMotion {
     }
 
     /**
+     * Silky M3 Shared-Axis X + subtle depth scale drill-down transition for rich sub-screens
+     * (like App Activity & Limits). Critically-damped to avoid overshoot or canvas squeeze frames.
+     */
+    fun drillDownTransition(forward: Boolean): ContentTransform {
+        val enterOffsetFraction = if (forward) 0.22f else -0.10f
+        val exitOffsetFraction = if (forward) -0.10f else 0.24f
+        return ContentTransform(
+            targetContentEnter = slideInHorizontally(
+                initialOffsetX = { fullWidth -> (fullWidth * enterOffsetFraction).toInt() },
+                animationSpec = smoothSpring(stiffness = 440f)
+            ) + scaleIn(
+                initialScale = 0.965f,
+                animationSpec = smoothSpring(stiffness = 440f)
+            ) + fadeIn(
+                animationSpec = tween(durationMillis = 220, easing = SmoothOutEasing)
+            ),
+            initialContentExit = slideOutHorizontally(
+                targetOffsetX = { fullWidth -> (fullWidth * exitOffsetFraction).toInt() },
+                animationSpec = smoothSpring(stiffness = 520f)
+            ) + scaleOut(
+                targetScale = 0.965f,
+                animationSpec = smoothSpring(stiffness = 520f)
+            ) + fadeOut(
+                animationSpec = tween(durationMillis = 165, easing = FastOutSlowInEasing)
+            ),
+            sizeTransform = SizeTransform(clip = false) { _, _ -> smoothSpring(stiffness = 500f) }
+        )
+    }
+
+    /**
      * M3 Shared Axis Y transition for vertical state transitions.
      */
     fun verticalCrossfadeTransition(upward: Boolean = false): ContentTransform {

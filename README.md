@@ -1,60 +1,119 @@
-# PomoPal 🍅 — Immersive, Gamified Pomodoro Companion
+# PomoPal 🍅✨
 
-PomoPal is a highly polished, premium Android Pomodoro companion designed to turn deep focus from a chore into a delightful, rewarding ritual. Built using **modern Jetpack Compose** and **Material Design 3**, PomoPal combines a cozy aesthetic with physical gamification, bringing premium UI smoothness and innovative sensor bindings to your productivity routine.
+**A Night-Owl Friendly Android Focus Companion with an Interactive 3D Pal, Live Island Timers, Distraction Shield & Deep Screen-Time Analytics.**
+
+Built with **Kotlin**, **Jetpack Compose**, **Material Design 3**, and **Google Filament 3D**, PomoPal is crafted especially for students, developers, creatives, and late-night learners who do their best deep work after midnight.
 
 ---
 
-## ✨ Outstanding Features & Mechanics
+## 🌙 Built for Night Owls — The 4:00 AM to 4:00 AM Day Cycle
 
-### 1. Adaptive, Multi-Device Intelligent Scaling
-No more stretched layouts or microscopic text. PomoPal utilizes a custom-engineered responsive scaling engine:
-- **`scaledSp` Text Extension**: Dynamically adapts font sizes relative to the device width, capping the range so headings and body elements look proportional on every screen from narrow compact phones up to wide tablets and foldables.
-- **`scaledDp` Density modifier**: Calibrates layout spacings, paddings, and card dimensions on-the-fly, ensuring that structural proportions remain aesthetically consistent regardless of the window size class.
+Most productivity apps punish late-night workers by resetting stats at midnight—splitting a 11:30 PM – 2:30 AM study block across two different days.
 
-### 2. Physical Gamification: Squat-to-Disarm (Beta Sensor API) 🏋️
-Say goodbye to mindlessly clicking "Dismiss" on your break alarms. PomoPal introduces a physical checkpoint:
-- **Core Accelerometer Integration**: Leverages `SquatSensorService` which reads live 3D sensor data via the phone's accelerometer hardware. By tracking specific vertical acceleration differentials (crossing standard down/up gravity thresholds), the application counts physical squats in real-time.
-- **Fitness Lock Loop**: Choose your target squat count (0 to 50 physical repetitions). The persistent focus completion alarm *only* silences when you complete your movement, encouraging healthy body activation during break blocks!
+**PomoPal runs on a unified 4:00 AM → 4:00 AM logical day cycle** across the entire app:
+- **Focus Tasks:** Per-task daily completion counters roll over cleanly at 4:00 AM.
+- **History Dashboard:** Every late-night session before 4:00 AM stays grouped with your current study night.
+- **App Activity & Daily Limits:** Screen-time analytics, 24-hour rhythm waves, daily app quotas, and grace passes all reset together at 4:00 AM.
 
-### 3. Premium Font Suite (Google Fonts Cloud Integration)
-PomoPal overrides standard, generic system fonts by fetching highly curated typographies asynchronously:
-- **Comic Neue Theme** (`CursiveFontFamily`): Infuses the visual interface with a friendly, welcoming warmth.
-- **Special Elite Monospace** (`MonospaceFontFamily`): Emulates a retro, mechanical typewriter feel for system logs, status text fields, and time countdowns.
-- **Poppins** (`AppFontFamily`): A modern, clean geometric typeface that keeps standard navigation, task lists, and settings highly readable.
+---
 
-### 4. Organic UI Mechanics & Spring Physics
-Every transition in PomoPal is fine-tuned to feel extremely fluid and tangible to the touch:
-- **Spring Physics**: Swapped out rigid linear animations for custom Jetpack Compose springs (`Spring.DampingRatioMediumBouncy` and `StiffnessLow`), introducing elegant bounciness on sliding timer numbers, settings overlays, and immersive state switches.
-- **Floating Bottom Pill Navigation**: A gorgeous, haptic-enhanced floating bottom sheet with tab containers that expand dynamically depending on navigation states.
-- **Breathing Pulse FX**: The active quote card features a slow, rhythmic sine-wave opacity and scaling cycle, guiding you into a calm diaphragmatic breathing tempo.
+## 🐰 Meet Judy — Your Interactive 3D Study Pal
 
-### 5. Immersive "Serious Mode" Screen Overlay
-Struggling with focus leaks? Trigger the full-screen Lockdown Overlay:
-- Requires **75% of the focus block to elapse** before the exit authorization button is unlocked.
-- Features a real-time progress tracker showing visual feedback and a dynamic ambient dark background cycle to completely block out distracting UI details.
+Say hello to **Judy**, PomoPal's real-time 3D companion (`judy.glb`) who studies alongside you:
+- **Native PBR 3D Rendering:** Powered by **Google Filament** (`filament-android` & `gltfio`) with custom Studio Image-Based Lighting (`JudyStudioIbl`) and tone-mapped color grading.
+- **Interactive Physics & Presence:** Driven by a dedicated `JudyPhysicsEngine` with responsive motion, tactile reactions, and smart lifecycle/render throttling (`FULL`, `THROTTLED_30FPS`, `PAUSED`) so battery usage stays light while visuals stay silky smooth.
+
+---
+
+## ✨ Core Features
+
+### ⏱️ Expressive Pomodoro Timer & Android 16+ Live Island Support
+- **Fluid Focus & Break Cycles:** Tactile spring-animated timer transitions, customizable durations, custom sounds, and an immersive focus flow.
+- **Android 16+ Native Live Updates / Island Pill:** Supports promoted ongoing live notifications (`POST_PROMOTED_NOTIFICATIONS`) for native status-bar pills and Dynamic Island-style surfaces across Android 16+ OEMs (Samsung Now Bar, OriginOS 6, Pixel Live Updates, etc.).
+- **Smart Android 15 & Below Fallback:** Automatically degrades to a rich, Material 3 ongoing chronometer notification with live progress and quick controls on older Android versions.
+
+### 🛡️ Distraction Shield (App Blocker)
+- **Mindful Interception:** Accessibility-powered blocking during active focus sessions with a calm 5-second pause screen designed to break compulsive app-opening loops.
+- **Strict Mode & Tactile Awareness:** Optionally keep blocking active even when the timer is paused, paired with subtle haptic awareness feedback.
+- **One-Tap Presets:** Instantly protect against popular social media and gaming apps, or filter by blocked apps.
+
+### 📊 App Activity Details & Daily App Time Limits
+- **Real Screen-Time Telemetry:** Powered by Android `UsageStatsManager` & `UsageEvents` strictly aligned to the 4:00 AM cycle.
+- **Modern Minimal Analytics Suite:**
+  - **Hero Bento Summary** with Today vs. 7-Day Week toggle.
+  - **Interactive 7-Day Capsule Bar Chart** & **24-Hour Bezier Rhythm Wave**.
+  - **Top 5 Most Used Apps** with live usage share breakdown.
+  - **Smart Focus Tip** suggesting realistic daily limits for your biggest unguarded distraction.
+- **Per-App Daily Limits & Proactive Nudges:**
+  - Interactive M3 Bottom Sheet with a **live 7-day threshold preview graph** as you drag the limit slider.
+  - Automatic notifications at **50% limit used**, **5 minutes remaining**, and **1 minute remaining**.
+  - Dedicated **Daily Limit Reached** lock screen featuring **"Go Study • Open PomoPal"** and a **"Just 5 mins more"** grace pass option.
+
+### ✅ Focus Tasks & 📈 History Dashboard
+- **Focus Tasks:** Editorial dashboard with an **Active Task Spotlight**, Work/Break & Category filter chips, 4:00 AM daily completion counters, smooth `animateItem` spring insertions, undoable snackbar deletions, and a **scroll-reactive bottom-left morphing navigation pill** with a subtle bottom scrim.
+- **History Analytics:** Track daily focus streaks, category distributions, and session timelines aligned with your 4:00 AM night-owl schedule.
+
+### 🔍 Flagship Pinned Search Mode & 120fps List Performance
+- **Unified Pinned Top Search Mode** across **App Activity**, **Distraction Shield**, and **Focus Tasks**:
+  - Anchors the search capsule at the top of the screen with `WindowInsets.navigationBars.union(WindowInsets.ime)` so the software keyboard **never hides matching results**.
+  - Prefix-first smart ranking, auto-scroll to top on every keystroke, and automatic keyboard dismissal the instant you drag the results list.
+- **Zero-Lag Installed App Lists:** Shared in-memory **LRU App Icon Cache**, `@Immutable` data models, and pre-indexed lowercase search keys for buttery scrolling across 100+ installed apps.
+
+### 🎨 Material Design 3 Customization & Motion
+- **Unified `PomoMotion` Physics:** Expressive spatial springs and critically-damped effects springs, predictive back gestures, and smooth drill-down transitions.
+- **Custom Themes, Paper Textures & Typography:** Handcrafted light & dark themes, optional paper grain overlay, adaptive `scaledSp` / `scaledDp` responsive sizing, and curated bundled fonts (`Poppins`, `Comic Neue`, `Special Elite`, `Balsamiq Sans`, `Patrick Hand`, `Sniglet`, `Short Stack`, `Chewy`).
+
+---
+
+## 🗺️ Upcoming Features & Roadmap
+
+We're actively building the next wave of delightful productivity rituals in PomoPal:
+
+- [ ] 🎉 **Daily Goal Completion Celebration:** A joyful full-screen milestone celebration with animated 3D Judy reactions whenever you hit your daily focus target.
+- [ ] 🥚 **Overachiever Easter Egg:** A secret unlockable surprise & special reaction crafted for night owls and dedicated learners who study *beyond* their daily goal!
+- [ ] 🪪 **Post-Timer Work Summary & Premium Share Cards:** A clean end-of-session breakdown after each completed work timer—complete with a gorgeous, exportable summary card designed to share your focus wins with friends, study groups, and colleagues.
+- [ ] 🎵 **Built-in Ambient Soundscapes:** On-device focus audio (rain, brown noise, cozy café) synced automatically with active work timers.
+- [ ] 📱 **Home Screen & Lock Screen Widgets:** Glanceable 4:00 AM daily progress and one-tap timer launch right from your launcher.
 
 ---
 
 ## 🛠️ Tech Stack & Architecture
 
-- **UI Framework**: Modern declarative Jetpack Compose
-- **Design Language**: Material Design 3 (M3)
-- **Local Database**: SQLite persistent tracking powered by Jetpack Room
-- **Motion System**: Physics-Based Jetpack Compose Animations and transition specs
-- **Service Stack**: Persistent background tracking via Android `ForegroundService`, ensuring timers run accurately even when screen utility is dimmed
-- **Core APIs**: `SensorEventListener` bound with `Sensor.TYPE_ACCELEROMETER` for hardware-driven squat tracking
-- **Dynamic Fonts**: `androidx.compose.ui.text.googlefonts` loaded dynamically with custom GMS certificates
+| Layer | Technologies |
+| :--- | :--- |
+| **Language & UI** | Kotlin, Jetpack Compose, Material Design 3, Edge-to-Edge Window Insets |
+| **3D Companion Engine** | Google Filament (`filament-android`, `gltfio-android`, `filament-utils`), glTF 2.0 (`.glb`), custom Studio IBL & Physics Engine |
+| **Persistence & Sync** | Jetpack Room (SQLite + KSP), Firebase Firestore / Realtime Database / Analytics, Google Sign-In |
+| **Background & System APIs** | Foreground `TimerService`, `AccessibilityService` (`AppBlockerService`), `UsageStatsManager` / `UsageEvents`, Android 16 Promoted Live Updates (`LiveTimerNotificationManager`) |
+| **Navigation & Motion** | Navigation Compose, Predictive Back (`PredictiveBackHandler`), Physics-Based Compose Springs (`PomoMotion`) |
+| **SDK Targets** | `minSdk 24` · `targetSdk 36` · `compileSdk 36` · Java 11 |
 
 ---
 
-## ⚡ Future Updates & Roadmap
+## 🚀 Getting Started
 
-We are continuously evolving PomoPal. Here is what is on the immediate horizon:
-- [ ] **Squat History Integration**: Save and graph your completed squats over time directly in the History tab.
-- [ ] **Adaptive Smart Break Adjuster**: Algorithms that adjust subsequent break durations based on physical squat counts under heavy cognitive loads.
-- [ ] **Dual-Sensor Calibration**: Merging Gyroscope data with Accelerometer signals to filter out accidental steps or false-positives while squatting.
-- [ ] **Soundscape Synth**: Directly synthesize calming brown noise and bilateral beats on-device.
+### Prerequisites
+- **Android Studio** (Meerkat / Narwhal or newer with Android 16 / API 36 SDK)
+- **JDK 11+**
+- Optional: A Firebase project with `google-services.json` placed in `app/` if you want cloud sync and Google Sign-In enabled.
+
+### Build & Run
+```bash
+# Clone the repository
+git clone https://github.com/<your-username>/PomoPal.git
+cd PomoPal
+
+# Build debug APK (fonts are fetched automatically during preBuild)
+./gradlew :app:assembleDebug
+```
+
+### Recommended Permissions for Full Experience
+- **Notifications (`POST_NOTIFICATIONS` / `POST_PROMOTED_NOTIFICATIONS`)**: Enables the live timer island pill and daily app-limit warning nudges.
+- **Usage Access (`PACKAGE_USAGE_STATS`)**: Powers the 7-day graphs, 24-hour rhythm wave, Top 5 apps, and daily time limits.
+- **Accessibility Service (`Distraction Shield`)**: Enables mindful app blocking during focus sessions and automatic locking when daily app limits are reached.
 
 ---
 
-*Stay present, keep moving, and let PomoPal guide your focus.* 🍅
+<p align="center">
+  <i>Built for the late-night dreamers, deep thinkers, and 2 AM builders.</i> 🌙🍅✨
+</p>

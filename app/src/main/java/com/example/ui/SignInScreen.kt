@@ -565,8 +565,9 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
 
             // 2. Hero 3D Judy Mascot with warm breathing aura & crisp depth
             var judySignInGreet by remember { mutableStateOf(false) }
-            LaunchedEffect(judySignInGreet) {
-                if (judySignInGreet) {
+            var judyGreetKey by remember { mutableIntStateOf(0) }
+            LaunchedEffect(judyGreetKey) {
+                if (judyGreetKey > 0 && judySignInGreet) {
                     delay(2200)
                     judySignInGreet = false
                 }
@@ -580,14 +581,14 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                         translationY = logoTranslationY.value + floatOffsetPx
                         compositingStrategy = if (logoAlpha.value < 0.999f) CompositingStrategy.Offscreen else CompositingStrategy.Auto
                     }
-                    .size(188.dp),
+                    .size(216.dp),
                 contentAlignment = Alignment.Center
             ) {
                 val primaryColor = currentTheme.primary
                 val glowAlpha = if (currentTheme.isDark) 0.38f else 0.24f
                 Canvas(
                     modifier = Modifier
-                        .size(164.dp)
+                        .size(188.dp)
                         .graphicsLayer {
                             scaleX = pulseAnim
                             scaleY = pulseAnim
@@ -609,12 +610,13 @@ fun SignInScreen(navController: NavController, onSignInSuccess: () -> Unit) {
                 ) {
                     PomoPalMascot(
                         expression = if (judySignInGreet) MascotExpression.EXCITED else MascotExpression.HAPPY,
-                        modifier = Modifier.size(168.dp),
+                        modifier = Modifier.size(200.dp),
                         isSpeaking = judySignInGreet,
                         interactive = true,
                         onTap = {
                             try { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
                             judySignInGreet = true
+                            judyGreetKey++
                         }
                     )
                 }

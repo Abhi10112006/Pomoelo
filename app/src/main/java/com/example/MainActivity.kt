@@ -32,9 +32,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.QueryStats
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.TaskAlt
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Pause
@@ -1364,7 +1367,8 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
         mutableIntStateOf(initialTab.coerceIn(0, tabs.size - 1)) 
     }
     val tabBackStack = remember { mutableStateListOf<Int>() }
-    var showBlockedApps by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    // 0 = Settings Tabs, 1 = BlockedAppsScreen, 2 = AppActivityScreen
+    var settingsSubScreen by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
 
     LaunchedEffect(initialTab) {
         if (initialTab in tabs.indices && initialTab != selectedTabIndex) {
@@ -1418,7 +1422,7 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
     val backProgress = remember { Animatable(0f) }
     var backEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
 
-    PredictiveBackHandler(enabled = !showBlockedApps) { progressFlow ->
+    PredictiveBackHandler(enabled = settingsSubScreen == 0) { progressFlow ->
         try {
             progressFlow.collect { event ->
                 backEdge = event.swipeEdge
@@ -1446,7 +1450,7 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
         derivedStateOf { backProgress.value > 0.001f }
     }
     val mascotRenderMode = when {
-        showBlockedApps -> MascotRenderMode.PAUSED
+        settingsSubScreen != 0 -> MascotRenderMode.PAUSED
         isPredictiveDragging -> MascotRenderMode.THROTTLED_30FPS
         else -> MascotRenderMode.FULL
     }
@@ -1480,20 +1484,31 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
         ) {
     SharedTransitionLayout {
         AnimatedContent(
-            targetState = showBlockedApps,
-            transitionSpec = { PomoMotion.horizontalSlideTransition(forward = targetState) },
-            label = "BlockedAppsTransition"
-        ) { isBlockedAppsVisible ->
-            val blockedAppsVisibilityScope = this
+            targetState = settingsSubScreen,
+            transitionSpec = {
+                val isActivityTransition = targetState == 2 || initialState == 2
+                if (isActivityTransition) {
+                    PomoMotion.drillDownTransition(forward = targetState > initialState)
+                } else {
+                    PomoMotion.horizontalSlideTransition(forward = targetState > initialState)
+                }
+            },
+            label = "SettingsSubScreenTransition"
+        ) { activeSubScreen ->
+            val subScreenVisibilityScope = this
             val blockedBoundsModifier = Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = "blocked_apps_bounds"),
-                animatedVisibilityScope = blockedAppsVisibilityScope,
+                animatedVisibilityScope = subScreenVisibilityScope,
                 boundsTransform = { _, _ -> PomoMotion.expressiveSpatial() }
             )
-            if (isBlockedAppsVisible) {
+            if (activeSubScreen == 1) {
                 com.example.ui.BlockedAppsScreen(
-                    onBack = { showBlockedApps = false },
+                    onBack = { settingsSubScreen = 0 },
                     modifier = blockedBoundsModifier
+                )
+            } else if (activeSubScreen == 2) {
+                com.example.ui.AppActivityScreen(
+                    onBack = { settingsSubScreen = 0 }
                 )
             } else {
             val tabListState = androidx.compose.foundation.lazy.rememberLazyListState(
@@ -1996,7 +2011,7 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
                 Card(
                     onClick = { 
                         try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
-                        showBlockedApps = true 
+                        settingsSubScreen = 1 
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2011,18 +2026,91 @@ fun SettingsOverlay(onDismiss: () -> Unit, initialTab: Int = 0) {
                     border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder),
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp, pressedElevation = 0.dp)
                 ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("App Blocker", fontWeight = FontWeight.Bold, color = currentTheme.textPrimary)
-                        Text("Select distracting apps to block during focus sessions.", fontSize = 12.scaledSp, color = currentTheme.textSecondary)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("App Blocker", fontWeight = FontWeight.Bold, color = currentTheme.textPrimary)
+                            Text("Select distracting apps to block during focus sessions.", fontSize = 12.scaledSp, color = currentTheme.textSecondary)
+                        }
+                        Icon(androidx.compose.material.icons.Icons.Filled.Settings, contentDescription = "Manage", tint = currentTheme.textPrimary)
                     }
-                    Icon(androidx.compose.material.icons.Icons.Filled.Settings, contentDescription = "Manage", tint = currentTheme.textPrimary)
                 }
-            }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // App Activity Details & Daily Time Limits Option (fixed static copy like App Blocker)
+                val activityInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                val isActivityPressed by activityInteraction.collectIsPressedAsState()
+                val activityScale by androidx.compose.animation.core.animateFloatAsState(
+                    targetValue = if (isActivityPressed) 0.96f else 1f,
+                    animationSpec = PomoMotion.pressScaleSpec,
+                    label = "activityScale"
+                )
+
+                Card(
+                    onClick = {
+                        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                        settingsSubScreen = 2
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            scaleX = activityScale
+                            scaleY = activityScale
+                        }
+                        .testTag("settings_app_activity_card"),
+                    shape = RoundedCornerShape(16.dp),
+                    interactionSource = activityInteraction,
+                    colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.cardBorder),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp, pressedElevation = 0.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(currentTheme.primary.copy(alpha = 0.14f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.QueryStats,
+                                contentDescription = null,
+                                tint = currentTheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "App Activity Details",
+                                fontWeight = FontWeight.Bold,
+                                color = currentTheme.textPrimary
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "View weekly usage graphs, top apps & set daily limits (4 AM–4 AM).",
+                                fontSize = 12.scaledSp,
+                                color = currentTheme.textSecondary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = "Open App Activity Details",
+                            tint = currentTheme.textSecondary
+                        )
+                    }
+                }
             } // Close if (tabIndex == 2)
 
             

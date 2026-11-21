@@ -3,16 +3,22 @@ package com.example.ui.components
 import android.opengl.Matrix
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.acos
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
- * Exact joint index layout matching the 21-bone skeleton baked into assets/models/judy.glb.
+ * Exact 30-bone skeleton layout baked into assets/models/judy.glb:
+ *  - Bones 0..20: Core articulated body, ears, arms, wrists, legs, and feet
+ *  - Bones 21..25: Dedicated Phase 2 secondary soft-body bones (synchronized across outfit + body)
+ *  - Bones 26..29: Dedicated Finger & Thumb bones for natural Pixar hand & wrist articulation
  */
 internal object JudyBones {
-    const val COUNT = 21
+    const val COUNT = 30
 
     const val HIPS = 0
     const val SPINE = 1
@@ -35,13 +41,49 @@ internal object JudyBones {
     const val THIGH_R = 18
     const val SHIN_R = 19
     const val FOOT_R = 20
+
+    // Dedicated Phase 2 secondary soft-body bones (independent of Spine/Arms, synced on outfit + body)
+    const val SOFT_CHEST_L = 21
+    const val SOFT_CHEST_R = 22
+    const val SOFT_HIP_L = 23
+    const val SOFT_HIP_R = 24
+    const val TAIL = 25
+
+    // Dedicated Finger & Thumb articulation bones (children of Hand_L / Hand_R)
+    const val FINGERS_L = 26
+    const val THUMB_L = 27
+    const val FINGERS_R = 28
+    const val THUMB_R = 29
+
+    val NAMES: Array<String> = arrayOf(
+        "Hips", "Spine", "Chest", "Neck", "Head",
+        "EarBase_L", "EarTip_L", "EarBase_R", "EarTip_R",
+        "UpperArm_L", "ForeArm_L", "Hand_L",
+        "UpperArm_R", "ForeArm_R", "Hand_R",
+        "Thigh_L", "Shin_L", "Foot_L",
+        "Thigh_R", "Shin_R", "Foot_R",
+        "SoftChest_L", "SoftChest_R", "SoftHip_L", "SoftHip_R", "Tail",
+        "Fingers_L", "Thumb_L", "Fingers_R", "Thumb_R"
+    )
+
+    // Exact leg geometry exported from the 30-bone GLB rig for analytical 2-bone foot-locking IK
+    const val HIP_REST_Y = 0.430f
+    const val THIGH_REST_X = 0.066f
+    const val THIGH_REST_Y = 0.365f
+    const val THIGH_REST_Z = -0.008f
+    const val ANKLE_REST_Y = 0.065f
+    const val ANKLE_REST_Z = -0.010f
+    const val L1_THIGH = 0.1508642f
+    const val L2_SHIN = 0.1510894f
+    const val MAX_LEG_REACH = 0.995f * (L1_THIGH + L2_SHIN)
+    const val MIN_LEG_REACH = 0.18f
 }
 
 /**
- * Exact morph target index layout matching meshes 2..9 in assets/models/judy.glb.
+ * Exact 8 facial morph targets baked on meshes 2..9 in assets/models/judy.glb.
  */
 internal object JudyMorphs {
-    const val COUNT = 6
+    const val COUNT = 8
 
     const val BLINK_L = 0
     const val BLINK_R = 1
@@ -49,31 +91,59 @@ internal object JudyMorphs {
     const val SMILE = 3
     const val BROW_UP = 4
     const val BROW_FOCUS = 5
+    const val MOUTH_WIDE = 6
+    const val MOUTH_ROUND = 7
+
+    val NAMES: Array<String> = arrayOf(
+        "blink_l", "blink_r", "mouth_open", "smile",
+        "brow_up", "brow_focus", "mouth_wide", "mouth_round"
+    )
 }
 
 /**
- * Real-time damped harmonic spring oscillator for secondary physics
- * (bunny ears, squash-and-stretch, head follow-through, and momentum bounce).
+ * Varied, non-repeating playful & mood-aware tap reactions so tapping Judy never repeats
+ * a single stiff pose.
+ */
+internal enum class TapReactionType(val durationSec: Float) {
+    CRISP_HOP_SETTLE(0.74f),
+    CHEEKY_WINK_TILT(0.95f),
+    OFFICER_SALUTE(1.05f),
+    DOUBLE_EAR_FLICK_PEEK(0.86f),
+    COZY_STRETCH_SIGH(1.05f)
+}
+
+/**
+ * Critically/under-damped 1D spring oscillator with strict dt/NaN/amplitude guards so
+ * springs can never diverge on frame drops or resume from LocalMascotRenderMode.PAUSED.
  */
 private class Spring1D(
     var value: Float = 0f,
     private val stiffness: Float,
-    private val damping: Float
+    private val damping: Float,
+    private val maxAbsValue: Float = 60f,
+    private val maxAbsVelocity: Float = 420f
 ) {
     var velocity: Float = 0f
 
-    fun step(target: Float, dt: Float, impulse: Float = 0f): Float {
-        velocity += impulse
+    fun step(target: Float, safeDt: Float): Float {
+        if (!target.isFinite() || !value.isFinite() || !velocity.isFinite()) {
+            value = 0f
+            velocity = 0f
+            return 0f
+        }
         val force = (target - value) * stiffness - velocity * damping
-        velocity += force * dt
-        value += velocity * dt
+        velocity = (velocity + force * safeDt).coerceIn(-maxAbsVelocity, maxAbsVelocity)
+        value = (value + velocity * safeDt).coerceIn(-maxAbsValue, maxAbsValue)
         return value
+    }
+
+    fun addImpulse(dv: Float) {
+        if (dv.isFinite()) {
+            velocity = (velocity + dv).coerceIn(-maxAbsVelocity, maxAbsVelocity)
+        }
     }
 }
 
-/**
- * Per-bone Euler pose target (degrees) + optional local translation offset (meters).
- */
 internal class BonePose {
     var pitch: Float = 0f
     var yaw: Float = 0f
@@ -99,73 +169,280 @@ internal class BonePose {
     }
 
     fun blendToward(target: BonePose, alpha: Float) {
-        pitch += (target.pitch - pitch) * alpha
-        yaw += (target.yaw - yaw) * alpha
-        roll += (target.roll - roll) * alpha
-        tx += (target.tx - tx) * alpha
-        ty += (target.ty - ty) * alpha
-        tz += (target.tz - tz) * alpha
+        val a = if (alpha.isFinite()) alpha.coerceIn(0f, 1f) else 0f
+        pitch = sanitize(pitch + (target.pitch - pitch) * a)
+        yaw = sanitize(yaw + (target.yaw - yaw) * a)
+        roll = sanitize(roll + (target.roll - roll) * a)
+        tx = sanitize(tx + (target.tx - tx) * a)
+        ty = sanitize(ty + (target.ty - ty) * a)
+        tz = sanitize(tz + (target.tz - tz) * a)
     }
+
+    fun sanitizeAll() {
+        pitch = sanitize(pitch)
+        yaw = sanitize(yaw)
+        roll = sanitize(roll)
+        tx = sanitize(tx)
+        ty = sanitize(ty)
+        tz = sanitize(tz)
+    }
+
+    private fun sanitize(v: Float): Float = if (v.isFinite()) v else 0f
 }
 
+private data class LegIkSolution(
+    var thighPitchDeg: Float = 0f,
+    var thighYawDeg: Float = 0f,
+    var thighRollDeg: Float = 0f,
+    var shinPitchDeg: Float = 0f,
+    var footPitchDeg: Float = 0f,
+    var footRollDeg: Float = 0f
+)
+
 /**
- * Complete procedural full-body skeleton + spring-physics + facial morph animation engine for Judy.
- * Replaces static A-pose with grounded stances, real knee-bend jumps, spring-physics bunny ears,
- * expressive hands/arms per emotion, independent winks, blinking, brow expressions, and lip-sync.
+ * Living Pixar-style procedural skeletal, facial & soft-body physics engine for 3D Judy:
+ *  - Asymmetric contrapposto stance (weight-shifted hips, ~10° Thigh-yaw knee-over-toe turn-out,
+ *    counter-tilted shoulders, dropped relaxed arms with soft inward wrist curl)
+ *  - Varied mood-aware TapReactionDirector (snappy hop-settle, cheeky wink-tilt, Officer Hopps
+ *    salute, double ear-flick peek, cozy stretch-sigh — zero repetitive wide-arm poses)
+ *  - Living micro-acting: head-leads-torso gaze tracking, 3–5s random asymmetric ear twitches,
+ *    and occasional speech-bubble downward glances when text appears
+ *  - Calibrated multi-viseme lip-sync (0.35–0.65 conversational mouth_open, 0.85–1.0 excited peaks)
+ *  - Expressive Phase 2 soft-body bounce (SoftChest_L/R, SoftHip_L/R, Tail) synced with outfit+body
  */
-internal class JudyPhysicsEngine {
+internal class JudyPhysicsEngine(
+    var softBodyIntensity: Float = 1.0f
+) {
     val poses = Array(JudyBones.COUNT) { BonePose() }
     private val targets = Array(JudyBones.COUNT) { BonePose() }
     val morphWeights = FloatArray(JudyMorphs.COUNT)
 
-    // Root world transform outputs (applied to asset.root)
+    // Root transform outputs (horizontal-only 360° turntable keeps feet flat on floor plane)
     var rootYawDeg: Float = 0f
-    var rootPitchDeg: Float = 0f
-    var rootRollDeg: Float = 0f
-    var rootOffsetY: Float = 0f
+    var rootOffsetY: Float = 0.009f
     var rootScaleX: Float = 1f
     var rootScaleY: Float = 1f
     var rootScaleZ: Float = 1f
+    var groundedHipShiftX: Float = 0f
 
-    // Secondary physics springs for tall bunny ears (base + floppy tip whip)
-    private val earBaseLPitchSpring = Spring1D(0f, stiffness = 135f, damping = 11.5f)
-    private val earBaseLRollSpring = Spring1D(0f, stiffness = 120f, damping = 10.5f)
-    private val earTipLPitchSpring = Spring1D(0f, stiffness = 92f, damping = 7.8f)
-    private val earTipLRollSpring = Spring1D(0f, stiffness = 86f, damping = 7.2f)
+    // Critically-damped bunny ear springs (lively flicks + natural follow-through)
+    private val earBaseLPitch = Spring1D(0f, stiffness = 150f, damping = 16.5f, maxAbsValue = 18f)
+    private val earBaseLRoll = Spring1D(0f, stiffness = 138f, damping = 16f, maxAbsValue = 16f)
+    private val earTipLPitch = Spring1D(0f, stiffness = 115f, damping = 14f, maxAbsValue = 15f)
+    private val earTipLRoll = Spring1D(0f, stiffness = 108f, damping = 13.5f, maxAbsValue = 12f)
 
-    private val earBaseRPitchSpring = Spring1D(0f, stiffness = 135f, damping = 11.5f)
-    private val earBaseRRollSpring = Spring1D(0f, stiffness = 120f, damping = 10.5f)
-    private val earTipRPitchSpring = Spring1D(0f, stiffness = 92f, damping = 7.8f)
-    private val earTipRRollSpring = Spring1D(0f, stiffness = 86f, damping = 7.2f)
+    private val earBaseRPitch = Spring1D(0f, stiffness = 150f, damping = 16.5f, maxAbsValue = 18f)
+    private val earBaseRRoll = Spring1D(0f, stiffness = 138f, damping = 16f, maxAbsValue = 16f)
+    private val earTipRPitch = Spring1D(0f, stiffness = 115f, damping = 14f, maxAbsValue = 15f)
+    private val earTipRRoll = Spring1D(0f, stiffness = 108f, damping = 13.5f, maxAbsValue = 12f)
 
-    // Secondary springs for body bounce, squash/stretch, and head follow-through
-    private val squashSpring = Spring1D(0f, stiffness = 190f, damping = 13f)
-    private val headFollowYaw = Spring1D(0f, stiffness = 90f, damping = 11f)
-    private val torsoLagYaw = Spring1D(0f, stiffness = 75f, damping = 10f)
+    // Spring-driven wrist follow-through & organic finger/thumb curl (Pixar overlapping action)
+    private val handLPitchSpring = Spring1D(-8f, stiffness = 155f, damping = 17f, maxAbsValue = 38f)
+    private val handLRollSpring = Spring1D(-10f, stiffness = 145f, damping = 16f, maxAbsValue = 34f)
+    private val handLYawSpring = Spring1D(-6f, stiffness = 145f, damping = 17f, maxAbsValue = 28f)
+    private val fingersLCurlSpring = Spring1D(26f, stiffness = 135f, damping = 16f, maxAbsValue = 44f)
+    private val thumbLCurlSpring = Spring1D(16f, stiffness = 140f, damping = 17f, maxAbsValue = 34f)
 
-    // Smooth blended channels
+    private val handRPitchSpring = Spring1D(-8f, stiffness = 155f, damping = 17f, maxAbsValue = 38f)
+    private val handRRollSpring = Spring1D(10f, stiffness = 145f, damping = 16f, maxAbsValue = 34f)
+    private val handRYawSpring = Spring1D(6f, stiffness = 145f, damping = 17f, maxAbsValue = 28f)
+    private val fingersRCurlSpring = Spring1D(26f, stiffness = 135f, damping = 16f, maxAbsValue = 44f)
+    private val thumbRCurlSpring = Spring1D(16f, stiffness = 140f, damping = 17f, maxAbsValue = 34f)
+
+    // Head-leads-torso gaze springs (head tracks briskly while chest/spine follow ~0.28s behind!)
+    private val headGazeYawSpring = Spring1D(0f, stiffness = 74f, damping = 13.5f, maxAbsValue = 14f)
+    private val headGazePitchSpring = Spring1D(0f, stiffness = 68f, damping = 13.0f, maxAbsValue = 12f)
+    private val torsoFollowYawSpring = Spring1D(0f, stiffness = 24f, damping = 8.8f, maxAbsValue = 9f)
+    private val torsoFollowRollSpring = Spring1D(0f, stiffness = 28f, damping = 9.5f, maxAbsValue = 6f)
+
+    // Secondary springs for elastic squash/stretch & inertial turntable lag
+    private val squashSpring = Spring1D(0f, stiffness = 185f, damping = 19f, maxAbsValue = 0.055f, maxAbsVelocity = 3f)
+    private val headLagYaw = Spring1D(0f, stiffness = 95f, damping = 15f, maxAbsValue = 14f)
+    private val torsoLagYaw = Spring1D(0f, stiffness = 85f, damping = 14f, maxAbsValue = 8f)
+
+    // Phase 2 expressive lively 2D soft-body springs (SoftChest_L/R, SoftHip_L/R, Tail)
+    // Slightly underdamped (damping ~8.8..9.6) so chest & hips show genuine weighted bounce & settle!
+    private val softChestLY = Spring1D(0f, stiffness = 158f, damping = 8.9f, maxAbsValue = 0.020f, maxAbsVelocity = 0.92f)
+    private val softChestRY = Spring1D(0f, stiffness = 150f, damping = 8.7f, maxAbsValue = 0.020f, maxAbsVelocity = 0.92f)
+    private val softChestLX = Spring1D(0f, stiffness = 136f, damping = 9.6f, maxAbsValue = 0.011f, maxAbsVelocity = 0.56f)
+    private val softChestRX = Spring1D(0f, stiffness = 132f, damping = 9.4f, maxAbsValue = 0.011f, maxAbsVelocity = 0.56f)
+
+    private val softHipLY = Spring1D(0f, stiffness = 142f, damping = 9.1f, maxAbsValue = 0.017f, maxAbsVelocity = 0.78f)
+    private val softHipRY = Spring1D(0f, stiffness = 138f, damping = 9.0f, maxAbsValue = 0.017f, maxAbsVelocity = 0.78f)
+    private val softHipLX = Spring1D(0f, stiffness = 128f, damping = 9.5f, maxAbsValue = 0.012f, maxAbsVelocity = 0.56f)
+    private val softHipRX = Spring1D(0f, stiffness = 128f, damping = 9.5f, maxAbsValue = 0.012f, maxAbsVelocity = 0.56f)
+
+    private val tailPitchSpring = Spring1D(0f, stiffness = 148f, damping = 10.5f, maxAbsValue = 14f, maxAbsVelocity = 240f)
+    private val tailYawSpring = Spring1D(0f, stiffness = 128f, damping = 9.8f, maxAbsValue = 16f, maxAbsVelocity = 250f)
+
+    // Tap Reaction Director state
+    private var activeTapReaction: TapReactionType = TapReactionType.CRISP_HOP_SETTLE
+    private var tapCounter: Int = 0
+    private var lastTapJumpLandFired: Boolean = false
+
+    // Living micro-acting timers (random 3-5s asymmetric ear twitch + speech-bubble glances)
+    private var nextEarTwitchTimerSec: Float = 2.6f
+    private var earTwitchSeed: Int = 17
+    private var wasSpeaking: Boolean = false
+    private var speechGlanceTimerSec: Float = 99f
+    private var nextSpeechGlanceCooldownSec: Float = 0f
+    private var prevSyllablePeak: Float = 0f
+
+    // Smoothed facial & blend states
     private var smoothSpeak = 0f
-    private var smoothSmile = 0.40f
+    private var smoothSmile = 0.38f
     private var smoothRelaxLids = 0f
     private var smoothBrowUp = 0f
     private var smoothBrowFocus = 0f
+    private var smoothMouthOpen = 0f
+    private var smoothMouthWide = 0f
+    private var smoothMouthRound = 0f
+    private var transitionBlinkTimer = 99f
     private var prevExpression: MascotExpression? = null
-    private var moodChangeElapsed = 99f
     private var prevJumpHeight = 0f
     private var prevJumpVel = 0f
+    private var prevHipDropY = 0f
+    private var prevHipDropVel = 0f
+    private var prevHipShiftX = 0f
+    private var prevHipShiftVel = 0f
+    private var prevSmoothedFaLRoll = 0f
+    private var prevSmoothedFaRRoll = 0f
     private var initializedPose = false
 
-    // Scratch matrices for zero-GC frame updates
+    // Scratch buffers for zero-GC per-frame updates
     private val scratchRot = FloatArray(16)
     private val scratchOut = FloatArray(16)
+    private val legIkL = LegIkSolution()
+    private val legIkR = LegIkSolution()
 
-    fun triggerTapImpulse() {
-        // Elastic impulse into ears & body squash when user taps Judy
-        earBaseLPitchSpring.velocity -= 190f
-        earBaseRPitchSpring.velocity -= 170f
-        earTipLPitchSpring.velocity -= 260f
-        earTipRPitchSpring.velocity -= 240f
-        squashSpring.velocity -= 0.75f
+    /**
+     * Picks a varied, non-repeating playful or mood-aware tap reaction and fires tailored
+     * ear, wrist, squash, and soft-body chest/hip impulses.
+     */
+    fun triggerTapReaction(expression: MascotExpression) {
+        tapCounter++
+        lastTapJumpLandFired = false
+
+        val pool = when (expression) {
+            MascotExpression.FOCUS -> listOf(
+                TapReactionType.OFFICER_SALUTE,
+                TapReactionType.DOUBLE_EAR_FLICK_PEEK,
+                TapReactionType.CRISP_HOP_SETTLE,
+                TapReactionType.CHEEKY_WINK_TILT
+            )
+            MascotExpression.RELAX -> listOf(
+                TapReactionType.COZY_STRETCH_SIGH,
+                TapReactionType.CHEEKY_WINK_TILT,
+                TapReactionType.DOUBLE_EAR_FLICK_PEEK,
+                TapReactionType.CRISP_HOP_SETTLE
+            )
+            MascotExpression.CURIOUS -> listOf(
+                TapReactionType.DOUBLE_EAR_FLICK_PEEK,
+                TapReactionType.CHEEKY_WINK_TILT,
+                TapReactionType.OFFICER_SALUTE,
+                TapReactionType.CRISP_HOP_SETTLE
+            )
+            MascotExpression.EXCITED -> listOf(
+                TapReactionType.CRISP_HOP_SETTLE,
+                TapReactionType.CHEEKY_WINK_TILT,
+                TapReactionType.OFFICER_SALUTE,
+                TapReactionType.DOUBLE_EAR_FLICK_PEEK
+            )
+            MascotExpression.HAPPY -> listOf(
+                TapReactionType.CHEEKY_WINK_TILT,
+                TapReactionType.CRISP_HOP_SETTLE,
+                TapReactionType.DOUBLE_EAR_FLICK_PEEK,
+                TapReactionType.OFFICER_SALUTE
+            )
+            MascotExpression.IDLE -> listOf(
+                TapReactionType.CHEEKY_WINK_TILT,
+                TapReactionType.CRISP_HOP_SETTLE,
+                TapReactionType.OFFICER_SALUTE,
+                TapReactionType.DOUBLE_EAR_FLICK_PEEK
+            )
+        }
+
+        // Pseudo-random non-repeating selection weighted by tap count & mood
+        val hash = ((tapCounter * 31 + expression.ordinal * 7 + earTwitchSeed * 13) and 0x7FFFFFFF)
+        var picked = pool[hash % pool.size]
+        if (picked == activeTapReaction && pool.size > 1) {
+            picked = pool[(hash + 1) % pool.size]
+        }
+        activeTapReaction = picked
+        earTwitchSeed = (earTwitchSeed * 1103515245 + 12345) and 0x7FFFFFFF
+
+        val sb = softBodyIntensity.coerceIn(0f, 1f)
+        when (picked) {
+            TapReactionType.CRISP_HOP_SETTLE -> {
+                earBaseLPitch.addImpulse(-72f)
+                earBaseRPitch.addImpulse(-66f)
+                earTipLPitch.addImpulse(-90f)
+                earTipRPitch.addImpulse(-82f)
+                squashSpring.addImpulse(-0.34f)
+                if (sb > 0.001f) {
+                    softChestLY.addImpulse(-0.30f * sb)
+                    softChestRY.addImpulse(-0.28f * sb)
+                    softHipLY.addImpulse(-0.24f * sb)
+                    softHipRY.addImpulse(-0.24f * sb)
+                    tailPitchSpring.addImpulse(-135f * sb)
+                    tailYawSpring.addImpulse(150f * sb)
+                }
+            }
+            TapReactionType.CHEEKY_WINK_TILT -> {
+                earBaseLPitch.addImpulse(-55f)
+                earBaseRPitch.addImpulse(35f)
+                earTipLPitch.addImpulse(-75f)
+                handLRollSpring.addImpulse(85f)
+                fingersLCurlSpring.addImpulse(-90f)
+                if (sb > 0.001f) {
+                    softChestLY.addImpulse(0.22f * sb)
+                    softChestRY.addImpulse(0.18f * sb)
+                    softChestLX.addImpulse(0.14f * sb)
+                    softHipLX.addImpulse(-0.18f * sb)
+                    softHipRX.addImpulse(-0.18f * sb)
+                    tailYawSpring.addImpulse(165f * sb)
+                }
+            }
+            TapReactionType.OFFICER_SALUTE -> {
+                earBaseLPitch.addImpulse(-85f)
+                earBaseRPitch.addImpulse(-85f)
+                earTipLPitch.addImpulse(-65f)
+                earTipRPitch.addImpulse(-65f)
+                handRPitchSpring.addImpulse(-60f)
+                if (sb > 0.001f) {
+                    softChestLY.addImpulse(0.24f * sb)
+                    softChestRY.addImpulse(0.26f * sb)
+                    softHipLY.addImpulse(0.14f * sb)
+                    softHipRY.addImpulse(0.14f * sb)
+                    tailPitchSpring.addImpulse(-95f * sb)
+                }
+            }
+            TapReactionType.DOUBLE_EAR_FLICK_PEEK -> {
+                earBaseLPitch.addImpulse(-115f)
+                earTipLPitch.addImpulse(-140f)
+                earBaseRRoll.addImpulse(95f)
+                earTipRRoll.addImpulse(110f)
+                if (sb > 0.001f) {
+                    softChestLY.addImpulse(0.20f * sb)
+                    softChestRY.addImpulse(-0.18f * sb)
+                    softHipLX.addImpulse(0.15f * sb)
+                    softHipRX.addImpulse(0.15f * sb)
+                    tailYawSpring.addImpulse(-155f * sb)
+                }
+            }
+            TapReactionType.COZY_STRETCH_SIGH -> {
+                earBaseLPitch.addImpulse(45f)
+                earBaseRPitch.addImpulse(48f)
+                squashSpring.addImpulse(0.18f)
+                if (sb > 0.001f) {
+                    softChestLY.addImpulse(0.22f * sb)
+                    softChestRY.addImpulse(0.22f * sb)
+                    softHipLY.addImpulse(-0.14f * sb)
+                    softHipRY.addImpulse(-0.14f * sb)
+                    tailPitchSpring.addImpulse(75f * sb)
+                }
+            }
+        }
     }
 
     fun step(
@@ -176,190 +453,288 @@ internal class JudyPhysicsEngine {
         isSpeaking: Boolean,
         tapElapsedSec: Float,
         userYawDeg: Float,
-        userPitchDeg: Float,
         userYawVelocityDeg: Float
     ) {
+        // Strict dt & input sanitization so NaN or resume spikes can never destabilize springs
+        val safeDt = if (!dt.isFinite() || dt <= 0f) 0.016f else dt.coerceIn(0.001f, 0.033f)
+        val safeTime = if (elapsedSec.isFinite() && elapsedSec >= 0f) elapsedSec else 0f
+        val safeTapElapsed = if (tapElapsedSec.isFinite() && tapElapsedSec >= 0f) tapElapsedSec else 99f
+        val safeUserYaw = if (userYawDeg.isFinite()) userYawDeg else 0f
+        val safeUserYawVel = if (userYawVelocityDeg.isFinite()) userYawVelocityDeg.coerceIn(-450f, 450f) else 0f
+
+        val sb = softBodyIntensity.coerceIn(0f, 1f)
+
         if (prevExpression != expression) {
             if (prevExpression != null) {
-                moodChangeElapsed = 0f
-                // Subtle ear perk & body pop on emotion switch
-                earBaseLPitchSpring.velocity -= 110f
-                earBaseRPitchSpring.velocity -= 95f
-                earTipLPitchSpring.velocity -= 140f
-                earTipRPitchSpring.velocity -= 125f
-                squashSpring.velocity += 0.45f
+                earBaseLPitch.addImpulse(-36f)
+                earBaseRPitch.addImpulse(-28f)
+                earTipLPitch.addImpulse(-46f)
+                earTipRPitch.addImpulse(-38f)
+                handLPitchSpring.addImpulse(34f)
+                handRPitchSpring.addImpulse(34f)
+                squashSpring.addImpulse(0.15f)
+                if (sb > 0.001f) {
+                    softChestLY.addImpulse(0.14f * sb)
+                    softChestRY.addImpulse(0.13f * sb)
+                    softHipLY.addImpulse(0.10f * sb)
+                    softHipRY.addImpulse(0.10f * sb)
+                    tailYawSpring.addImpulse(85f * sb)
+                }
+                // Classic Pixar realism: subtle 0.16s transition blink on emotional shift
+                transitionBlinkTimer = 0f
             }
             prevExpression = expression
-        } else {
-            moodChangeElapsed = (moodChangeElapsed + dt).coerceAtMost(99f)
+        }
+        if (transitionBlinkTimer < 1f) {
+            transitionBlinkTimer += safeDt
         }
 
-        val poseBlend = if (!initializedPose) 1f else (1f - exp(-10.5f * dt))
-        val facialBlend = if (!initializedPose) 1f else (1f - exp(-9.5f * dt))
+        // --- LIVING MICRO-ACTING 1: Random 3–5s Crisp Asymmetric Ear Twitch ---
+        nextEarTwitchTimerSec -= safeDt
+        if (nextEarTwitchTimerSec <= 0f) {
+            earTwitchSeed = (earTwitchSeed * 1103515245 + 12345) and 0x7FFFFFFF
+            val rand01 = ((earTwitchSeed ushr 16) and 0x7FFF) / 32767f
+            nextEarTwitchTimerSec = 3.0f + rand01 * 2.0f // 3.0s..5.0s natural interval
+            val twitchLeft = (earTwitchSeed and 1) == 0
+            val strength = 0.85f + (((earTwitchSeed ushr 8) and 0xFF) / 255f) * 0.45f
+            if (twitchLeft) {
+                earBaseLPitch.addImpulse(-105f * strength)
+                earBaseLRoll.addImpulse(-65f * strength)
+                earTipLPitch.addImpulse(-135f * strength)
+            } else {
+                earBaseRPitch.addImpulse(-105f * strength)
+                earBaseRRoll.addImpulse(65f * strength)
+                earTipRPitch.addImpulse(-135f * strength)
+            }
+        }
+
+        // --- LIVING MICRO-ACTING 2: Occasional Speech-Bubble Glance Down -> Back Up ---
+        if (nextSpeechGlanceCooldownSec > 0f) {
+            nextSpeechGlanceCooldownSec -= safeDt
+        }
+        if (isSpeaking && !wasSpeaking && nextSpeechGlanceCooldownSec <= 0f) {
+            speechGlanceTimerSec = 0f
+            nextSpeechGlanceCooldownSec = 4.2f
+        } else if (isSpeaking && speechGlanceTimerSec > 1.5f && nextSpeechGlanceCooldownSec <= 0f) {
+            speechGlanceTimerSec = 0f
+            nextSpeechGlanceCooldownSec = 5.0f
+        }
+        wasSpeaking = isSpeaking
+        if (speechGlanceTimerSec < 2.0f) {
+            speechGlanceTimerSec += safeDt
+        }
+        val speechBubbleGlanceDown = if (speechGlanceTimerSec in 0.14f..1.04f) {
+            // Smooth glance down toward the speech bubble beneath her, then back up to the user
+            sin(((speechGlanceTimerSec - 0.14f) / 0.90f) * PI.toFloat())
+        } else 0f
+
+        val poseBlend = if (!initializedPose) 1f else (1f - exp(-8.2f * safeDt))
+        val facialBlend = if (!initializedPose) 1f else (1f - exp(-10.5f * safeDt))
+        val lipBlend = if (!initializedPose) 1f else (1f - exp(-22.0f * safeDt))
         initializedPose = true
 
         smoothSpeak = lerp(smoothSpeak, if (isSpeaking) 1f else 0f, facialBlend)
-
-        // Reset targets
         for (i in 0 until JudyBones.COUNT) targets[i].set()
 
-        // --- 1. REAL 3-PHASE ATHLETIC BUNNY JUMP PHYSICS (tap jump + periodic EXCITED hop) ---
-        val tapJumpDur = 0.78f
-        val isTapJump = tapElapsedSec in 0f..tapJumpDur
-        val isTapWaving = tapElapsedSec in 0f..1.85f
+        // --- 1. TAP REACTION TIMELINE & GROUNDED HOP CURVES ---
+        val tapDur = activeTapReaction.durationSec
+        val isTapActive = safeTapElapsed in 0f..tapDur
+        val isTapHop = isTapActive && activeTapReaction == TapReactionType.CRISP_HOP_SETTLE
 
-        val autoHopPeriod = 3.1f
-        val autoHopPhase = elapsedSec % autoHopPeriod
-        val isAutoHop = (expression == MascotExpression.EXCITED && !isTapJump && autoHopPhase in 0.55f..1.30f)
+        val autoHopPeriod = 4.6f
+        val autoHopPhase = safeTime % autoHopPeriod
+        val isAutoHop = (expression == MascotExpression.EXCITED && !isTapActive && autoHopPhase in 0.9f..1.54f)
 
         var jumpHeight = 0f
-        var squatFactor = 0f      // 0..1 grounded knee squat (anticipation & landing)
-        var airTuckFactor = 0f    // 0..1 mid-air knee tuck & arm fling
-        var jumpSpinDeg = 0f
+        var squatDepth = 0f
+        var airTuckFactor = 0f
         var targetSquash = 0f
+        var jumpSpinDeg = 0f
 
-        if (isTapJump) {
+        if (isTapHop) {
             when {
-                tapElapsedSec < 0.13f -> {
-                    // Phase 1: Deep anticipation squat (feet stay planted on ground!)
-                    val p = tapElapsedSec / 0.13f
+                // Snappy 0.11s anticipation dip
+                safeTapElapsed < 0.11f -> {
+                    val p = safeTapElapsed / 0.11f
                     val ease = sin(p * (PI.toFloat() * 0.5f))
-                    squatFactor = ease * 0.92f
-                    targetSquash = -0.075f * ease
+                    squatDepth = 0.026f * ease
+                    targetSquash = -0.028f * ease
                 }
-                tapElapsedSec < 0.56f -> {
-                    // Phase 2: Explosive airborne arc
-                    val p = (tapElapsedSec - 0.13f) / 0.43f
+                // Crisp 0.34s hop (0.078m peak fits comfortably inside zoomed closer framing!)
+                safeTapElapsed < 0.45f -> {
+                    val p = (safeTapElapsed - 0.11f) / 0.34f
                     val arc = sin(p * PI.toFloat())
-                    jumpHeight = arc * 0.22f
+                    jumpHeight = arc * 0.078f
                     airTuckFactor = arc
-                    jumpSpinDeg = sin(p * PI.toFloat()) * 16f
-                    targetSquash = (1f - abs(p - 0.5f) * 2f) * 0.065f
+                    jumpSpinDeg = sin(p * PI.toFloat()) * 5.5f
+                    targetSquash = (1f - abs(p - 0.5f) * 2f) * 0.024f
                 }
+                // Weighted 0.29s landing cushion & soft-body bounce settle
                 else -> {
-                    // Phase 3: Cushioned knee-bend landing & spring settle
-                    val p = (tapElapsedSec - 0.56f) / 0.22f
-                    val absorb = sin(p * PI.toFloat())
-                    squatFactor = absorb * 0.68f
-                    targetSquash = -0.065f * absorb
+                    if (!lastTapJumpLandFired) {
+                        lastTapJumpLandFired = true
+                        if (sb > 0.001f) {
+                            softChestLY.addImpulse(-0.34f * sb)
+                            softChestRY.addImpulse(-0.32f * sb)
+                            softHipLY.addImpulse(-0.28f * sb)
+                            softHipRY.addImpulse(-0.28f * sb)
+                            tailPitchSpring.addImpulse(115f * sb)
+                        }
+                    }
+                    val p = ((safeTapElapsed - 0.45f) / 0.29f).coerceIn(0f, 1f)
+                    val absorb = sin(p * PI.toFloat()) * exp(-1.6f * p)
+                    squatDepth = 0.022f * absorb
+                    targetSquash = -0.024f * absorb
                 }
             }
         } else if (isAutoHop) {
-            val t = autoHopPhase - 0.55f // 0..0.75s
+            val t = autoHopPhase - 0.9f // 0..0.64s
             when {
-                t < 0.12f -> {
-                    val ease = sin((t / 0.12f) * (PI.toFloat() * 0.5f))
-                    squatFactor = ease * 0.55f
-                    targetSquash = -0.045f * ease
+                t < 0.11f -> {
+                    val ease = sin((t / 0.11f) * (PI.toFloat() * 0.5f))
+                    squatDepth = 0.017f * ease
+                    targetSquash = -0.018f * ease
                 }
-                t < 0.55f -> {
-                    val p = (t - 0.12f) / 0.43f
+                t < 0.45f -> {
+                    val p = (t - 0.11f) / 0.34f
                     val arc = sin(p * PI.toFloat())
-                    jumpHeight = arc * 0.13f
+                    jumpHeight = arc * 0.064f
                     airTuckFactor = arc * 0.65f
-                    targetSquash = (1f - abs(p - 0.5f) * 2f) * 0.04f
+                    targetSquash = (1f - abs(p - 0.5f) * 2f) * 0.019f
                 }
                 else -> {
-                    val p = (t - 0.55f) / 0.20f
+                    val p = ((t - 0.45f) / 0.19f).coerceIn(0f, 1f)
                     val absorb = sin(p * PI.toFloat())
-                    squatFactor = absorb * 0.42f
-                    targetSquash = -0.04f * absorb
+                    squatDepth = 0.014f * absorb
+                    targetSquash = -0.016f * absorb
                 }
             }
         }
 
-        // Compute vertical velocity & acceleration for realistic ear whip physics!
-        val jumpVel = (jumpHeight - prevJumpHeight) / dt
-        val jumpAccel = ((jumpVel - prevJumpVel) / dt).coerceIn(-25f, 25f)
+        val jumpVel = ((jumpHeight - prevJumpHeight) / safeDt).coerceIn(-4f, 4f)
+        val jumpAccel = ((jumpVel - prevJumpVel) / safeDt).coerceIn(-20f, 20f)
         prevJumpHeight = jumpHeight
         prevJumpVel = jumpVel
 
-        val squashVal = squashSpring.step(targetSquash, dt)
-        val breathPhase = elapsedSec * (if (expression == MascotExpression.RELAX) 1.25f else 2.15f)
-        val breath = if (isBreathing) sin(breathPhase) else 0f
+        val squashVal = squashSpring.step(targetSquash, safeDt)
+        val breathRate = if (expression == MascotExpression.RELAX) 1.24f else 1.82f
+        val breathDepthMod = 0.86f + 0.14f * sin(safeTime * 0.37f + 0.9f)
+        val breath = if (isBreathing) sin(safeTime * breathRate) * breathDepthMod else 0f
+        val breathLag = if (isBreathing) sin(safeTime * breathRate - 0.58f) * breathDepthMod else 0f
 
-        // --- 2. WINK, BLINK, AND SPEAKING CADENCE ---
-        val tapWink = if (tapElapsedSec in 0.08f..0.74f) {
-            sin(((tapElapsedSec - 0.08f) / 0.66f) * PI.toFloat())
+        // --- 2. FACIAL TIMERS (BLINK, WINK, CALIBRATED CONVERSATIONAL LIP-SYNC) ---
+        val tapWink = if (isTapActive && (activeTapReaction == TapReactionType.CHEEKY_WINK_TILT || activeTapReaction == TapReactionType.CRISP_HOP_SETTLE)) {
+            if (safeTapElapsed in 0.08f..0.64f) {
+                sin(((safeTapElapsed - 0.08f) / 0.56f) * PI.toFloat())
+            } else 0f
         } else 0f
 
-        val winkCycle = elapsedSec % 4.4f
+        val winkCycle = safeTime % 6.2f
         val moodWink = if (
-            (expression == MascotExpression.HAPPY || expression == MascotExpression.CURIOUS || expression == MascotExpression.EXCITED) &&
-            winkCycle in 1.5f..2.18f
+            (expression == MascotExpression.HAPPY || expression == MascotExpression.CURIOUS) &&
+            !isTapActive && winkCycle in 2.4f..2.94f
         ) {
-            sin(((winkCycle - 1.5f) / 0.68f) * PI.toFloat())
+            sin(((winkCycle - 2.4f) / 0.54f) * PI.toFloat())
         } else 0f
         val winkWeight = max(tapWink, moodWink).coerceIn(0f, 1f)
 
-        val blinkCycle = elapsedSec % 3.6f
-        val naturalBlink = when {
-            blinkCycle in 3.22f..3.38f -> sin(((blinkCycle - 3.22f) / 0.16f) * PI.toFloat())
-            blinkCycle in 3.44f..3.58f && (elapsedSec.toInt() % 3 == 0) ->
-                sin(((blinkCycle - 3.44f) / 0.14f) * PI.toFloat())
+        val transitionBlink = if (transitionBlinkTimer in 0f..0.16f) {
+            sin((transitionBlinkTimer / 0.16f) * PI.toFloat()) * 0.96f
+        } else 0f
+
+        val blinkCycle = safeTime % 3.85f
+        val periodicBlink = when {
+            blinkCycle in 3.42f..3.58f -> sin(((blinkCycle - 3.42f) / 0.16f) * PI.toFloat())
+            blinkCycle in 3.64f..3.78f && (safeTime.toInt() % 3 == 0) ->
+                sin(((blinkCycle - 3.64f) / 0.14f) * PI.toFloat())
             else -> 0f
         }
+        val naturalBlink = max(periodicBlink, transitionBlink).coerceIn(0f, 1f)
 
-        // Multi-harmonic syllabic speech envelope (realistic phrases with micro-pauses)
-        val phraseGate = (0.55f + 0.45f * sin(elapsedSec * 3.1f)).coerceIn(0f, 1f)
-        val syllableWave = (abs(sin(elapsedSec * 12.8f)) * 0.62f +
-            abs(sin(elapsedSec * 20.4f + 0.7f)) * 0.38f) * phraseGate
-        val mouthOpenWeight = (syllableWave * 0.92f + 0.06f) * smoothSpeak
+        // Calibrated conversational speech cadence:
+        // GLB mouth_open max is ~33.8mm (+8.2mm upper lip). Keep normal speech in 0.35–0.65 (~14–26mm)
+        // and reserve 0.85–0.98 for excited/laugh/hop bursts so she speaks naturally without yelling!
+        val wordBurst = (0.58f + 0.32f * sin(safeTime * 2.75f) + 0.16f * cos(safeTime * 1.23f + 0.6f)).coerceIn(0f, 1f)
+        val consonantSignal = sin(safeTime * 10.6f + 0.80f * sin(safeTime * 3.3f))
+        val consonantClosure = lerp(0.14f, 1.0f, smoothstep(-0.75f, -0.30f, consonantSignal))
+        val rawSyllable = (abs(sin(safeTime * 9.0f)) * 0.54f +
+            abs(sin(safeTime * 14.4f + 0.7f)) * 0.28f +
+            abs(sin(safeTime * 5.8f + 1.9f)) * 0.18f)
+        val syllableWave = (rawSyllable * wordBurst * consonantClosure).coerceIn(0f, 1f)
 
-        // --- 3. FULL-BODY EXPRESSIVE POSES PER EMOTION (NEVER A-POSE!) ---
-        // Note on coordinate convention in judy.glb (Y-up, +Z forward, +X is Judy's Left):
-        //  - Arms start at ~40° below horizontal:
-        //      UpperArm_L (+X): roll = -42° drops arm naturally down by her side; roll = +55° raises arm high to wave!
-        //      UpperArm_R (-X): roll = +42° drops arm naturally down by her side; roll = -55° raises arm high!
-        //      UpperArm_L yaw < 0 brings arm forward; UpperArm_R yaw > 0 brings arm forward.
-        //  - Legs (pointing straight down -Y):
-        //      Thigh pitch < 0 lifts knee FORWARD (+Z).
-        //      Shin pitch > 0 bends lower leg BACKWARD (-Z) at the knee.
-        //      Foot pitch < 0 flexes toes UP to stay flat during squat; Foot pitch > 0 points toes down in air.
-        val sway = sin(elapsedSec * 1.45f)
-        val swaySlow = sin(elapsedSec * 0.95f)
-        val upbeatBounce = abs(sin(elapsedSec * 4.2f))
+        // Fire crisp micro-impulse into chest soft-body on strong syllable onsets for lively talk bounce!
+        if (smoothSpeak > 0.25f && sb > 0.001f && syllableWave > 0.58f && prevSyllablePeak <= 0.58f) {
+            softChestLY.addImpulse(0.135f * sb * smoothSpeak)
+            softChestRY.addImpulse(0.125f * sb * smoothSpeak)
+        }
+        prevSyllablePeak = syllableWave
 
-        // Base grounded hip & leg stance
-        var hipDropY = -squatFactor * 0.078f
-        var hipShiftX = 0f
-        var hipPitch = squatFactor * 14f - airTuckFactor * 8f
-        var hipYaw = 0f
-        var hipRoll = 0f
+        val vowelSelector = sin(safeTime * 4.2f + 0.55f * cos(safeTime * 1.95f))
+        val excitedLaughPeak = if (expression == MascotExpression.EXCITED || isTapHop) {
+            (0.28f * smoothstep(0.60f, 0.95f, syllableWave) + (if (isTapHop) airTuckFactor * 0.36f else 0f))
+        } else 0f
+        val conversationalOpen = (0.12f * wordBurst + syllableWave * 0.54f) * smoothSpeak
+        val targetMouthOpen = (conversationalOpen + excitedLaughPeak).coerceIn(0f, 0.96f)
+        val targetMouthWide = (smoothstep(0.02f, 0.80f, vowelSelector) * (0.34f + 0.66f * syllableWave) * 0.82f * smoothSpeak).coerceIn(0f, 0.88f)
+        val targetMouthRound = (smoothstep(0.02f, 0.80f, -vowelSelector) * (0.32f + 0.68f * syllableWave) * 0.84f * smoothSpeak).coerceIn(0f, 0.90f)
 
-        var thighLPitch = -squatFactor * 36f - airTuckFactor * 32f
-        var shinLPitch = squatFactor * 70f + airTuckFactor * 58f
-        var footLPitch = -squatFactor * 34f + airTuckFactor * 24f
+        // --- 3. LIVING GAZE (HEAD LEADS FIRST, TORSO FOLLOWS BEHIND) ---
+        val gazeTargetYaw = (sin(safeTime * 0.43f) * 7.2f + cos(safeTime * 0.23f + 1.1f) * 4.4f) *
+            (if (expression == MascotExpression.FOCUS) 0.42f else 1.0f)
+        val gazeTargetPitch = (sin(safeTime * 0.61f + 0.5f) * 2.6f) + speechBubbleGlanceDown * 9.5f
+        val leadHeadYaw = headGazeYawSpring.step(gazeTargetYaw, safeDt)
+        val leadHeadPitch = headGazePitchSpring.step(gazeTargetPitch, safeDt)
+        // Torso tracks head gaze with slow spring (~0.28s follow-through lag so head ALWAYS leads!)
+        val followTorsoYaw = torsoFollowYawSpring.step(leadHeadYaw * 0.46f, safeDt)
+        val followTorsoRoll = torsoFollowRollSpring.step(-leadHeadYaw * 0.20f, safeDt)
 
-        var thighRPitch = -squatFactor * 36f - airTuckFactor * 24f
-        var shinRPitch = squatFactor * 70f + airTuckFactor * 48f
-        var footRPitch = -squatFactor * 34f + airTuckFactor * 20f
+        val swayBase = sin(safeTime * 0.81f) * 0.74f + sin(safeTime * 0.47f + 1.2f) * 0.26f
+        val swaySpine = sin(safeTime * 0.81f - 0.38f) * 0.74f + sin(safeTime * 0.47f + 0.82f) * 0.26f
+        val swayHead = sin(safeTime * 0.81f - 0.76f) * 0.74f + sin(safeTime * 0.47f + 0.44f) * 0.26f
+        val fingerDriftL = sin(safeTime * 1.17f + 0.4f) * 0.6f + sin(safeTime * 0.63f) * 0.4f
+        val fingerDriftR = sin(safeTime * 1.09f + 1.8f) * 0.6f + sin(safeTime * 0.59f + 1.1f) * 0.4f
+        val bounceBeat = abs(sin(safeTime * 3.3f))
+
+        // Contrapposto stance defaults: asymmetric weight on left leg, right thigh turned out ~10.5°
+        // (so right knee bends over turned-out toes with zero ankle twist!)
+        var hipShiftX = 0.014f
+        var hipDropY = -squatDepth - 0.008f
+        var hipShiftZ = 0f
+        var hipPitch = squatDepth * 210f - airTuckFactor * 5f
+        var hipYaw = -4.2f
+        var hipRoll = -2.6f
+        var thighYawL = 2.0f
+        var thighYawR = -10.5f // Right leg naturally angled out ~10.5° from hip socket (knee over toes!)
+        var ankleOffsetZL = 0f
+        var ankleOffsetZR = 0.018f // Slight forward relaxed right foot for soft natural knee bend
 
         var spinePitch = 0f
-        var spineYaw = 0f
-        var spineRoll = 0f
-        var chestPitch = -breath * 2.2f
-        var chestYaw = 0f
-        var chestRoll = 0f
+        var spineYaw = followTorsoYaw * 0.42f
+        var spineRoll = 2.2f + followTorsoRoll * 0.45f
+        var chestPitch = -breath * 1.8f
+        var chestYaw = 3.8f + followTorsoYaw * 0.58f
+        var chestRoll = 1.8f + followTorsoRoll * 0.55f
 
-        var headPitch = 0f
-        var headYaw = 0f
-        var headRoll = 0f
+        var headPitch = leadHeadPitch + breathLag * 1.2f
+        var headYaw = leadHeadYaw
+        var headRoll = swayHead * 2.4f + speechBubbleGlanceDown * 2.8f
 
-        // Natural relaxed arms-down baseline (NO A-pose!)
-        var uaLPitch = 4f; var uaLYaw = -10f; var uaLRoll = -42f
-        var faLPitch = 0f; var faLYaw = -18f; var faLRoll = 12f
-        var handLPitch = 0f; var handLYaw = 0f; var handLRoll = 6f
+        // FK-verified dropped, relaxed shoulders + elbows close to ribcage + soft inward wrist curl!
+        var uaLPitch = 2f; var uaLYaw = -6f; var uaLRoll = -41f
+        var faLPitch = -12f; var faLYaw = -18f; var faLRoll = 8f
+        var handLPitch = -8f; var handLYaw = -6f; var handLRoll = -10f
+        var fingerCurlL = 26f; var thumbCurlL = 16f
 
-        var uaRPitch = 4f; var uaRYaw = 10f; var uaRRoll = 42f
-        var faRPitch = 0f; var faRYaw = 18f; var faRRoll = -12f
-        var handRPitch = 0f; var handRYaw = 0f; var handRRoll = -6f
+        var uaRPitch = 2f; var uaRYaw = 6f; var uaRRoll = 39f
+        var faRPitch = -12f; var faRYaw = 18f; var faRRoll = -8f
+        var handRPitch = -8f; var handRYaw = 6f; var handRRoll = 10f
+        var fingerCurlR = 26f; var thumbCurlR = 16f
 
-        // Ear rest targets (pitch < 0 perks ears forward, pitch > 0 relaxes back, roll tilts outward/inward)
-        var earTargetLPitch = -4f
-        var earTargetLRoll = -4f
-        var earTargetRPitch = -4f
-        var earTargetRRoll = 4f
+        // Natural Pixar bunny ear rest targets
+        var earTargetLPitch = -3f
+        var earTargetLRoll = -3f
+        var earTargetRPitch = -3f
+        var earTargetRRoll = 3f
 
         var targetSmile = 0.40f
         var targetRelaxLids = 0f
@@ -368,444 +743,887 @@ internal class JudyPhysicsEngine {
 
         when (expression) {
             MascotExpression.IDLE -> {
-                // Relaxed weight shift, gentle breathing, occasional cute foot tap & curious glance
-                hipShiftX = swaySlow * 0.014f
-                hipRoll = swaySlow * 3.5f
-                hipYaw = sin(elapsedSec * 0.8f) * 4f
-                spineRoll = -swaySlow * 2.5f
-                chestRoll = -swaySlow * 1.8f
+                // Classic Pixar contrapposto idle: clear weight on left hip, soft bend in right knee,
+                // counter-tilted shoulders, and softly asymmetric relaxed arms beside her ribcage
+                hipShiftX = 0.015f + swayBase * 0.007f
+                hipDropY -= 0.003f
+                hipRoll = -2.8f + swayBase * 1.6f
+                hipYaw = -4.5f + sin(safeTime * 0.59f) * 2.0f
+                spineRoll = 2.4f - swaySpine * 1.4f + followTorsoRoll * 0.45f
+                chestRoll = 2.0f - swaySpine * 1.2f + followTorsoRoll * 0.55f
+                chestYaw = 4.2f + followTorsoYaw * 0.60f
 
-                // Natural relaxed stance with slight knee micro-flex + playful right-foot tap every 5s
-                val tapFootCycle = elapsedSec % 5.2f
-                val footTap = if (tapFootCycle in 3.6f..4.5f) {
-                    abs(sin((tapFootCycle - 3.6f) * 14f)) * 14f
-                } else 0f
-                thighLPitch -= 4f + max(0f, swaySlow) * 3f
-                shinLPitch += 8f + max(0f, swaySlow) * 6f
-                footLPitch -= 4f
-                thighRPitch -= 5f + max(0f, -swaySlow) * 3f
-                shinRPitch += 10f + max(0f, -swaySlow) * 6f
-                footRPitch -= 5f + footTap
+                headRoll = -2.2f + swayHead * 3.0f + speechBubbleGlanceDown * 2.8f
 
-                headYaw = sin(elapsedSec * 0.72f) * 9f
-                headPitch = sin(elapsedSec * 1.1f) * 3.5f
-                headRoll = sin(elapsedSec * 0.65f) * 4.5f
+                // Left arm rests slightly closer to supporting hip; right arm slightly softer/lower
+                uaLPitch = 2f - breath * 1.5f
+                uaLRoll = -42f + breath * 1.8f
+                uaLYaw = -6f + swaySpine * 2.4f
+                faLPitch = -14f - breathLag * 2.5f
+                faLYaw = -18f - breathLag * 1.8f
+                faLRoll = 9f + breathLag * 2.0f
+                handLPitch = -8f - breathLag * 3.5f + fingerDriftL * 2.6f
+                handLRoll = -11f + swayHead * 4.0f
+                handLYaw = -6f + fingerDriftL * 3.2f
+                fingerCurlL = 27f - breathLag * 4.5f + fingerDriftL * 4.0f
+                thumbCurlL = 17f - breathLag * 2.5f + fingerDriftL * 2.2f
 
-                // Arms hanging comfortably at sides with soft breathing swing
-                uaLRoll = -41f + breath * 2.5f
-                uaLYaw = -10f + swaySlow * 4f
-                faLYaw = -20f
-                faLRoll = 14f
+                uaRPitch = 4f - breath * 1.4f
+                uaRRoll = 39f - breath * 1.8f
+                uaRYaw = 8f - swaySpine * 2.4f
+                faRPitch = -11f - breathLag * 2.2f
+                faRYaw = 17f + breathLag * 1.8f
+                faRRoll = -8f - breathLag * 2.0f
+                handRPitch = -7f - breathLag * 3.0f + fingerDriftR * 2.6f
+                handRRoll = 11f + swayHead * 4.0f
+                handRYaw = 6f - fingerDriftR * 3.2f
+                fingerCurlR = 24f - breathLag * 4.2f + fingerDriftR * 3.8f
+                thumbCurlR = 15f - breathLag * 2.2f + fingerDriftR * 2.2f
 
-                uaRRoll = 41f - breath * 2.5f
-                uaRYaw = 10f - swaySlow * 4f
-                faRYaw = 20f
-                faRRoll = -14f
-
-                earTargetLPitch = -4f + breath * 3f
-                earTargetRPitch = -4f + breath * 3f
-                earTargetLRoll = -5f + swaySlow * 4f
-                earTargetRRoll = 5f + swaySlow * 4f
+                earTargetLPitch = -2f + breathLag * 2.2f
+                earTargetRPitch = -1f + breathLag * 2.0f
+                earTargetLRoll = -4f + swayHead * 2.6f
+                earTargetRRoll = 3f + swayHead * 2.4f
                 targetSmile = 0.42f
             }
 
             MascotExpression.HAPPY -> {
-                // Bouncy joyful groove, cheerful left-hand greeting wave, big bright smile & playful winks!
-                val bounce = upbeatBounce
-                hipDropY -= (1f - bounce) * 0.022f
-                hipRoll = sin(elapsedSec * 2.6f) * 5.5f
-                hipYaw = sin(elapsedSec * 2.6f) * 7f
-                spineRoll = -hipRoll * 0.45f
-                chestPitch += -4f + bounce * 3f
-                chestYaw = sin(elapsedSec * 2.6f + 0.4f) * 5f
+                val groove = sin(safeTime * 2.15f)
+                val grooveLag = sin(safeTime * 2.15f - 0.40f)
+                hipShiftX = 0.008f + groove * 0.011f
+                hipDropY -= 0.004f + (1f - bounceBeat) * 0.011f
+                hipRoll = -1.6f + groove * 2.5f
+                hipYaw = -2.0f + groove * 4.4f
+                thighYawL = 3.5f
+                thighYawR = -9.5f
+                ankleOffsetZR = 0.014f
+                spineRoll = 1.4f - grooveLag * 1.5f + followTorsoRoll * 0.4f
+                chestPitch += -2.5f + bounceBeat * 2.2f
+                chestYaw = 2.0f + grooveLag * 3.8f + followTorsoYaw * 0.5f
 
-                // Bouncy knees on the beat
-                val kneeBounce = (1f - bounce) * 12f
-                thighLPitch -= kneeBounce
-                shinLPitch += kneeBounce * 2f
-                footLPitch -= kneeBounce
-                thighRPitch -= kneeBounce * 0.9f
-                shinRPitch += kneeBounce * 1.8f
-                footRPitch -= kneeBounce * 0.9f
+                headYaw = leadHeadYaw * 0.75f + sin(safeTime * 1.65f) * 4.5f
+                headPitch = -2f + bounceBeat * 2.4f + speechBubbleGlanceDown * 9.0f
+                headRoll = grooveLag * 4.0f + winkWeight * 6.5f
 
-                headYaw = sin(elapsedSec * 2.2f) * 8f
-                headPitch = -3f + bounce * 4f
-                headRoll = sin(elapsedSec * 2.6f) * 6f + winkWeight * 9f
+                // Warm Pixar palm-forward greeting wave (left) + buoyant relaxed right arm
+                val waveForearm = sin(safeTime * 6.4f)
+                val waveWrist = sin(safeTime * 6.4f - 0.72f)
+                val waveFinger = sin(safeTime * 6.4f - 1.25f)
+                uaLPitch = -14f + sin(safeTime * 3.2f) * 2.0f
+                uaLYaw = -16f
+                uaLRoll = 30f + sin(safeTime * 3.2f) * 2.5f
+                faLPitch = -32f + waveForearm * 4.0f
+                faLYaw = -8f
+                faLRoll = 52f + waveForearm * 10f
+                handLPitch = -26f + waveWrist * 6f
+                handLYaw = 14f + waveWrist * 4f
+                handLRoll = 10f + waveWrist * 18f
+                fingerCurlL = -3f + waveFinger * 6f
+                thumbCurlL = 4f + waveFinger * 3f
 
-                // Left arm raised in a friendly warm wave!
-                val waveOsc = sin(elapsedSec * 8.2f)
-                uaLRoll = 42f
-                uaLYaw = -24f
-                uaLPitch = -8f
-                faLRoll = 56f + waveOsc * 16f
-                faLYaw = -24f
-                handLRoll = waveOsc * 26f
-                handLPitch = cos(elapsedSec * 8.2f) * 8f
+                // Right arm tucked softly near hip (not splayed!)
+                uaRPitch = -2f - bounceBeat * 3f
+                uaRYaw = 10f
+                uaRRoll = 36f - bounceBeat * 4f
+                faRPitch = -16f - bounceBeat * 4f
+                faRYaw = 18f
+                faRRoll = -12f - bounceBeat * 3f
+                handRPitch = -10f - bounceBeat * 5f + fingerDriftR * 2f
+                handRYaw = 6f
+                handRRoll = 10f + grooveLag * 5f
+                fingerCurlR = 20f - bounceBeat * 6f + fingerDriftR * 3f
+                thumbCurlR = 13f - bounceBeat * 3f
 
-                // Right arm cheerful resting swing near hip
-                uaRRoll = 34f - bounce * 8f
-                uaRYaw = 14f + sin(elapsedSec * 2.6f) * 8f
-                faRRoll = -26f
-                faRYaw = 28f
-                handRRoll = -10f + sin(elapsedSec * 4.2f) * 8f
+                earTargetLPitch = -6f - bounceBeat * 2.4f
+                earTargetRPitch = -6f - bounceBeat * 2.4f
+                earTargetLRoll = -5f - bounceBeat * 2.8f
+                earTargetRRoll = 5f + bounceBeat * 2.8f
 
-                earTargetLPitch = -10f - bounce * 5f
-                earTargetRPitch = -10f - bounce * 5f
-                earTargetLRoll = -8f - bounce * 6f
-                earTargetRRoll = 8f + bounce * 6f
-
-                targetSmile = 0.90f
-                targetBrowUp = 0.35f
+                targetSmile = 0.86f
+                targetBrowUp = 0.34f
             }
 
             MascotExpression.EXCITED -> {
-                // High-energy celebration! Big enthusiastic wave, bouncy knees, celebratory hops, sparkly grin!
-                val energyOsc = sin(elapsedSec * 10.5f)
-                val bodyGroove = sin(elapsedSec * 3.8f)
-                hipDropY -= abs(bodyGroove) * 0.025f
-                hipRoll = bodyGroove * 7f
-                hipYaw = bodyGroove * 9f
-                chestPitch += -6f
-                chestRoll = -bodyGroove * 4f
+                val groove = sin(safeTime * 3.15f)
+                val grooveLag = sin(safeTime * 3.15f - 0.45f)
+                val waveForearm = sin(safeTime * 8.0f)
+                val waveWrist = sin(safeTime * 8.0f - 0.78f)
+                val waveFinger = sin(safeTime * 8.0f - 1.30f)
 
-                val kneeGroove = abs(bodyGroove) * 14f
-                thighLPitch -= kneeGroove
-                shinLPitch += kneeGroove * 2f
-                footLPitch -= kneeGroove
-                thighRPitch -= kneeGroove
-                shinRPitch += kneeGroove * 2f
-                footRPitch -= kneeGroove
+                hipShiftX = groove * 0.012f
+                hipDropY -= 0.006f + abs(groove) * 0.012f
+                hipRoll = groove * 2.6f
+                hipYaw = groove * 5.2f
+                thighYawL = 5.0f
+                thighYawR = -7.0f
+                ankleOffsetZR = 0.010f
+                spineRoll = -grooveLag * 1.6f
+                chestPitch += -3.5f
+                chestRoll = -grooveLag * 2.4f
+                chestYaw = grooveLag * 4.0f + followTorsoYaw * 0.45f
 
-                headPitch = -5f + sin(elapsedSec * 7.6f) * 4f
-                headYaw = bodyGroove * 9f
-                headRoll = -bodyGroove * 6f + winkWeight * 10f
+                headPitch = -3.5f + sin(safeTime * 6.1f) * 2.6f + speechBubbleGlanceDown * 8.0f
+                headYaw = leadHeadYaw * 0.65f + grooveLag * 5.5f
+                headRoll = -grooveLag * 3.8f + winkWeight * 7.0f
 
-                // Left arm waving high & joyfully!
-                uaLRoll = 58f
-                uaLYaw = -26f
-                uaLPitch = -10f
-                faLRoll = 64f + energyOsc * 22f
-                faLYaw = -22f
-                handLRoll = energyOsc * 32f
-                handLPitch = cos(elapsedSec * 10.5f) * 12f
+                // Cheerful high palm-forward wave + enthusiastic mirrored cheer
+                uaLPitch = -16f
+                uaLYaw = -18f
+                uaLRoll = 36f
+                faLPitch = -34f + waveForearm * 4f
+                faLYaw = -6f
+                faLRoll = 55f + waveForearm * 10f
+                handLPitch = -28f + waveWrist * 6f
+                handLYaw = 16f + waveWrist * 4f
+                handLRoll = 12f + waveWrist * 18f
+                fingerCurlL = -6f + waveFinger * 6f
+                thumbCurlL = 2f + waveFinger * 4f
 
-                // Right arm upbeat celebration pump!
-                uaRRoll = -28f - abs(bodyGroove) * 16f
-                uaRYaw = 26f
-                uaRPitch = -6f
-                faRRoll = -52f + sin(elapsedSec * 7.6f) * 16f
-                faRYaw = 30f
-                handRRoll = -sin(elapsedSec * 7.6f) * 20f
+                val rBeat = sin(safeTime * 6.1f)
+                val rWrist = sin(safeTime * 6.1f - 0.75f)
+                uaRPitch = -14f
+                uaRYaw = 18f
+                uaRRoll = 14f - abs(groove) * 10f
+                faRPitch = -30f - rBeat * 4f
+                faRYaw = 18f
+                faRRoll = -44f + rBeat * 10f
+                handRPitch = -24f + rWrist * 6f
+                handRYaw = -12f
+                handRRoll = -10f - rWrist * 16f
+                fingerCurlR = 2f - rWrist * 8f
+                thumbCurlR = 6f - rWrist * 4f
 
-                earTargetLPitch = -14f
-                earTargetRPitch = -14f
-                earTargetLRoll = -12f
-                earTargetRRoll = 12f
+                earTargetLPitch = -9f
+                earTargetRPitch = -9f
+                earTargetLRoll = -7f
+                earTargetRRoll = 7f
 
-                targetSmile = 0.98f
-                targetBrowUp = 0.85f
+                targetSmile = 0.94f
+                targetBrowUp = 0.72f
             }
 
             MascotExpression.FOCUS -> {
-                // Confident Officer Hopps "Locked In" pose: HANDS ON HIPS, leaned slightly forward, determined brows!
-                hipShiftX = swaySlow * 0.006f
-                hipYaw = -6f
-                spinePitch = 6f
-                chestPitch += 4f
-                chestYaw = 6f
+                // Determined Officer Hopps athletic ready stance: slight weight forward, knees aligned
+                hipShiftX = 0.008f + swayBase * 0.004f
+                hipDropY -= 0.006f
+                hipRoll = -1.4f
+                hipYaw = -6.0f
+                thighYawL = 3.0f
+                thighYawR = -11.0f
+                ankleOffsetZR = 0.020f
+                spinePitch = 4.5f
+                spineRoll = 1.2f
+                chestPitch += 3.0f
+                chestYaw = 6.0f + followTorsoYaw * 0.45f
+                chestRoll = 1.0f
 
-                // Confident grounded athletic stance (one knee slightly forward)
-                thighLPitch -= 7f
-                shinLPitch += 12f
-                footLPitch -= 5f
-                thighRPitch -= 3f
-                shinRPitch += 6f
-                footRPitch -= 3f
+                headPitch = -3.5f + breathLag * 1.0f + speechBubbleGlanceDown * 8.5f
+                headYaw = leadHeadYaw * 0.55f
+                headRoll = -1.8f
 
-                headPitch = -5f + breath * 1.5f
-                headYaw = sin(elapsedSec * 0.9f) * 3.5f
-                headRoll = -2f
+                // Arms held compactly forward at waist (zero outward doll splay!)
+                uaLPitch = -8f
+                uaLYaw = -16f
+                uaLRoll = -34f
+                faLPitch = -24f
+                faLYaw = -26f
+                faLRoll = 18f
+                handLPitch = -12f + breathLag * 2.5f
+                handLYaw = -6f
+                handLRoll = 4f
+                fingerCurlL = 32f + breathLag * 3.0f
+                thumbCurlL = 22f
 
-                // Both hands planted confidently on her waist/hips!
-                uaLRoll = -16f
-                uaLYaw = -6f
-                uaLPitch = 6f
-                faLRoll = -62f
-                faLYaw = -32f
-                faLPitch = 8f
-                handLRoll = 26f
-                handLYaw = -14f
+                uaRPitch = -8f
+                uaRYaw = 16f
+                uaRRoll = 34f
+                faRPitch = -24f
+                faRYaw = 26f
+                faRRoll = -18f
+                handRPitch = -12f + breathLag * 2.5f
+                handRYaw = 6f
+                handRRoll = -4f
+                fingerCurlR = 32f + breathLag * 3.0f
+                thumbCurlR = 22f
 
-                uaRRoll = 16f
-                uaRYaw = 6f
-                uaRPitch = 6f
-                faRRoll = 62f
-                faRYaw = 32f
-                faRPitch = 8f
-                handRRoll = -26f
-                handRYaw = 14f
-
-                // Alert perked-forward bunny radar ears!
-                earTargetLPitch = -16f
-                earTargetRPitch = -16f
+                earTargetLPitch = -11f
+                earTargetRPitch = -11f
                 earTargetLRoll = -2f
                 earTargetRRoll = 2f
 
-                targetSmile = 0.16f
-                targetBrowFocus = 0.88f
+                targetSmile = 0.18f
+                targetBrowFocus = 0.86f
             }
 
             MascotExpression.RELAX -> {
-                // Cozy pajama chill: slow deep breathing, soft half-closed eyes, gently drooped ears, warm sway!
-                val cozySway = sin(elapsedSec * 0.95f)
-                hipShiftX = cozySway * 0.020f
-                hipRoll = cozySway * 4.5f
-                spinePitch = -3f + breath * 2f
-                spineRoll = -cozySway * 3f
-                chestPitch += -2f - breath * 2.5f
+                val cozySway = sin(safeTime * 0.79f) * 0.78f + sin(safeTime * 0.43f + 0.8f) * 0.22f
+                val cozyLag = sin(safeTime * 0.79f - 0.50f) * 0.78f + sin(safeTime * 0.43f + 0.3f) * 0.22f
+                hipShiftX = 0.016f + cozySway * 0.008f
+                hipDropY -= 0.004f
+                hipRoll = -3.0f + cozySway * 1.8f
+                hipYaw = -3.8f
+                thighYawL = 2.0f
+                thighYawR = -11.5f
+                ankleOffsetZR = 0.020f
+                spinePitch = -2.0f + breath * 1.5f
+                spineRoll = 2.6f - cozyLag * 1.6f
+                chestPitch += -1.5f - breath * 1.8f
+                chestRoll = 2.2f - cozyLag * 1.2f
+                chestYaw = 3.5f + followTorsoYaw * 0.5f
 
-                // Soft relaxed knees
-                thighLPitch -= 6f + max(0f, cozySway) * 4f
-                shinLPitch += 12f + max(0f, cozySway) * 8f
-                footLPitch -= 6f
-                thighRPitch -= 6f + max(0f, -cozySway) * 4f
-                shinRPitch += 12f + max(0f, -cozySway) * 8f
-                footRPitch -= 6f
+                headPitch = 3.5f + breathLag * 1.8f + speechBubbleGlanceDown * 7.5f
+                headYaw = leadHeadYaw * 0.85f + cozyLag * 3.5f
+                headRoll = -6.5f + cozyLag * 2.4f
 
-                headPitch = 5f + breath * 2.5f
-                headYaw = cozySway * 7f
-                headRoll = -8.5f + cozySway * 3.5f
+                // Extra-dropped cozy shoulders with softly draped hands beside hips
+                uaLPitch = 4f
+                uaLYaw = -8f
+                uaLRoll = -44f + cozySway * 1.8f
+                faLPitch = -11f
+                faLYaw = -16f
+                faLRoll = 7f
+                handLPitch = -6f + breathLag * 4.0f + fingerDriftL * 2f
+                handLYaw = -5f
+                handLRoll = -12f + cozyLag * 4.0f
+                fingerCurlL = 20f - breathLag * 4.0f + fingerDriftL * 2.5f
+                thumbCurlL = 12f
 
-                // Soft cozy arms resting gently down/forward
-                uaLRoll = -44f + cozySway * 3f
-                uaLYaw = -16f
-                faLRoll = 18f
-                faLYaw = -26f
-                handLRoll = 10f
+                uaRPitch = 5f
+                uaRYaw = 8f
+                uaRRoll = 43f + cozySway * 1.8f
+                faRPitch = -10f
+                faRYaw = 16f
+                faRRoll = -7f
+                handRPitch = -6f + breathLag * 4.0f + fingerDriftR * 2f
+                handRYaw = 5f
+                handRRoll = 12f + cozyLag * 4.0f
+                fingerCurlR = 20f - breathLag * 4.0f + fingerDriftR * 2.5f
+                thumbCurlR = 12f
 
-                uaRRoll = 44f + cozySway * 3f
-                uaRYaw = 16f
-                faRRoll = -18f
-                faRYaw = 26f
-                handRRoll = -10f
+                earTargetLPitch = 10f + breathLag * 2.2f
+                earTargetRPitch = 11f + breathLag * 2.2f
+                earTargetLRoll = -8f + cozyLag * 2.5f
+                earTargetRRoll = 8f + cozyLag * 2.5f
 
-                // Softly relaxed drooping bunny ears (signature cozy bunny look!)
-                earTargetLPitch = 20f + breath * 4f
-                earTargetRPitch = 22f + breath * 4f
-                earTargetLRoll = -16f + cozySway * 4f
-                earTargetRRoll = 16f + cozySway * 4f
-
-                targetSmile = 0.68f
-                targetRelaxLids = 0.44f
+                targetSmile = 0.64f
+                targetRelaxLids = 0.40f
             }
 
             MascotExpression.CURIOUS -> {
-                // Adorable inquisitive thinking pose: RIGHT PAW AT CHIN, head tilted 15°, one ear folded sideways!
-                hipShiftX = -0.016f + swaySlow * 0.008f
-                hipRoll = -4f
-                hipYaw = 7f
-                spineRoll = 5f
-                chestPitch += 3f
-                chestRoll = 4f
+                // Mirrored contrapposto shift onto right leg with inquisitive head tilt & lifted hand
+                hipShiftX = -0.014f + swayBase * 0.005f
+                hipDropY -= 0.004f
+                hipRoll = 2.8f
+                hipYaw = 5.5f
+                thighYawL = 10.5f // Left leg turned out cleanly over toes when weight shifts right!
+                thighYawR = -2.0f
+                ankleOffsetZL = 0.018f
+                ankleOffsetZR = 0f
+                spineRoll = -2.6f
+                chestPitch += 2.0f
+                chestRoll = -2.2f
+                chestYaw = -4.5f + followTorsoYaw * 0.55f
 
-                thighLPitch -= 8f
-                shinLPitch += 14f
-                footLPitch -= 6f
-                thighRPitch -= 4f
-                shinRPitch += 8f
-                footRPitch -= 4f
+                headPitch = -2.0f + sin(safeTime * 1.25f) * 2.0f + speechBubbleGlanceDown * 8.5f
+                headYaw = -4.5f + leadHeadYaw * 0.8f
+                headRoll = 10.8f + sin(safeTime * 1.25f) * 2.2f + winkWeight * 4.0f
 
-                headPitch = -3f + sin(elapsedSec * 1.4f) * 3f
-                headYaw = -6f + sin(elapsedSec * 1.1f) * 6f
-                headRoll = 14.5f + sin(elapsedSec * 1.4f) * 3f + winkWeight * 5f
-
-                // Left hand resting casually on hip
-                uaLRoll = -20f
+                // Left arm dropped & comfortably relaxed beside hip
+                uaLPitch = 3f
                 uaLYaw = -8f
-                faLRoll = -56f
-                faLYaw = -28f
-                handLRoll = 22f
+                uaLRoll = -41f
+                faLPitch = -13f
+                faLYaw = -16f
+                faLRoll = 9f
+                handLPitch = -8f + breathLag * 3.5f + fingerDriftL * 2f
+                handLYaw = -5f
+                handLRoll = -10f
+                fingerCurlL = 24f + fingerDriftL * 3f
+                thumbCurlL = 15f
 
-                // Right arm lifted thoughtfully with paw resting right beneath her chin!
-                uaRRoll = -12f
-                uaRYaw = 48f
-                uaRPitch = -14f
-                faRRoll = -76f
-                faRYaw = 54f
-                faRPitch = -12f
-                handRRoll = -18f + sin(elapsedSec * 2.8f) * 6f
-                handRPitch = 14f
+                // Inquisitive right hand lifted cleanly near chin/cheek (zero clipping!)
+                val thinkOsc = sin(safeTime * 2.15f)
+                val thinkLag = sin(safeTime * 2.15f - 0.65f)
+                uaRPitch = -18f
+                uaRYaw = 22f
+                uaRRoll = -8f
+                faRPitch = -34f + thinkOsc * 3.0f
+                faRYaw = 30f
+                faRRoll = -48f + thinkOsc * 4.0f
+                handRPitch = -28f + thinkLag * 5.0f
+                handRYaw = -14f
+                handRRoll = 6f + thinkLag * 7.0f
+                fingerCurlR = 14f + thinkLag * 6.0f
+                thumbCurlR = 16f - thinkLag * 4.0f
 
-                // Classic cute asymmetric curious bunny ears: left perked up, right folded playfully sideways!
-                earTargetLPitch = -14f
-                earTargetLRoll = -4f
-                earTargetRPitch = 18f + sin(elapsedSec * 2.1f) * 5f
-                earTargetRRoll = 34f + sin(elapsedSec * 1.6f) * 5f
+                earTargetLPitch = -9f
+                earTargetLRoll = -3f
+                earTargetRPitch = 9f + sin(safeTime * 1.85f) * 2.4f
+                earTargetRRoll = 11f + sin(safeTime * 1.45f) * 2.4f
 
                 targetSmile = 0.52f
-                targetBrowUp = 0.78f
+                targetBrowUp = 0.74f
             }
         }
 
-        // --- 4. OVERLAY TAP WAVE & JUMP CELEBRATION FLING ---
-        if (isTapWaving && expression != MascotExpression.EXCITED && expression != MascotExpression.HAPPY) {
-            val waveFade = when {
-                tapElapsedSec < 0.18f -> tapElapsedSec / 0.18f
-                tapElapsedSec > 1.45f -> ((1.85f - tapElapsedSec) / 0.40f).coerceIn(0f, 1f)
-                else -> 1f
+        // --- 4. VARIED MOOD-AWARE TAP REACTION OVERLAYS (SNAPPY, NON-REPETITIVE!) ---
+        var tapCozyEyes = 0f
+        var tapArmOverrideL = 0f
+        var tapArmOverrideR = 0f
+        if (isTapActive) {
+            val env = smoothTapEnvelope(safeTapElapsed, tapDur, attack = 0.14f, release = 0.28f)
+            when (activeTapReaction) {
+                TapReactionType.CRISP_HOP_SETTLE -> {
+                    // Snappy compact bunny hop: elbows tucked in, quick joyous smile & ear spring!
+                    if (airTuckFactor > 0.01f) {
+                        uaLPitch = lerp(uaLPitch, -12f, airTuckFactor * 0.60f)
+                        uaRPitch = lerp(uaRPitch, -12f, airTuckFactor * 0.60f)
+                        uaLRoll = lerp(uaLRoll, -14f, airTuckFactor * 0.65f)
+                        uaRRoll = lerp(uaRRoll, 14f, airTuckFactor * 0.65f)
+                        faLPitch = lerp(faLPitch, -28f, airTuckFactor * 0.65f)
+                        faRPitch = lerp(faRPitch, -28f, airTuckFactor * 0.65f)
+                        faLRoll = lerp(faLRoll, 26f, airTuckFactor * 0.55f)
+                        faRRoll = lerp(faRRoll, -26f, airTuckFactor * 0.55f)
+                        handLPitch = lerp(handLPitch, -20f, airTuckFactor * 0.65f)
+                        handRPitch = lerp(handRPitch, -20f, airTuckFactor * 0.65f)
+                        fingerCurlL = lerp(fingerCurlL, 6f, airTuckFactor * 0.7f)
+                        fingerCurlR = lerp(fingerCurlR, 6f, airTuckFactor * 0.7f)
+                        headPitch -= airTuckFactor * 5.0f
+                        targetSmile = max(targetSmile, 0.90f * airTuckFactor)
+                        targetBrowUp = max(targetBrowUp, 0.55f * airTuckFactor)
+                    }
+                    if (squatDepth > 0.002f) {
+                        val sqRatio = (squatDepth / 0.026f).coerceIn(0f, 1f)
+                        uaLYaw += sqRatio * 7f
+                        uaRYaw -= sqRatio * 7f
+                        spinePitch += sqRatio * 6f
+                    }
+                }
+
+                TapReactionType.CHEEKY_WINK_TILT -> {
+                    // Playful cheeky wink + 3/4 head tilt + sassy hip pop + quick cute left-hand wiggle
+                    val wiggle = sin(safeTapElapsed * 15f)
+                    hipShiftX = lerp(hipShiftX, 0.020f, env)
+                    hipRoll = lerp(hipRoll, -3.5f, env)
+                    chestRoll = lerp(chestRoll, 3.2f, env)
+                    headRoll = lerp(headRoll, 10.5f, env)
+                    headYaw = lerp(headYaw, -6.5f, env)
+                    headPitch = lerp(headPitch, -3.0f, env)
+
+                    tapArmOverrideL = env
+                    uaLPitch = lerp(uaLPitch, -14f, env)
+                    uaLYaw = lerp(uaLYaw, -16f, env)
+                    uaLRoll = lerp(uaLRoll, 24f, env)
+                    faLPitch = lerp(faLPitch, -32f + wiggle * 4f, env)
+                    faLYaw = lerp(faLYaw, -10f, env)
+                    faLRoll = lerp(faLRoll, 52f + wiggle * 8f, env)
+                    handLPitch = lerp(handLPitch, -26f, env)
+                    handLYaw = lerp(handLYaw, 14f, env)
+                    handLRoll = lerp(handLRoll, 12f + wiggle * 16f, env)
+                    fingerCurlL = lerp(fingerCurlL, -2f + wiggle * 5f, env)
+                    thumbCurlL = lerp(thumbCurlL, 4f, env)
+
+                    targetSmile = max(targetSmile, 0.92f * env)
+                    targetBrowUp = max(targetBrowUp, 0.45f * env)
+                }
+
+                TapReactionType.OFFICER_SALUTE -> {
+                    // FK-verified Officer Hopps right-hand brow salute + tall attentive posture!
+                    hipShiftX = lerp(hipShiftX, 0.004f, env)
+                    spinePitch = lerp(spinePitch, -2.5f, env)
+                    chestPitch = lerp(chestPitch, -3.0f, env)
+                    headPitch = lerp(headPitch, -3.0f, env)
+                    headRoll = lerp(headRoll, -3.5f, env)
+                    headYaw = lerp(headYaw, 4.0f, env)
+
+                    tapArmOverrideR = env
+                    uaRPitch = lerp(uaRPitch, -24f, env)
+                    uaRYaw = lerp(uaRYaw, 26f, env)
+                    uaRRoll = lerp(uaRRoll, -22f, env)
+                    faRPitch = lerp(faRPitch, -34f, env)
+                    faRYaw = lerp(faRYaw, 74f, env)
+                    faRRoll = lerp(faRRoll, -90f, env)
+                    handRPitch = lerp(handRPitch, -10f, env)
+                    handRYaw = lerp(handRYaw, 10f, env)
+                    handRRoll = lerp(handRRoll, -8f, env)
+                    fingerCurlR = lerp(fingerCurlR, -4f, env) // Crisp straight salute fingers!
+                    thumbCurlR = lerp(thumbCurlR, 6f, env)
+
+                    earTargetLPitch = lerp(earTargetLPitch, -12f, env)
+                    earTargetRPitch = lerp(earTargetRPitch, -12f, env)
+                    targetSmile = max(targetSmile, 0.72f * env)
+                    targetBrowUp = max(targetBrowUp, 0.35f * env)
+                }
+
+                TapReactionType.DOUBLE_EAR_FLICK_PEEK -> {
+                    // Quick playful head-bob + double asymmetric ear-flick + cheerful shoulder pop
+                    val bob = sin((safeTapElapsed / tapDur) * PI.toFloat() * 2f)
+                    headYaw += bob * 7.5f * env
+                    headRoll -= bob * 6.0f * env
+                    headPitch -= abs(bob) * 4.5f * env
+                    chestYaw -= bob * 3.5f * env
+                    uaLRoll += env * 9f
+                    uaRRoll -= env * 9f
+                    earTargetLPitch -= (4f + bob * 8f) * env
+                    earTargetRPitch -= (4f - bob * 8f) * env
+                    earTargetLRoll -= 6f * env
+                    earTargetRRoll += 6f * env
+                    targetSmile = max(targetSmile, 0.80f * env)
+                    targetBrowUp = max(targetBrowUp, 0.65f * env)
+                }
+
+                TapReactionType.COZY_STRETCH_SIGH -> {
+                    // Cozy gentle inhale stretch + contented closed-eye smile + soft ear droop
+                    spinePitch -= 4.5f * env
+                    chestPitch -= 4.0f * env
+                    headPitch += 3.5f * env
+                    headRoll -= 6.5f * env
+                    uaLRoll += env * 12f
+                    uaRRoll -= env * 12f
+                    earTargetLPitch += 9f * env
+                    earTargetRPitch += 10f * env
+                    tapCozyEyes = 0.85f * env
+                    targetSmile = max(targetSmile, 0.82f * env)
+                }
             }
-            val waveOsc = sin(elapsedSec * 11.0f)
-            uaLRoll = lerp(uaLRoll, 52f, waveFade)
-            uaLYaw = lerp(uaLYaw, -25f, waveFade)
-            uaLPitch = lerp(uaLPitch, -8f, waveFade)
-            faLRoll = lerp(faLRoll, 60f + waveOsc * 20f, waveFade)
-            faLYaw = lerp(faLYaw, -24f, waveFade)
-            handLRoll = lerp(handLRoll, waveOsc * 30f, waveFade)
         }
 
-        // Jump celebration arm fling (both arms rise dynamically when airborne!)
-        if (airTuckFactor > 0.01f) {
-            uaLRoll = lerp(uaLRoll, 64f, airTuckFactor * 0.85f)
-            uaRRoll = lerp(uaRRoll, -64f, airTuckFactor * 0.85f)
-            faLRoll = lerp(faLRoll, 26f, airTuckFactor * 0.65f)
-            faRRoll = lerp(faRRoll, -26f, airTuckFactor * 0.65f)
-            headPitch -= airTuckFactor * 10f
-        }
-        // Squat anticipation swings arms slightly back before takeoff
-        if (squatFactor > 0.01f) {
-            uaLYaw += squatFactor * 18f
-            uaRYaw -= squatFactor * 18f
-            spinePitch += squatFactor * 12f
-        }
-
-        // --- 5. OVERLAY EXPRESSIVE CONVERSATIONAL SPEAKING GESTURES ---
+        // --- 5. CONVERSATIONAL SPEAKING GESTURES (NATURAL PALM-OPEN PHRASING + BROW EMPHASIS) ---
         if (smoothSpeak > 0.01f) {
-            val speakBeatA = sin(elapsedSec * 5.8f)
-            val speakBeatB = sin(elapsedSec * 5.8f + 2.1f)
-            val emphasis = abs(sin(elapsedSec * 3.4f))
+            val speakBeatA = sin(safeTime * 4.4f)
+            val speakBeatALag = sin(safeTime * 4.4f - 0.65f)
+            val speakBeatB = sin(safeTime * 4.4f + 2.1f)
+            val speakBeatBLag = sin(safeTime * 4.4f + 1.45f)
+            val emphasis = abs(sin(safeTime * 2.8f))
 
-            // Natural conversational head nods & brow emphasis
-            headPitch += sin(elapsedSec * 11.2f) * 5.8f * smoothSpeak
-            headYaw += sin(elapsedSec * 4.4f) * 6.5f * smoothSpeak
-            headRoll += sin(elapsedSec * 6.0f) * 4.2f * smoothSpeak
-            chestPitch += sin(elapsedSec * 5.8f) * 2.6f * smoothSpeak
-            chestYaw += sin(elapsedSec * 4.4f) * 3.8f * smoothSpeak
+            // Natural conversational head nods & brow emphasis synced to syllable energy
+            headPitch += (sin(safeTime * 7.4f) * 2.6f + syllableWave * 2.8f) * smoothSpeak
+            headYaw += sin(safeTime * 3.2f) * 4.2f * smoothSpeak
+            headRoll += sin(safeTime * 3.9f) * 2.8f * smoothSpeak
+            chestPitch += (sin(safeTime * 4.4f) * 1.8f + syllableWave * 1.4f) * smoothSpeak
+            chestYaw += sin(safeTime * 3.2f - 0.35f) * 2.4f * smoothSpeak
 
-            // Expressive alternating hand gestures while explaining/talking!
             val talkArmL = max(0f, speakBeatA) * smoothSpeak
             val talkArmR = max(0f, speakBeatB) * smoothSpeak
+            val leftSpeakBlend = smoothSpeak * (1f - tapArmOverrideL).coerceIn(0f, 1f)
+            val rightSpeakBlend = smoothSpeak * (1f - tapArmOverrideR).coerceIn(0f, 1f)
 
-            // Bring forearms up & forward gently to gesture as she talks
-            if (expression != MascotExpression.EXCITED && !isTapWaving) {
-                uaLRoll = lerp(uaLRoll, -22f + talkArmL * 24f, smoothSpeak * 0.72f)
-                uaLYaw = lerp(uaLYaw, -26f - talkArmL * 14f, smoothSpeak * 0.72f)
-                faLRoll = lerp(faLRoll, 34f + talkArmL * 22f, smoothSpeak * 0.75f)
-                faLYaw = lerp(faLYaw, -32f, smoothSpeak * 0.75f)
-                handLRoll += speakBeatA * 18f * smoothSpeak
-                handLPitch += emphasis * 12f * smoothSpeak
+            if (expression != MascotExpression.EXCITED && expression != MascotExpression.HAPPY && leftSpeakBlend > 0.01f) {
+                uaLPitch = lerp(uaLPitch, -10f - talkArmL * 6f, leftSpeakBlend * 0.72f)
+                uaLYaw = lerp(uaLYaw, -15f - talkArmL * 4f, leftSpeakBlend * 0.72f)
+                uaLRoll = lerp(uaLRoll, -28f + talkArmL * 12f, leftSpeakBlend * 0.72f)
+                faLPitch = lerp(faLPitch, -26f - talkArmL * 8f, leftSpeakBlend * 0.76f)
+                faLYaw = lerp(faLYaw, -24f, leftSpeakBlend * 0.76f)
+                faLRoll = lerp(faLRoll, 24f + talkArmL * 10f, leftSpeakBlend * 0.76f)
+                handLPitch = lerp(handLPitch, -20f - talkArmL * 10f + speakBeatALag * 5f, leftSpeakBlend * 0.84f)
+                handLYaw = lerp(handLYaw, 10f + talkArmL * 6f, leftSpeakBlend * 0.80f)
+                handLRoll = lerp(handLRoll, 8f + speakBeatALag * 10f, leftSpeakBlend * 0.84f)
+                fingerCurlL = lerp(fingerCurlL, 16f - (talkArmL * 18f + syllableWave * 6f), leftSpeakBlend * 0.84f)
+                thumbCurlL = lerp(thumbCurlL, 10f - talkArmL * 7f, leftSpeakBlend * 0.80f)
             }
-            if (expression != MascotExpression.CURIOUS) {
-                uaRRoll = lerp(uaRRoll, 22f - talkArmR * 24f, smoothSpeak * 0.72f)
-                uaRYaw = lerp(uaRYaw, 26f + talkArmR * 14f, smoothSpeak * 0.72f)
-                faRRoll = lerp(faRRoll, -34f - talkArmR * 22f, smoothSpeak * 0.75f)
-                faRYaw = lerp(faRYaw, 32f, smoothSpeak * 0.75f)
-                handRRoll += speakBeatB * 18f * smoothSpeak
-                handRPitch += emphasis * 12f * smoothSpeak
+            if (expression != MascotExpression.CURIOUS && expression != MascotExpression.EXCITED && rightSpeakBlend > 0.01f) {
+                uaRPitch = lerp(uaRPitch, -10f - talkArmR * 6f, rightSpeakBlend * 0.72f)
+                uaRYaw = lerp(uaRYaw, 15f + talkArmR * 4f, rightSpeakBlend * 0.72f)
+                uaRRoll = lerp(uaRRoll, 28f - talkArmR * 12f, rightSpeakBlend * 0.72f)
+                faRPitch = lerp(faRPitch, -26f - talkArmR * 8f, rightSpeakBlend * 0.76f)
+                faRYaw = lerp(faRYaw, 24f, rightSpeakBlend * 0.76f)
+                faRRoll = lerp(faRRoll, -24f - talkArmR * 10f, rightSpeakBlend * 0.76f)
+                handRPitch = lerp(handRPitch, -20f - talkArmR * 10f + speakBeatBLag * 5f, rightSpeakBlend * 0.84f)
+                handRYaw = lerp(handRYaw, -10f - talkArmR * 6f, rightSpeakBlend * 0.80f)
+                handRRoll = lerp(handRRoll, -8f - speakBeatBLag * 10f, rightSpeakBlend * 0.84f)
+                fingerCurlR = lerp(fingerCurlR, 16f - (talkArmR * 18f + syllableWave * 6f), rightSpeakBlend * 0.84f)
+                thumbCurlR = lerp(thumbCurlR, 10f - talkArmR * 7f, rightSpeakBlend * 0.80f)
             }
 
-            // Lively ear bobs synchronized to speech beats
-            earTargetLPitch += sin(elapsedSec * 6.4f) * 6f * smoothSpeak
-            earTargetRPitch += sin(elapsedSec * 6.4f + 0.55f) * 6f * smoothSpeak
-            targetBrowUp = max(targetBrowUp, emphasis * 0.45f * smoothSpeak)
+            earTargetLPitch += sin(safeTime * 5.2f) * 3.0f * smoothSpeak
+            earTargetRPitch += sin(safeTime * 5.2f + 0.55f) * 3.0f * smoothSpeak
+            targetBrowUp = max(targetBrowUp, (0.20f + emphasis * 0.44f) * smoothSpeak)
         }
 
-        // --- 6. REAL SPRING-DAMPER SECONDARY PHYSICS FOR EARS & TORSO FOLLOW-THROUGH ---
-        // Spin inertia makes her ears & torso trail naturally when user drags Judy!
-        val spinLag = (-userYawVelocityDeg * 0.085f).coerceIn(-24f, 24f)
-        val lagTorso = torsoLagYaw.step(spinLag * 0.35f, dt)
-        val lagHead = headFollowYaw.step(spinLag * 0.65f, dt)
+        // --- 6. ANALYTICAL 2-BONE FOOT-LOCKING LEG IK (WITH KNEE-OVER-TOE THIGH YAW!) ---
+        val groundedIkWeight = (1f - airTuckFactor * 1.35f).coerceIn(0f, 1f)
+        solveGroundedLegIK(
+            side = +1f,
+            hipTx = hipShiftX,
+            hipTy = hipDropY,
+            hipTz = hipShiftZ,
+            hipPitchDeg = hipPitch,
+            hipRollDeg = hipRoll,
+            thighYawDeg = thighYawL,
+            ankleOffsetZ = ankleOffsetZL,
+            out = legIkL
+        )
+        solveGroundedLegIK(
+            side = -1f,
+            hipTx = hipShiftX,
+            hipTy = hipDropY,
+            hipTz = hipShiftZ,
+            hipPitchDeg = hipPitch,
+            hipRollDeg = hipRoll,
+            thighYawDeg = thighYawR,
+            ankleOffsetZ = ankleOffsetZR,
+            out = legIkR
+        )
 
-        // Vertical jump acceleration whips the bunny ears backward on takeoff and forward on landing!
-        val earJumpImpulse = (jumpAccel * 1.45f - jumpVel * 14f).coerceIn(-38f, 38f)
+        val airThighL = -airTuckFactor * 18f
+        val airShinL = airTuckFactor * 30f
+        val airFootL = airTuckFactor * 14f
 
-        val earBaseLP = earBaseLPitchSpring.step(earTargetLPitch + earJumpImpulse * 0.65f, dt)
-        val earBaseLR = earBaseLRollSpring.step(earTargetLRoll + spinLag * 0.45f, dt)
-        val earTipLP = earTipLPitchSpring.step(earBaseLP * 0.58f + earJumpImpulse * 0.85f, dt)
-        val earTipLR = earTipLRollSpring.step(earBaseLR * 0.55f + spinLag * 0.70f, dt)
+        val airThighR = -airTuckFactor * 14f
+        val airShinR = airTuckFactor * 24f
+        val airFootR = airTuckFactor * 12f
 
-        val earBaseRP = earBaseRPitchSpring.step(earTargetRPitch + earJumpImpulse * 0.65f, dt)
-        val earBaseRR = earBaseRRollSpring.step(earTargetRRoll + spinLag * 0.45f, dt)
-        val earTipRP = earTipRPitchSpring.step(earBaseRP * 0.58f + earJumpImpulse * 0.85f, dt)
-        val earTipRR = earTipRRollSpring.step(earBaseRR * 0.55f + spinLag * 0.70f, dt)
+        val finalThighLPitch = lerp(airThighL, legIkL.thighPitchDeg, groundedIkWeight).coerceIn(-28f, 14f)
+        val finalThighLYaw = lerp(0f, legIkL.thighYawDeg, groundedIkWeight).coerceIn(-14f, 14f)
+        val finalThighLRoll = lerp(0f, legIkL.thighRollDeg, groundedIkWeight).coerceIn(-10f, 10f)
+        val finalShinLPitch = lerp(airShinL, legIkL.shinPitchDeg, groundedIkWeight).coerceIn(0f, 34f)
+        val finalFootLPitch = lerp(airFootL, legIkL.footPitchDeg, groundedIkWeight).coerceIn(-22f, 18f)
+        val finalFootLRoll = lerp(0f, legIkL.footRollDeg, groundedIkWeight).coerceIn(-10f, 10f)
 
-        // --- 7. POPULATE ALL 21 JOINT TARGETS & SMOOTHLY INTERPOLATE ---
-        targets[JudyBones.HIPS].set(pitch = hipPitch, yaw = hipYaw, roll = hipRoll, tx = hipShiftX, ty = hipDropY)
-        targets[JudyBones.SPINE].set(pitch = spinePitch, yaw = spineYaw + lagTorso * 0.4f, roll = spineRoll)
-        targets[JudyBones.CHEST].set(pitch = chestPitch, yaw = chestYaw + lagTorso * 0.6f, roll = chestRoll)
-        targets[JudyBones.NECK].set(pitch = headPitch * 0.35f, yaw = (headYaw + lagHead) * 0.32f, roll = headRoll * 0.32f)
-        targets[JudyBones.HEAD].set(pitch = headPitch * 0.68f, yaw = (headYaw + lagHead) * 0.68f, roll = headRoll * 0.68f)
+        val finalThighRPitch = lerp(airThighR, legIkR.thighPitchDeg, groundedIkWeight).coerceIn(-28f, 14f)
+        val finalThighRYaw = lerp(0f, legIkR.thighYawDeg, groundedIkWeight).coerceIn(-14f, 14f)
+        val finalThighRRoll = lerp(0f, legIkR.thighRollDeg, groundedIkWeight).coerceIn(-10f, 10f)
+        val finalShinRPitch = lerp(airShinR, legIkR.shinPitchDeg, groundedIkWeight).coerceIn(0f, 34f)
+        val finalFootRPitch = lerp(airFootR, legIkR.footPitchDeg, groundedIkWeight).coerceIn(-22f, 18f)
+        val finalFootRRoll = lerp(0f, legIkR.footRollDeg, groundedIkWeight).coerceIn(-10f, 10f)
 
-        targets[JudyBones.EAR_BASE_L].set(pitch = earBaseLP.coerceIn(-40f, 48f), roll = earBaseLR.coerceIn(-45f, 35f))
-        targets[JudyBones.EAR_TIP_L].set(pitch = earTipLP.coerceIn(-38f, 52f), roll = earTipLR.coerceIn(-40f, 35f))
-        targets[JudyBones.EAR_BASE_R].set(pitch = earBaseRP.coerceIn(-40f, 48f), roll = earBaseRR.coerceIn(-35f, 45f))
-        targets[JudyBones.EAR_TIP_R].set(pitch = earTipRP.coerceIn(-38f, 52f), roll = earTipRR.coerceIn(-35f, 40f))
+        // --- 7. CRITICALLY-DAMPED EAR, WRIST, FINGER & INERTIAL SPRINGS ---
+        val spinLag = (-safeUserYawVel * 0.044f).coerceIn(-13f, 13f)
+        val lagTorso = torsoLagYaw.step(spinLag * 0.36f, safeDt)
+        val lagHead = headLagYaw.step(spinLag * 0.62f, safeDt)
+        val earJumpDrive = (jumpAccel * 0.50f - jumpVel * 4.5f).coerceIn(-14f, 14f)
 
-        targets[JudyBones.UPPER_ARM_L].set(pitch = uaLPitch, yaw = uaLYaw, roll = uaLRoll)
-        targets[JudyBones.FORE_ARM_L].set(pitch = faLPitch, yaw = faLYaw, roll = faLRoll)
-        targets[JudyBones.HAND_L].set(pitch = handLPitch, yaw = handLYaw, roll = handLRoll)
+        val ebLP = earBaseLPitch.step((earTargetLPitch + earJumpDrive * 0.55f).coerceIn(-16f, 16f), safeDt)
+        val ebLR = earBaseLRoll.step((earTargetLRoll + spinLag * 0.35f).coerceIn(-14f, 14f), safeDt)
+        val etLP = earTipLPitch.step((ebLP * 0.45f + earJumpDrive * 0.45f).coerceIn(-13f, 13f), safeDt)
+        val etLR = earTipLRoll.step((ebLR * 0.40f + spinLag * 0.40f).coerceIn(-10f, 10f), safeDt)
 
-        targets[JudyBones.UPPER_ARM_R].set(pitch = uaRPitch, yaw = uaRYaw, roll = uaRRoll)
-        targets[JudyBones.FORE_ARM_R].set(pitch = faRPitch, yaw = faRYaw, roll = faRRoll)
-        targets[JudyBones.HAND_R].set(pitch = handRPitch, yaw = handRYaw, roll = handRRoll)
+        val ebRP = earBaseRPitch.step((earTargetRPitch + earJumpDrive * 0.55f).coerceIn(-16f, 16f), safeDt)
+        val ebRR = earBaseRRoll.step((earTargetRRoll + spinLag * 0.35f).coerceIn(-14f, 14f), safeDt)
+        val etRP = earTipRPitch.step((ebRP * 0.45f + earJumpDrive * 0.45f).coerceIn(-13f, 13f), safeDt)
+        val etRR = earTipRRoll.step((ebRR * 0.40f + spinLag * 0.40f).coerceIn(-10f, 10f), safeDt)
 
-        targets[JudyBones.THIGH_L].set(pitch = thighLPitch)
-        targets[JudyBones.SHIN_L].set(pitch = shinLPitch)
-        targets[JudyBones.FOOT_L].set(pitch = footLPitch)
+        val curSmoothedFaL = lerp(poses[JudyBones.FORE_ARM_L].roll, faLRoll.coerceIn(-24f, 66f), poseBlend)
+        val curSmoothedFaR = lerp(poses[JudyBones.FORE_ARM_R].roll, faRRoll.coerceIn(-96f, 24f), poseBlend)
+        val faLVel = ((curSmoothedFaL - prevSmoothedFaLRoll) / safeDt).coerceIn(-140f, 140f)
+        val faRVel = ((curSmoothedFaR - prevSmoothedFaRRoll) / safeDt).coerceIn(-140f, 140f)
+        prevSmoothedFaLRoll = curSmoothedFaL
+        prevSmoothedFaRRoll = curSmoothedFaR
 
-        targets[JudyBones.THIGH_R].set(pitch = thighRPitch)
-        targets[JudyBones.SHIN_R].set(pitch = shinRPitch)
-        targets[JudyBones.FOOT_R].set(pitch = footRPitch)
+        val hLP = handLPitchSpring.step(handLPitch.coerceIn(-36f, 22f), safeDt)
+        val hLR = handLRollSpring.step((handLRoll - faLVel * 0.045f).coerceIn(-32f, 32f), safeDt)
+        val hLY = handLYawSpring.step(handLYaw.coerceIn(-24f, 24f), safeDt)
+        val fgL = fingersLCurlSpring.step(fingerCurlL.coerceIn(-12f, 40f), safeDt)
+        val thL = thumbLCurlSpring.step(thumbCurlL.coerceIn(-8f, 30f), safeDt)
 
+        val hRP = handRPitchSpring.step(handRPitch.coerceIn(-36f, 22f), safeDt)
+        val hRR = handRRollSpring.step((handRRoll - faRVel * 0.045f).coerceIn(-32f, 32f), safeDt)
+        val hRY = handRYawSpring.step(handRYaw.coerceIn(-24f, 24f), safeDt)
+        val fgR = fingersRCurlSpring.step(fingerCurlR.coerceIn(-12f, 40f), safeDt)
+        val thR = thumbRCurlSpring.step(thumbCurlR.coerceIn(-8f, 30f), safeDt)
+
+        // --- 8. POPULATE ALL 21 CORE JOINTS + 4 FINGER/THUMB JOINTS ---
+        groundedHipShiftX = hipShiftX.coerceIn(-0.022f, 0.022f)
+        targets[JudyBones.HIPS].set(
+            pitch = hipPitch.coerceIn(-10f, 12f),
+            yaw = hipYaw.coerceIn(-10f, 10f),
+            roll = hipRoll.coerceIn(-5f, 5f),
+            tx = groundedHipShiftX,
+            ty = hipDropY.coerceIn(-0.038f, 0.004f),
+            tz = hipShiftZ
+        )
+        targets[JudyBones.SPINE].set(
+            pitch = spinePitch.coerceIn(-9f, 10f),
+            yaw = (spineYaw + lagTorso * 0.4f).coerceIn(-10f, 10f),
+            roll = spineRoll.coerceIn(-7f, 7f)
+        )
+        targets[JudyBones.CHEST].set(
+            pitch = chestPitch.coerceIn(-9f, 10f),
+            yaw = (chestYaw + lagTorso * 0.6f).coerceIn(-11f, 11f),
+            roll = chestRoll.coerceIn(-7f, 7f)
+        )
+        targets[JudyBones.NECK].set(
+            pitch = (headPitch * 0.34f).coerceIn(-7f, 7f),
+            yaw = ((headYaw + lagHead) * 0.34f).coerceIn(-9f, 9f),
+            roll = (headRoll * 0.34f).coerceIn(-6f, 6f)
+        )
+        targets[JudyBones.HEAD].set(
+            pitch = (headPitch * 0.66f).coerceIn(-14f, 14f),
+            yaw = ((headYaw + lagHead) * 0.66f).coerceIn(-18f, 18f),
+            roll = (headRoll * 0.66f).coerceIn(-13f, 13f)
+        )
+
+        targets[JudyBones.EAR_BASE_L].set(pitch = ebLP.coerceIn(-16f, 16f), roll = ebLR.coerceIn(-14f, 14f))
+        targets[JudyBones.EAR_TIP_L].set(pitch = etLP.coerceIn(-13f, 13f), roll = etLR.coerceIn(-10f, 10f))
+        targets[JudyBones.EAR_BASE_R].set(pitch = ebRP.coerceIn(-16f, 16f), roll = ebRR.coerceIn(-14f, 14f))
+        targets[JudyBones.EAR_TIP_R].set(pitch = etRP.coerceIn(-13f, 13f), roll = etRR.coerceIn(-10f, 10f))
+
+        targets[JudyBones.UPPER_ARM_L].set(
+            pitch = uaLPitch.coerceIn(-28f, 14f),
+            yaw = uaLYaw.coerceIn(-28f, 24f),
+            roll = uaLRoll.coerceIn(-48f, 44f)
+        )
+        targets[JudyBones.FORE_ARM_L].set(
+            pitch = faLPitch.coerceIn(-40f, 10f),
+            yaw = faLYaw.coerceIn(-34f, 20f),
+            roll = faLRoll.coerceIn(-24f, 66f)
+        )
+        targets[JudyBones.HAND_L].set(
+            pitch = hLP.coerceIn(-36f, 22f),
+            yaw = hLY.coerceIn(-24f, 24f),
+            roll = hLR.coerceIn(-32f, 32f)
+        )
+        targets[JudyBones.FINGERS_L].set(
+            pitch = (fgL * 0.22f).coerceIn(-8f, 14f),
+            yaw = (-fgL * 0.30f).coerceIn(-16f, 8f),
+            roll = (-fgL).coerceIn(-40f, 14f)
+        )
+        targets[JudyBones.THUMB_L].set(
+            pitch = (thL * 0.55f).coerceIn(-8f, 20f),
+            yaw = (-thL * 0.85f).coerceIn(-28f, 10f),
+            roll = (-thL * 0.35f).coerceIn(-14f, 8f)
+        )
+
+        targets[JudyBones.UPPER_ARM_R].set(
+            pitch = uaRPitch.coerceIn(-28f, 14f),
+            yaw = uaRYaw.coerceIn(-24f, 30f),
+            roll = uaRRoll.coerceIn(-44f, 48f)
+        )
+        targets[JudyBones.FORE_ARM_R].set(
+            pitch = faRPitch.coerceIn(-42f, 10f),
+            yaw = faRYaw.coerceIn(-20f, 78f),
+            roll = faRRoll.coerceIn(-96f, 24f)
+        )
+        targets[JudyBones.HAND_R].set(
+            pitch = hRP.coerceIn(-36f, 22f),
+            yaw = hRY.coerceIn(-24f, 24f),
+            roll = hRR.coerceIn(-32f, 32f)
+        )
+        targets[JudyBones.FINGERS_R].set(
+            pitch = (fgR * 0.22f).coerceIn(-8f, 14f),
+            yaw = (fgR * 0.30f).coerceIn(-16f, 16f),
+            roll = (fgR).coerceIn(-14f, 40f)
+        )
+        targets[JudyBones.THUMB_R].set(
+            pitch = (thR * 0.55f).coerceIn(-8f, 20f),
+            yaw = (thR * 0.85f).coerceIn(-10f, 28f),
+            roll = (thR * 0.35f).coerceIn(-8f, 14f)
+        )
+
+        // Apply Thigh yaw so the knee bends anatomically over the turned-out toes!
+        targets[JudyBones.THIGH_L].set(pitch = finalThighLPitch, yaw = finalThighLYaw, roll = finalThighLRoll)
+        targets[JudyBones.SHIN_L].set(pitch = finalShinLPitch)
+        targets[JudyBones.FOOT_L].set(pitch = finalFootLPitch, roll = finalFootLRoll)
+
+        targets[JudyBones.THIGH_R].set(pitch = finalThighRPitch, yaw = finalThighRYaw, roll = finalThighRRoll)
+        targets[JudyBones.SHIN_R].set(pitch = finalShinRPitch)
+        targets[JudyBones.FOOT_R].set(pitch = finalFootRPitch, roll = finalFootRRoll)
+
+        // --- 9. PHASE 2 EXPRESSIVE LIVELY SOFT-BODY BOUNCE (CHEST, HIPS & TAIL) ---
+        val hipDropVel = ((hipDropY - prevHipDropY) / safeDt).coerceIn(-2.0f, 2.0f)
+        val hipDropAccel = ((hipDropVel - prevHipDropVel) / safeDt).coerceIn(-16f, 16f)
+        prevHipDropY = hipDropY
+        prevHipDropVel = hipDropVel
+
+        val hipShiftVel = ((hipShiftX - prevHipShiftX) / safeDt).coerceIn(-2.0f, 2.0f)
+        val hipShiftAccel = ((hipShiftVel - prevHipShiftVel) / safeDt).coerceIn(-14f, 14f)
+        prevHipShiftX = hipShiftX
+        prevHipShiftVel = hipShiftVel
+
+        if (sb > 0.001f) {
+            val torsoAccelY = (jumpAccel + hipDropAccel * 1.15f).coerceIn(-22f, 22f)
+            val verticalBounceDrive = (-torsoAccelY * 0.00145f).coerceIn(-0.017f, 0.017f)
+            val lateralInertiaDrive = ((-hipShiftAccel * 0.00105f) + (spinLag * 0.00068f)).coerceIn(-0.010f, 0.010f)
+
+            // Prominent speech syllable bounce + breathing lift on SoftChest_L/R (with organic L/R micro-phase)
+            val speechPulseL = (syllableWave * 0.0125f * smoothSpeak) +
+                (sin(safeTime * 7.8f) * 0.0024f * smoothSpeak) + (breath * 0.0046f)
+            val speechPulseR = (syllableWave * 0.0118f * smoothSpeak) +
+                (sin(safeTime * 7.8f - 0.35f) * 0.0024f * smoothSpeak) + (breath * 0.0044f)
+            // Subtle hip rhythmic follow-through during talking & upbeat grooves
+            val hipSpeakBounce = (syllableWave * 0.0048f * smoothSpeak) + (breath * 0.0018f)
+
+            val chestLY = softChestLY.step((verticalBounceDrive + speechPulseL) * sb, safeDt)
+            val chestRY = softChestRY.step((verticalBounceDrive * 0.96f + speechPulseR) * sb, safeDt)
+            val chestLX = softChestLX.step((lateralInertiaDrive + sin(safeTime * 4.4f) * 0.0022f * smoothSpeak) * sb, safeDt)
+            val chestRX = softChestRX.step((lateralInertiaDrive * 0.94f + sin(safeTime * 4.4f - 0.3f) * 0.0022f * smoothSpeak) * sb, safeDt)
+
+            val hipLY = softHipLY.step((verticalBounceDrive * 1.08f + hipSpeakBounce) * sb, safeDt)
+            val hipRY = softHipRY.step((verticalBounceDrive * 1.04f + hipSpeakBounce * 0.94f) * sb, safeDt)
+            val hipLX = softHipLX.step((lateralInertiaDrive * 1.15f) * sb, safeDt)
+            val hipRX = softHipRX.step((lateralInertiaDrive * 1.15f) * sb, safeDt)
+
+            // Playful bunny-tail bounce & happy/excited wag + 360° spin lag
+            val happyWag = when (expression) {
+                MascotExpression.EXCITED -> sin(safeTime * 11.0f) * 8.5f
+                MascotExpression.HAPPY -> sin(safeTime * 7.4f) * 5.6f
+                else -> sin(safeTime * 2.2f) * 1.6f
+            }
+            val tailP = tailPitchSpring.step((torsoAccelY * 0.62f + breath * 2.4f + syllableWave * 2.2f * smoothSpeak) * sb, safeDt)
+            val tailY = tailYawSpring.step((spinLag * 0.92f + happyWag) * sb, safeDt)
+
+            targets[JudyBones.SOFT_CHEST_L].set(
+                pitch = (-chestLY * 640f).coerceIn(-12.0f, 12.0f),
+                roll = (-chestLX * 580f).coerceIn(-8.0f, 8.0f),
+                tx = chestLX,
+                ty = chestLY
+            )
+            targets[JudyBones.SOFT_CHEST_R].set(
+                pitch = (-chestRY * 640f).coerceIn(-12.0f, 12.0f),
+                roll = (-chestRX * 580f).coerceIn(-8.0f, 8.0f),
+                tx = chestRX,
+                ty = chestRY
+            )
+            targets[JudyBones.SOFT_HIP_L].set(
+                pitch = (-hipLY * 500f).coerceIn(-9.5f, 9.5f),
+                roll = (-hipLX * 620f).coerceIn(-9.5f, 9.5f),
+                tx = hipLX,
+                ty = hipLY
+            )
+            targets[JudyBones.SOFT_HIP_R].set(
+                pitch = (-hipRY * 500f).coerceIn(-9.5f, 9.5f),
+                roll = (-hipRX * 620f).coerceIn(-9.5f, 9.5f),
+                tx = hipRX,
+                ty = hipRY
+            )
+            targets[JudyBones.TAIL].set(
+                pitch = tailP.coerceIn(-13f, 13f),
+                yaw = tailY.coerceIn(-15f, 15f),
+                ty = (verticalBounceDrive * 0.85f * sb).coerceIn(-0.010f, 0.010f)
+            )
+        } else {
+            for (i in JudyBones.SOFT_CHEST_L..JudyBones.TAIL) {
+                targets[i].set()
+                poses[i].set()
+            }
+        }
+
+        // Smoothly apply pose targets (spring-driven ears, wrists, fingers & Phase 2 soft-body track crisply!)
         for (i in 0 until JudyBones.COUNT) {
-            // Ears already run through real spring-damper physics; apply them directly for crisp physics!
-            if (i in JudyBones.EAR_BASE_L..JudyBones.EAR_TIP_R) {
-                poses[i].set(
-                    pitch = targets[i].pitch,
-                    yaw = targets[i].yaw,
-                    roll = targets[i].roll
-                )
-            } else {
-                poses[i].blendToward(targets[i], poseBlend)
+            when {
+                i in JudyBones.EAR_BASE_L..JudyBones.EAR_TIP_R ||
+                i == JudyBones.HAND_L || i == JudyBones.HAND_R ||
+                i in JudyBones.FINGERS_L..JudyBones.THUMB_R -> {
+                    poses[i].set(pitch = targets[i].pitch, yaw = targets[i].yaw, roll = targets[i].roll)
+                }
+                i in JudyBones.THIGH_L..JudyBones.FOOT_R -> {
+                    val legBlend = if (groundedIkWeight > 0.8f) 1f - exp(-18f * safeDt) else poseBlend
+                    poses[i].blendToward(targets[i], legBlend)
+                }
+                i in JudyBones.SOFT_CHEST_L..JudyBones.TAIL -> {
+                    poses[i].set(
+                        pitch = targets[i].pitch,
+                        yaw = targets[i].yaw,
+                        roll = targets[i].roll,
+                        tx = targets[i].tx,
+                        ty = targets[i].ty
+                    )
+                }
+                else -> poses[i].blendToward(targets[i], poseBlend)
             }
+            poses[i].sanitizeAll()
         }
 
-        // --- 8. SMOOTHLY UPDATE ALL 6 FACIAL MORPH WEIGHTS ---
+        // --- 10. SMOOTHLY UPDATE ALL 8 AMPLIFIED FACIAL MORPH WEIGHTS ---
         smoothSmile = lerp(smoothSmile, targetSmile, facialBlend)
-        smoothRelaxLids = lerp(smoothRelaxLids, targetRelaxLids, facialBlend)
+        smoothRelaxLids = lerp(smoothRelaxLids, max(targetRelaxLids, tapCozyEyes), facialBlend)
         smoothBrowUp = lerp(smoothBrowUp, targetBrowUp, facialBlend)
         smoothBrowFocus = lerp(smoothBrowFocus, targetBrowFocus, facialBlend)
 
-        morphWeights[JudyMorphs.BLINK_L] = max(max(naturalBlink, smoothRelaxLids), winkWeight * 0.96f).coerceIn(0f, 1f)
-        morphWeights[JudyMorphs.BLINK_R] = max(naturalBlink, smoothRelaxLids).coerceIn(0f, 1f)
-        morphWeights[JudyMorphs.MOUTH_OPEN] = mouthOpenWeight.coerceIn(0f, 1f)
-        morphWeights[JudyMorphs.SMILE] = (smoothSmile + winkWeight * 0.22f).coerceIn(0f, 1f)
-        morphWeights[JudyMorphs.BROW_UP] = smoothBrowUp.coerceIn(0f, 1f)
-        morphWeights[JudyMorphs.BROW_FOCUS] = smoothBrowFocus.coerceIn(0f, 1f)
+        smoothMouthOpen = lerp(smoothMouthOpen, targetMouthOpen, lipBlend)
+        smoothMouthWide = lerp(smoothMouthWide, targetMouthWide, lipBlend)
+        smoothMouthRound = lerp(smoothMouthRound, targetMouthRound, lipBlend)
 
-        // --- 9. ROOT TRANSFORM (GLOBAL ORBIT + JUMP ARC + ELASTIC SQUASH-STRETCH) ---
-        val moodPop = if (moodChangeElapsed in 0f..0.38f) {
-            sin((moodChangeElapsed / 0.38f) * PI.toFloat()) * 0.045f
-        } else 0f
+        morphWeights[JudyMorphs.BLINK_L] = safeUnit(max(max(naturalBlink, smoothRelaxLids), winkWeight * 0.96f))
+        morphWeights[JudyMorphs.BLINK_R] = safeUnit(max(naturalBlink, smoothRelaxLids))
+        morphWeights[JudyMorphs.MOUTH_OPEN] = safeUnit(smoothMouthOpen)
+        morphWeights[JudyMorphs.SMILE] = safeUnit(smoothSmile + winkWeight * 0.16f - smoothMouthRound * 0.22f)
+        morphWeights[JudyMorphs.BROW_UP] = safeUnit(smoothBrowUp)
+        morphWeights[JudyMorphs.BROW_FOCUS] = safeUnit(smoothBrowFocus)
+        morphWeights[JudyMorphs.MOUTH_WIDE] = safeUnit(smoothMouthWide)
+        morphWeights[JudyMorphs.MOUTH_ROUND] = safeUnit(smoothMouthRound)
 
-        rootOffsetY = jumpHeight + moodPop
-        rootYawDeg = userYawDeg + jumpSpinDeg
-        rootPitchDeg = userPitchDeg
-        rootRollDeg = 0f
+        // --- 11. ROOT TURNTABLE TRANSFORM (HORIZONTAL-ONLY 360° SPIN, SOLES PLANTED AT y = 0.000m) ---
+        rootOffsetY = if (jumpHeight.isFinite()) (jumpHeight + 0.009f).coerceIn(0f, 0.24f) else 0.009f
+        rootYawDeg = if ((safeUserYaw + jumpSpinDeg).isFinite()) safeUserYaw + jumpSpinDeg else 0f
 
-        val breathScale = if (isBreathing) breath * 0.008f else 0f
-        rootScaleX = 1f + breathScale - squashVal * 0.55f
-        rootScaleY = 1f + breathScale + squashVal
-        rootScaleZ = 1f + breathScale - squashVal * 0.55f
+        val breathScale = if (isBreathing) breath * 0.005f else 0f
+        rootScaleX = (1f + breathScale - squashVal * 0.45f).coerceIn(0.92f, 1.08f)
+        rootScaleY = (1f + breathScale + squashVal).coerceIn(0.92f, 1.08f)
+        rootScaleZ = (1f + breathScale - squashVal * 0.45f).coerceIn(0.92f, 1.08f)
+    }
+
+    /**
+     * Analytical Law-of-Cosines 2-bone Leg IK solver using the exact exported thigh (L1) and
+     * shin (L2) lengths. Applies contrapposto turn-out at the Thigh yaw joint so the knee bends
+     * anatomically over the turned-out toes while keeping both soles pinned flat to y = 0.
+     */
+    private fun solveGroundedLegIK(
+        side: Float,
+        hipTx: Float,
+        hipTy: Float,
+        hipTz: Float,
+        hipPitchDeg: Float,
+        hipRollDeg: Float,
+        thighYawDeg: Float,
+        ankleOffsetZ: Float,
+        out: LegIkSolution
+    ) {
+        val hipRollRad = hipRollDeg * (PI.toFloat() / 180f)
+        val localSocketX = side * JudyBones.THIGH_REST_X
+        val localSocketY = JudyBones.THIGH_REST_Y - JudyBones.HIP_REST_Y
+
+        val rotSocketX = localSocketX * cos(hipRollRad) - localSocketY * sin(hipRollRad)
+        val rotSocketY = localSocketX * sin(hipRollRad) + localSocketY * cos(hipRollRad)
+
+        val socketX = hipTx + rotSocketX
+        val socketY = JudyBones.HIP_REST_Y + hipTy + rotSocketY
+        val socketZ = JudyBones.THIGH_REST_Z + hipTz
+
+        val targetX = side * JudyBones.THIGH_REST_X
+        val targetY = JudyBones.ANKLE_REST_Y
+        val targetZ = JudyBones.ANKLE_REST_Z + ankleOffsetZ
+
+        val dx = targetX - socketX
+        val dy = targetY - socketY
+        val dz = targetZ - socketZ
+
+        val dist = sqrt(dx * dx + dy * dy + dz * dz)
+            .coerceIn(JudyBones.MIN_LEG_REACH, JudyBones.MAX_LEG_REACH)
+
+        val l1 = JudyBones.L1_THIGH
+        val l2 = JudyBones.L2_SHIN
+
+        val cosKnee = ((l1 * l1 + l2 * l2 - dist * dist) / (2f * l1 * l2)).coerceIn(-1f, 1f)
+        val interiorKneeRad = acos(cosKnee)
+        val kneeBendRad = (PI.toFloat() - interiorKneeRad).coerceIn(0f, 0.48f)
+
+        val cosAlpha = ((l1 * l1 + dist * dist - l2 * l2) / (2f * l1 * dist)).coerceIn(-1f, 1f)
+        val alphaRad = acos(cosAlpha)
+
+        // Transform sagittal/lateral aim into the turned-out thigh's local yaw frame
+        val yawRad = thighYawDeg * (PI.toFloat() / 180f)
+        val localDx = dx * cos(yawRad) - dz * sin(yawRad)
+        val localDz = dx * sin(yawRad) + dz * cos(yawRad)
+
+        val aimPitchRad = atan2(localDz, -dy)
+        val aimRollRad = atan2(localDx, -dy)
+
+        val radToDeg = 180f / PI.toFloat()
+        val kneeDeg = kneeBendRad * radToDeg
+
+        val thighPitch = -(alphaRad + aimPitchRad) * radToDeg - hipPitchDeg
+        val thighRoll = aimRollRad * radToDeg - hipRollDeg
+        val shinPitch = kneeDeg
+        val footPitch = -(hipPitchDeg + thighPitch + shinPitch)
+        val footRoll = -(hipRollDeg + thighRoll)
+
+        out.thighPitchDeg = thighPitch
+        out.thighYawDeg = thighYawDeg
+        out.thighRollDeg = thighRoll
+        out.shinPitchDeg = shinPitch
+        out.footPitchDeg = footPitch
+        out.footRollDeg = footRoll
     }
 
     /**
@@ -824,5 +1642,19 @@ internal class JudyPhysicsEngine {
         return scratchOut
     }
 
+    private fun smoothTapEnvelope(t: Float, duration: Float, attack: Float, release: Float): Float {
+        if (t <= 0f || t >= duration) return 0f
+        val up = smoothstep(0f, attack, t)
+        val down = 1f - smoothstep(duration - release, duration, t)
+        return (up * down).coerceIn(0f, 1f)
+    }
+
     private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+
+    private fun smoothstep(edge0: Float, edge1: Float, x: Float): Float {
+        val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
+    }
+
+    private fun safeUnit(v: Float): Float = if (v.isFinite()) v.coerceIn(0f, 1f) else 0f
 }
